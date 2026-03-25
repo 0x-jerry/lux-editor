@@ -5,14 +5,28 @@ use crate::language::HighlightSnapshot;
 use lux_core::Buffer;
 use std::path::PathBuf;
 
-pub fn render_editor_view(
-    ui: &mut egui::Ui,
-    workspace_path: Option<&PathBuf>,
-    buffer: &Buffer,
-    highlight_snapshot: &HighlightSnapshot,
-    editor_config: &Config,
-    events: &mut Vec<CustomEvent>,
-) {
+pub struct EditorViewState<'a> {
+    pub workspace_path: Option<&'a PathBuf>,
+    pub buffer: &'a Buffer,
+    pub highlight_snapshot: &'a HighlightSnapshot,
+    pub editor_config: &'a Config,
+    pub caret_line: usize,
+    pub caret_column: usize,
+    pub selection_len: usize,
+    pub caret_visible: bool,
+}
+
+pub fn render_editor_view(ui: &mut egui::Ui, state: EditorViewState<'_>, events: &mut Vec<CustomEvent>) {
+    let EditorViewState {
+        workspace_path,
+        buffer,
+        highlight_snapshot,
+        editor_config,
+        caret_line,
+        caret_column,
+        selection_len,
+        caret_visible,
+    } = state;
     if workspace_path.is_none() && buffer.path().is_none() {
         ui.vertical_centered(|ui| {
             ui.add_space(100.0);
@@ -72,10 +86,19 @@ pub fn render_editor_view(
     }
 
     ui.heading("Lux Editor");
+    ui.label(format!(
+        "Ln {}, Col {}  Sel {}",
+        caret_line, caret_column, selection_len
+    ));
+    ui.separator();
 
     let total_lines = buffer.len_lines();
     let text_style = egui::TextStyle::Monospace;
     let row_height = ui.text_style_height(&text_style);
+    let font_id = text_style.resolve(ui.style());
+    let char_width = ui
+        .fonts_mut(|fonts| fonts.glyph_width(&font_id, 'W'))
+        .max(editor_config.settings.font.size * 0.5);
     ui.spacing_mut().item_spacing.y = 0.0;
 
     egui::ScrollArea::vertical()
@@ -87,15 +110,25 @@ pub fn render_editor_view(
                 {
                     let line_text_owned = line.to_string();
                     let line_text = line_text_owned.trim_end_matches(['\r', '\n']);
-                    if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
+                    let response = if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
                         let job = build_highlighted_line_job(
                             line_text,
                             line_tokens,
                             editor_config.settings.font.size,
                         );
-                        ui.label(job);
+                        ui.label(job)
                     } else {
-                        ui.label(line_text);
+                        ui.label(line_text)
+                    };
+                    if selection_len == 0 && caret_visible && i + 1 == caret_line {
+                        let x = response.rect.min.x + (caret_column.saturating_sub(1) as f32 * char_width);
+                        ui.painter().line_segment(
+                            [
+                                egui::pos2(x, response.rect.top()),
+                                egui::pos2(x, response.rect.bottom()),
+                            ],
+                            egui::Stroke::new(1.5, ui.visuals().text_color()),
+                        );
                     }
                 }
             }

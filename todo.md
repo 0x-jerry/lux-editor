@@ -1,9 +1,10 @@
 # Lux Editor Todo
 
 ## Current Focus
-- [ ] Build selection and caret state engine
-- [ ] Implement copy, cut, paste, and select-all command pipeline
-- [ ] Add undo/redo transaction model
+- [x] Build selection and caret state engine
+- [x] Implement copy, cut, paste, and select-all command pipeline
+- [x] Add undo/redo transaction model
+- [x] Add blinking caret rendering in editor view
 
 ## Next Up
 - [ ] Add command palette with fuzzy search

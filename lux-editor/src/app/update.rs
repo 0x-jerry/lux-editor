@@ -16,6 +16,9 @@ impl EframeApp for App {
         }
 
         let highlight_snapshot = self.highlight_snapshot().clone();
+        let (caret_line, caret_column) = self.caret_position();
+        let selection_len = self.selection_len();
+        let caret_visible = self.caret_blink_visible();
         let events = ui::draw_ui(
             ctx,
             ui::DrawUiState {
@@ -27,6 +30,10 @@ impl EframeApp for App {
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
                 shell_view: self.shell_view,
+                caret_line,
+                caret_column,
+                selection_len,
+                caret_visible,
             },
         );
         for event in events {

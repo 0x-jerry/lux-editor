@@ -19,6 +19,10 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         config_draft,
         config_status,
         shell_view,
+        caret_line,
+        caret_column,
+        selection_len,
+        caret_visible,
     } = state;
 
     let mut events = Vec::new();
@@ -35,10 +39,16 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         if shell_view == ShellView::Editor {
             editor::render_editor_view(
                 ui,
-                workspace_path,
-                buffer,
-                highlight_snapshot,
-                editor_config,
+                editor::EditorViewState {
+                    workspace_path,
+                    buffer,
+                    highlight_snapshot,
+                    editor_config,
+                    caret_line,
+                    caret_column,
+                    selection_len,
+                    caret_visible,
+                },
                 &mut events,
             );
         } else {

@@ -27,6 +27,9 @@ impl App {
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
             shell_view: ShellView::Editor,
+            caret_state: Default::default(),
+            edit_history: Default::default(),
+            caret_blink_anchor: std::time::Instant::now(),
         };
         let initial_path = std::env::args().nth(1).map(PathBuf::from);
         app.initialize_from_path(initial_path);
@@ -43,6 +46,7 @@ impl App {
         self.file_tree = Some(FileTree::new(&path));
         self.editor_config.add_recent(path.clone(), true);
         self.workspace_watcher = Self::start_workspace_watcher(&path, self.event_tx.clone());
+        self.reset_editor_state();
         self.restart_settings_watcher();
         if self.editor_config.reload_settings() {
             self.needs_style_refresh = true;
@@ -56,6 +60,7 @@ impl App {
         let path = path.canonicalize().unwrap_or(path);
         if let Ok(buffer) = self.rt.block_on(Buffer::from_file(&path)) {
             self.buffer = buffer;
+            self.reset_editor_state();
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "lux - {}",
                 path.display()
@@ -97,6 +102,7 @@ impl App {
             && let Ok(buffer) = self.rt.block_on(Buffer::from_file(&path))
         {
             self.buffer = buffer;
+            self.reset_editor_state();
             self.editor_config.add_recent(path, false);
         }
     }

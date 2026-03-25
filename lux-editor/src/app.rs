@@ -1,4 +1,5 @@
 mod events;
+mod editor;
 mod init;
 mod input;
 mod settings;
@@ -9,6 +10,7 @@ use crate::config::{Config, EditorSettings};
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
 use crate::language::HighlightingService;
+use editor::{CaretState, EditHistory};
 use lux_core::Buffer;
 use notify::RecommendedWatcher;
 use std::path::PathBuf;
@@ -37,4 +39,7 @@ pub struct App {
     highlighting_service: HighlightingService,
     needs_style_refresh: bool,
     shell_view: ShellView,
+    caret_state: CaretState,
+    edit_history: EditHistory,
+    caret_blink_anchor: Instant,
 }

@@ -14,4 +14,8 @@ pub struct DrawUiState<'a> {
     pub config_draft: &'a mut EditorSettings,
     pub config_status: Option<&'a str>,
     pub shell_view: ShellView,
+    pub caret_line: usize,
+    pub caret_column: usize,
+    pub selection_len: usize,
+    pub caret_visible: bool,
 }

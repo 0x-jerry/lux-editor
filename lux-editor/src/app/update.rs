@@ -32,6 +32,7 @@ impl EframeApp for App {
         for event in events {
             self.handle_event(event, ctx);
         }
+        self.flush_configuration_autosave();
 
         ctx.request_repaint();
     }

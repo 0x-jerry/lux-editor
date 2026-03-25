@@ -23,6 +23,7 @@ impl App {
             config_draft: editor_config.settings.clone(),
             editor_config,
             config_status: None,
+            config_autosave_deadline: None,
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
             shell_view: ShellView::Editor,

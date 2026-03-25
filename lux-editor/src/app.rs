@@ -13,6 +13,7 @@ use lux_core::Buffer;
 use notify::RecommendedWatcher;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Instant;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShellView {
@@ -32,6 +33,7 @@ pub struct App {
     editor_config: Config,
     config_draft: EditorSettings,
     config_status: Option<String>,
+    config_autosave_deadline: Option<Instant>,
     highlighting_service: HighlightingService,
     needs_style_refresh: bool,
     shell_view: ShellView,

@@ -10,5 +10,5 @@ pub enum CustomEvent {
     NewFolder(std::path::PathBuf),
     SwitchToEditor,
     SwitchToConfiguration,
-    SaveConfiguration,
+    ConfigurationDraftChanged,
 }

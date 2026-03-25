@@ -5,8 +5,11 @@ use font_kit::family_name::FamilyName;
 use font_kit::handle::Handle;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
+use std::time::{Duration, Instant};
 
 impl App {
+    const CONFIG_AUTOSAVE_DELAY: Duration = Duration::from_millis(350);
+
     pub(super) fn apply_editor_settings(&mut self, ctx: &egui::Context) {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
@@ -60,6 +63,21 @@ impl App {
         self.settings_watcher = Self::start_settings_watcher(&watch_roots, self.event_tx.clone());
     }
 
+    pub(super) fn schedule_configuration_autosave(&mut self) {
+        self.config_autosave_deadline = Some(Instant::now() + Self::CONFIG_AUTOSAVE_DELAY);
+        self.config_status = None;
+    }
+
+    pub(super) fn flush_configuration_autosave(&mut self) {
+        if self
+            .config_autosave_deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            self.config_autosave_deadline = None;
+            self.save_configuration_draft();
+        }
+    }
+
     pub(super) fn save_configuration_draft(&mut self) {
         if self.config_draft == self.editor_config.settings {
             return;
@@ -76,6 +94,7 @@ impl App {
             if theme_changed {
                 self.refresh_language_intelligence();
             }
+            self.config_autosave_deadline = None;
             self.config_status = Some("Configuration saved".to_string());
         } else {
             self.config_status = Some("Failed to save configuration".to_string());

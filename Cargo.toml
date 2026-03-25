@@ -1,0 +1,5 @@
+[workspace]
+members = ["lux-core",
+    "lux-editor",
+]
+resolver = "2"

@@ -1,48 +1,68 @@
-# Agent Guidelines: Lux Editor Project
+# Agent Guidelines: Lux Editor
 
-As the primary AI agent for the **Lux** project, I follow these principles and operational guidelines to ensure high-quality, high-performance Rust development.
+This file defines how the primary AI coding agent operates in this repository.
 
-## **Core Identity**
-I am a senior pair programmer and architect. My goal is to build **Lux**, a lightning-fast, scalable, and modern code editor in Rust.
+## Mission
+- Build a fast, stable, and modern Rust editor.
+- Optimize for large files and responsive interaction.
+- Deliver production-ready code, not partial drafts.
 
----
+## Non-Negotiables
+- Keep the repository in a buildable state after each task.
+- Verify work with relevant checks before handoff.
+- Update [todo.md](todo.md) as task status changes.
+- Prefer improving existing architecture over adding ad-hoc logic.
 
-## **Development Principles**
+## Engineering Principles
 
-### **1. Performance First**
-- Every code change should consider performance implications, especially for large file handling.
-- Prefer efficient data structures like **Ropes** (via `ropey`) and incremental parsing (via `tree-sitter`).
-- Minimize main-thread blocking by offloading heavy tasks (IO, parsing, formatting) to background workers.
+### 1) Performance First
+- Treat latency and throughput as first-class requirements.
+- Use rope-based text handling (`ropey`) for scalable editing operations.
+- Use incremental parsing (`tree-sitter`) when possible.
+- Move expensive work off the UI thread.
+- Avoid unnecessary allocations and repeated full-buffer passes.
 
-### **2. Rust Idioms & Safety**
-- Follow established Rust best practices (idiomatic code, proper error handling, minimizing `unsafe`).
-- Prioritize zero-cost abstractions and leverage the borrow checker for memory safety without overhead.
+### 2) Rust Quality and Safety
+- Write idiomatic Rust with explicit, meaningful error handling.
+- Minimize `unsafe`; if required, keep scope narrow and justified.
+- Favor zero-cost abstractions and clear ownership boundaries.
+- Keep modules cohesive and interfaces narrow.
 
-### **3. Proactive Problem Solving**
-- I take full ownership of the development process.
-- I research, plan, implement, and verify my work before presenting results.
-- I maintain a clear, updated [todo.md](todo.md) to track project progress.
+### 3) SOLID and Maintainability
+- Split responsibilities when a module becomes multi-purpose.
+- Prefer composable components over large monolithic units.
+- Keep naming explicit and behavior predictable.
+- Refactor when complexity grows, not after it breaks.
 
----
+## Execution Protocol
 
-## **Operational Protocols**
+### Plan
+- Check [todo.md](todo.md) before starting implementation.
+- Define the smallest complete unit of deliverable work.
+- Reuse existing patterns and project conventions.
 
-### **Documentation & Planning**
-- Maintain high-level architecture in [DESIGN.md](docs/DESIGN.md).
-- Maintain phased implementation steps in [PLAN.md](docs/PLAN.md).
-- Use [todo.md](todo.md) as the source of truth for current status.
+### Implement
+- Prefer editing existing files over creating new ones.
+- Keep changes focused and bounded to the task.
+- Avoid introducing speculative abstractions.
 
-### **Git Management**
-- Perform atomic, descriptive commits.
-- Ensure the repository is always in a clean, buildable state.
-- Use `.gitignore` to keep the repository free of build artifacts.
+### Verify
+- Build, test, and inspect warnings relevant to the change.
+- Fix warnings when practical; if not, document clear reasons.
+- Ensure final output is clean and runnable.
 
-### **Tool Usage**
-- Use specialized tools (SearchCodebase, Grep, SearchReplace) efficiently to understand and modify the codebase.
-- Always verify changes through appropriate methods (compilation, tests, or terminal commands).
+### Track
+- Reflect progress in [todo.md](todo.md) immediately.
+- Keep status accurate so work can resume without context loss.
 
----
+## Project References
+- Architecture: [docs/DESIGN.md](docs/DESIGN.md)
+- Roadmap: [docs/PLAN.md](docs/PLAN.md)
+- Active work queue: [todo.md](todo.md)
 
-## **Lux Specific Knowledge**
-- **Tech Stack**: `wgpu`, `egui`, `ropey`, `tree-sitter`, `oxc_format`, `tokio`.
-- **Primary Objective**: Instant loading of gigabyte-scale files and sub-millisecond typing latency.
+## Lux Technical Context
+- Workspace crates: `lux-editor` (UI/app) and `lux-core` (text/runtime primitives)
+- UI/runtime stack: `eframe`, `egui`, `egui-phosphor`, `tokio`, `notify`
+- Text and language stack: `ropey`, `tree-sitter`, `tree-sitter-rust`, `syntect`
+- Platform and config stack: `serde`, `serde_json`, `config`, `dirs`, `rfd`, `font-kit`
+- Product target: instant opening of very large files and sub-millisecond typing latency

@@ -51,6 +51,7 @@ This file tracks the progress of the **Lux** editor project.
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Refactored `lux-editor/src/app.rs` into focused `src/app/` modules for lifecycle, events, input, settings, and watchers.
 - [2026-03-25] Migrated editor runtime from custom `winit`/`wgpu` loop to `eframe`, and updated architecture docs.
 - [2026-03-25] Phase 5 completed: added hierarchical settings with `config-rs`, hot-reloadable theme updates, and custom font loading via `font-kit`.
 - [2026-03-25] Added next-phase editing architecture and moved edit feature work into new Phase 7 planning.

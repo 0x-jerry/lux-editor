@@ -11,5 +11,4 @@ pub enum CustomEvent {
     SwitchToEditor,
     SwitchToConfiguration,
     SaveConfiguration,
-    RevertConfiguration,
 }

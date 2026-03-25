@@ -38,7 +38,6 @@ impl App {
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
             CustomEvent::SaveConfiguration => self.save_configuration_draft(),
-            CustomEvent::RevertConfiguration => self.revert_configuration_draft(),
         }
     }
 

@@ -1,5 +1,6 @@
 use crate::config::{Config, EditorSettings};
 use crate::events::CustomEvent;
+use crate::language::available_syntax_theme_names;
 use lux_core::Buffer;
 use std::path::PathBuf;
 
@@ -12,6 +13,8 @@ pub fn render_configuration_view(
     config_status: Option<&str>,
     events: &mut Vec<CustomEvent>,
 ) {
+    let mut changed = false;
+
     ui.heading("Configuration");
     ui.add_space(8.0);
     ui.label(format!(
@@ -41,45 +44,44 @@ pub fn render_configuration_view(
                 .selected_text(&config_draft.theme.syntax_theme)
                 .show_ui(ui, |ui| {
                     for theme in available_syntax_themes(&config_draft.theme.syntax_theme) {
-                        ui.selectable_value(
+                        let response = ui.selectable_value(
                             &mut config_draft.theme.syntax_theme,
                             theme.clone(),
                             theme,
                         );
+                        if response.changed() {
+                            changed = true;
+                        }
                     }
                 });
             ui.end_row();
 
             ui.label("Font family");
-            ui.text_edit_singleline(&mut config_draft.font.family);
+            if ui
+                .text_edit_singleline(&mut config_draft.font.family)
+                .changed()
+            {
+                changed = true;
+            }
             ui.end_row();
 
             ui.label("Font size");
-            ui.add(
-                egui::DragValue::new(&mut config_draft.font.size)
-                    .speed(0.1)
-                    .range(8.0..=64.0),
-            );
+            if ui
+                .add(
+                    egui::DragValue::new(&mut config_draft.font.size)
+                        .speed(0.1)
+                        .range(8.0..=64.0),
+                )
+                .changed()
+            {
+                changed = true;
+            }
             ui.end_row();
         });
 
-    let has_changes = *config_draft != editor_config.settings;
-    ui.add_space(12.0);
-    ui.horizontal(|ui| {
-        if ui
-            .add_enabled(has_changes, egui::Button::new("Save"))
-            .clicked()
-        {
-            events.push(CustomEvent::SaveConfiguration);
-        }
-
-        if ui
-            .add_enabled(has_changes, egui::Button::new("Revert"))
-            .clicked()
-        {
-            events.push(CustomEvent::RevertConfiguration);
-        }
-    });
+    if changed && *config_draft != editor_config.settings {
+        events.push(CustomEvent::SaveConfiguration);
+    }
 
     if let Some(status) = config_status {
         ui.add_space(8.0);
@@ -88,17 +90,10 @@ pub fn render_configuration_view(
 }
 
 fn available_syntax_themes(current: &str) -> Vec<String> {
-    let mut themes = vec![
-        "base16-ocean.dark".to_string(),
-        "base16-eighties.dark".to_string(),
-        "base16-mocha.dark".to_string(),
-        "base16-ocean.light".to_string(),
-        "InspiredGitHub".to_string(),
-        "Solarized (dark)".to_string(),
-        "Solarized (light)".to_string(),
-    ];
+    let mut themes = available_syntax_theme_names().to_vec();
     if !themes.iter().any(|theme| theme == current) {
         themes.push(current.to_string());
+        themes.sort();
     }
     themes
 }

@@ -62,7 +62,6 @@ impl App {
 
     pub(super) fn save_configuration_draft(&mut self) {
         if self.config_draft == self.editor_config.settings {
-            self.config_status = Some("No configuration changes to save".to_string());
             return;
         }
 
@@ -74,10 +73,5 @@ impl App {
         } else {
             self.config_status = Some("Failed to save configuration".to_string());
         }
-    }
-
-    pub(super) fn revert_configuration_draft(&mut self) {
-        self.config_draft = self.editor_config.settings.clone();
-        self.config_status = Some("Configuration reverted".to_string());
     }
 }

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use syntect::easy::HighlightLines;
@@ -22,6 +23,21 @@ impl LanguageKind {
             _ => Self::PlainText,
         }
     }
+}
+
+pub fn available_syntax_theme_names() -> &'static [String] {
+    static THEME_NAMES: OnceLock<Vec<String>> = OnceLock::new();
+    THEME_NAMES
+        .get_or_init(|| {
+            let mut names = ThemeSet::load_defaults()
+                .themes
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        })
+        .as_slice()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

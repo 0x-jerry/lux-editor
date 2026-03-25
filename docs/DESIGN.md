@@ -28,11 +28,11 @@ To achieve "instant" loading for large files, we use a **Rope** data structure. 
 - **oxfmt**: The formatter part of Oxc, designed to be 10-100x faster than Prettier. We will integrate this as the primary formatter for supported languages.
 
 ### **4. UI & Rendering Layer**
-- **[egui](https://github.com/emilk/egui)** or **[Iced](https://github.com/iced-rs/iced)**:
-    - **egui**: An immediate-mode GUI that is extremely fast and easy to integrate with `wgpu` for hardware-accelerated rendering.
-    - **cosmic-text**: For high-performance text shaping and layout, ensuring smooth rendering across all platforms.
+- **[eframe](https://github.com/emilk/egui/tree/master/crates/eframe)** + **[egui](https://github.com/emilk/egui)**:
+    - **eframe**: Owns the native app lifecycle (windowing, event loop, and platform integration) so the editor can focus on state and UI behavior.
+    - **egui**: Immediate-mode UI layer for the workspace explorer, welcome screen, and virtualized text viewport.
     - **[font-kit](https://github.com/servo/font-kit)**: A cross-platform library for loading fonts from the system or files, used to enable custom font rendering.
-- **[wgpu](https://github.com/gfx-rs/wgpu)**: The underlying graphics API for cross-platform GPU acceleration.
+    - **Renderer backend**: `eframe` provides cross-platform GPU rendering through its built-in integrations.
 
 ### **5. Configuration & Theme System**
 - **[Serde](https://serde.rs/)**: For efficient serialization and deserialization of configuration files (TOML/JSON).
@@ -79,8 +79,8 @@ Provides intelligence to the editor.
 
 ### **E. Rendering Layer**
 - **Viewport Management**: Only renders the lines currently visible on the screen (virtual scrolling).
-- **Shaping**: Uses `cosmic-text` to convert text into glyphs.
-- **Rasterization**: Uses the GPU to draw glyphs and UI elements.
+- **Application Runtime**: `eframe` drives the frame loop and native window lifecycle.
+- **Rasterization**: `eframe` backend handles GPU drawing for text and UI elements.
 
 ---
 

@@ -10,15 +10,15 @@ This document outlines the phased implementation plan for **Lux**, the high-perf
 
 1.  **Initialize Project**:
     -   Run `cargo new editor` to create a new Rust project.
-    -   Add initial dependencies to `Cargo.toml`: `winit`, `wgpu`, `egui`, `egui-wgpu`, `egui-winit`, `tokio`.
+    -   Add initial dependencies to `Cargo.toml`: `eframe`, `egui`, `tokio`.
 
 2.  **Setup Windowing & Rendering Loop**:
-    -   Create a `main.rs` that initializes a `winit` window.
-    -   Set up a `wgpu` graphics context to render to the window.
-    -   Implement a basic event loop to handle window resizing, closing, and keyboard/mouse input.
+    -   Create a `main.rs` that boots the app through `eframe::run_native`.
+    -   Use `eframe`'s native runtime to handle window lifecycle, rendering, and platform input.
+    -   Wire app state updates to the `eframe::App::update` frame loop.
 
 3.  **Integrate `egui`**:
-    -   Integrate `egui-wgpu` and `egui-winit` to create a basic UI layer.
+    -   Integrate `egui` through `eframe` to create a basic UI layer.
     -   Render a simple "Hello, World" `egui` panel to confirm the integration is working.
 
 ---

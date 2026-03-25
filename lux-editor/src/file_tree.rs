@@ -3,7 +3,6 @@ use egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
 use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use winit::event_loop::EventLoopProxy;
 
 lazy_static::lazy_static! {
     static ref RENAMING_STATE: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
@@ -17,22 +16,20 @@ pub enum Entry {
 
 pub struct FileTree {
     entry: Entry,
-    event_proxy: EventLoopProxy<CustomEvent>,
 }
 
 impl FileTree {
-    pub fn new(path: &Path, event_proxy: EventLoopProxy<CustomEvent>) -> Self {
+    pub fn new(path: &Path) -> Self {
         Self {
             entry: Self::build_entry(path),
-            event_proxy,
         }
     }
 
-    pub fn show(&self, ui: &mut Ui) -> Option<PathBuf> {
+    pub fn show(&self, ui: &mut Ui) -> Option<CustomEvent> {
         self.show_entry(ui, &self.entry)
     }
 
-    fn show_entry(&self, ui: &mut Ui, entry: &Entry) -> Option<PathBuf> {
+    fn show_entry(&self, ui: &mut Ui, entry: &Entry) -> Option<CustomEvent> {
         match entry {
             Entry::File(path) => {
                 let is_renaming = {
@@ -45,11 +42,11 @@ impl FileTree {
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
                             {
                                 let new_path = path.with_file_name(&*new_name);
-                                self.event_proxy
-                                    .send_event(CustomEvent::Rename(path.clone(), new_path))
-                                    .ok();
+                                let event = CustomEvent::Rename(path.clone(), new_path);
                                 *renaming = None;
-                            } else if response.lost_focus()
+                                return Some(event);
+                            }
+                            if response.lost_focus()
                                 || ui.input(|i| i.key_pressed(egui::Key::Escape))
                             {
                                 *renaming = None;
@@ -80,9 +77,9 @@ impl FileTree {
                     )
                     .inner;
 
-                let mut clicked_path = None;
+                let mut event = None;
                 if response.clicked() {
-                    clicked_path = Some(path.clone());
+                    event = Some(CustomEvent::OpenFile(path.clone()));
                 }
 
                 response.context_menu(|ui| {
@@ -95,18 +92,16 @@ impl FileTree {
                         ui.close();
                     }
                     if ui.button("Delete").clicked() {
-                        self.event_proxy
-                            .send_event(CustomEvent::Delete(path.clone()))
-                            .ok();
+                        event = Some(CustomEvent::Delete(path.clone()));
                         ui.close();
                     }
                 });
 
-                clicked_path
+                event
             }
             Entry::Directory(path, entries) => {
                 let id = Id::new(path);
-                let mut clicked_path = None;
+                let mut event = None;
 
                 let is_renaming = {
                     let mut renaming = RENAMING_STATE.lock().unwrap();
@@ -118,11 +113,11 @@ impl FileTree {
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
                             {
                                 let new_path = path.with_file_name(&*new_name);
-                                self.event_proxy
-                                    .send_event(CustomEvent::Rename(path.clone(), new_path))
-                                    .ok();
+                                let rename_event = CustomEvent::Rename(path.clone(), new_path);
                                 *renaming = None;
-                            } else if response.lost_focus()
+                                return Some(rename_event);
+                            }
+                            if response.lost_focus()
                                 || ui.input(|i| i.key_pressed(egui::Key::Escape))
                             {
                                 *renaming = None;
@@ -169,15 +164,11 @@ impl FileTree {
 
                         response.context_menu(|ui| {
                             if ui.button("New File").clicked() {
-                                self.event_proxy
-                                    .send_event(CustomEvent::NewFile(path.clone()))
-                                    .ok();
+                                event = Some(CustomEvent::NewFile(path.clone()));
                                 ui.close();
                             }
                             if ui.button("New Folder").clicked() {
-                                self.event_proxy
-                                    .send_event(CustomEvent::NewFolder(path.clone()))
-                                    .ok();
+                                event = Some(CustomEvent::NewFolder(path.clone()));
                                 ui.close();
                             }
                             if ui.button("Rename").clicked() {
@@ -189,22 +180,20 @@ impl FileTree {
                                 ui.close();
                             }
                             if ui.button("Delete").clicked() {
-                                self.event_proxy
-                                    .send_event(CustomEvent::Delete(path.clone()))
-                                    .ok();
+                                event = Some(CustomEvent::Delete(path.clone()));
                                 ui.close();
                             }
                         });
                     })
                     .body(|ui| {
                         for entry in entries {
-                            if let Some(p) = self.show_entry(ui, entry) {
-                                clicked_path = Some(p);
+                            if let Some(child_event) = self.show_entry(ui, entry) {
+                                event = Some(child_event);
                             }
                         }
                     });
 
-                clicked_path
+                event
             }
         }
     }

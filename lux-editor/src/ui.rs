@@ -4,12 +4,6 @@ use crate::file_tree::FileTree;
 use crate::language::{HighlightSnapshot, HighlightSpan};
 use lux_core::Buffer;
 use std::path::PathBuf;
-use winit::event_loop::EventLoopProxy;
-
-pub enum Action {
-    OpenFile(PathBuf),
-    OpenFolder(PathBuf),
-}
 
 pub fn draw_ui(
     ctx: &egui::Context,
@@ -18,9 +12,8 @@ pub fn draw_ui(
     buffer: &Buffer,
     highlight_snapshot: &HighlightSnapshot,
     editor_config: &Config,
-    event_proxy: &EventLoopProxy<CustomEvent>,
-) -> Option<Action> {
-    let mut action = None;
+) -> Vec<CustomEvent> {
+    let mut events = Vec::new();
 
     if let Some(tree) = file_tree {
         egui::SidePanel::left("file_tree")
@@ -31,8 +24,8 @@ pub fn draw_ui(
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        if let Some(path) = tree.show(ui) {
-                            event_proxy.send_event(CustomEvent::OpenFile(path)).ok();
+                        if let Some(event) = tree.show(ui) {
+                            events.push(event);
                         }
                     });
             });
@@ -53,7 +46,7 @@ pub fn draw_ui(
                                 .clicked()
                                 && let Some(path) = rfd::FileDialog::new().pick_file()
                             {
-                                action = Some(Action::OpenFile(path));
+                                events.push(CustomEvent::OpenFile(path));
                             }
                         });
                         columns[1].vertical_centered(|ui| {
@@ -62,7 +55,7 @@ pub fn draw_ui(
                                 .clicked()
                                 && let Some(path) = rfd::FileDialog::new().pick_folder()
                             {
-                                action = Some(Action::OpenFolder(path));
+                                events.push(CustomEvent::OpenFolder(path));
                             }
                         });
                     });
@@ -86,9 +79,9 @@ pub fn draw_ui(
                         );
                         if ui.selectable_label(false, label).clicked() {
                             if item.is_dir {
-                                action = Some(Action::OpenFolder(item.path.clone()));
+                                events.push(CustomEvent::OpenFolder(item.path.clone()));
                             } else {
-                                action = Some(Action::OpenFile(item.path.clone()));
+                                events.push(CustomEvent::OpenFile(item.path.clone()));
                             }
                         }
                     }
@@ -127,7 +120,7 @@ pub fn draw_ui(
         }
     });
 
-    action
+    events
 }
 
 fn build_highlighted_line_job(

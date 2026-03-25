@@ -8,7 +8,7 @@ This file tracks the progress of the **Lux** editor project.
 
 ### **Phase 1: Core Infrastructure & Project Setup**
 - [x] Initialize Rust project and dependencies `[Completed]`
-- [x] Setup `winit` window and `wgpu` context `[Completed]`
+- [x] Setup `eframe` runtime and native window integration `[Completed]`
 - [x] Integrate `egui` for the basic UI layer `[Completed]`
 
 ### **Phase 2: Text Engine & Viewport**
@@ -51,6 +51,7 @@ This file tracks the progress of the **Lux** editor project.
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Migrated editor runtime from custom `winit`/`wgpu` loop to `eframe`, and updated architecture docs.
 - [2026-03-25] Phase 5 completed: added hierarchical settings with `config-rs`, hot-reloadable theme updates, and custom font loading via `font-kit`.
 - [2026-03-25] Added next-phase editing architecture and moved edit feature work into new Phase 7 planning.
 - [2026-03-25] Planned basic editing feature implementation (copy/cut/paste/select all) across `docs/PLAN.md`, `docs/DESIGN.md`, and `todo.md`.

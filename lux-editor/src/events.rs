@@ -8,4 +8,8 @@ pub enum CustomEvent {
     Rename(std::path::PathBuf, std::path::PathBuf),
     NewFile(std::path::PathBuf),
     NewFolder(std::path::PathBuf),
+    SwitchToEditor,
+    SwitchToConfiguration,
+    SaveConfiguration,
+    RevertConfiguration,
 }

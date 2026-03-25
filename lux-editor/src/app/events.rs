@@ -1,4 +1,4 @@
-use super::App;
+use super::{App, ShellView};
 use crate::events::CustomEvent;
 use eframe::egui;
 
@@ -35,6 +35,10 @@ impl App {
                 std::fs::create_dir(parent.join("new_folder")).ok();
                 self.on_file_change();
             }
+            CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
+            CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
+            CustomEvent::SaveConfiguration => self.save_configuration_draft(),
+            CustomEvent::RevertConfiguration => self.revert_configuration_draft(),
         }
     }
 
@@ -52,5 +56,7 @@ impl App {
             self.needs_style_refresh = true;
             self.refresh_language_intelligence();
         }
+        self.config_draft = self.editor_config.settings.clone();
+        self.config_status = None;
     }
 }

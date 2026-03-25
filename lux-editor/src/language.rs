@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
-use std::path::PathBuf;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -166,8 +166,7 @@ fn worker_loop(request_rx: Receiver<WorkerRequest>, response_tx: Sender<WorkerRe
                     active_theme_config = theme;
                 }
 
-                let snapshot =
-                    parse_snapshot(&syntax_set, &active_theme, &text, language, version);
+                let snapshot = parse_snapshot(&syntax_set, &active_theme, &text, language, version);
                 response_tx.send(WorkerResponse { version, snapshot }).ok();
             }
         }

@@ -99,6 +99,19 @@ impl Config {
         workspace_path.map(|path| path.join(".lux").join("config.toml"))
     }
 
+    pub fn save_settings(
+        workspace_path: Option<&Path>,
+        settings: &EditorSettings,
+    ) -> std::io::Result<PathBuf> {
+        let path =
+            Self::project_settings_path(workspace_path).unwrap_or_else(Self::user_settings_path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, Self::serialize_settings(settings))?;
+        Ok(path)
+    }
+
     fn load_settings(workspace_path: Option<&Path>) -> EditorSettings {
         let user_settings = Self::user_settings_path();
         let mut builder = ::config::Config::builder()
@@ -144,5 +157,32 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lux")
             .join("recent.json")
+    }
+
+    fn serialize_settings(settings: &EditorSettings) -> String {
+        let mut output = String::new();
+        output.push_str("[theme]\n");
+        output.push_str(&format!(
+            "syntax_theme = \"{}\"\n",
+            Self::escape_toml_string(&settings.theme.syntax_theme)
+        ));
+        if let Some(path) = &settings.theme.theme_path {
+            output.push_str(&format!(
+                "theme_path = \"{}\"\n",
+                Self::escape_toml_string(&path.display().to_string())
+            ));
+        }
+        output.push('\n');
+        output.push_str("[font]\n");
+        output.push_str(&format!(
+            "family = \"{}\"\n",
+            Self::escape_toml_string(&settings.font.family)
+        ));
+        output.push_str(&format!("size = {}\n", settings.font.size));
+        output
+    }
+
+    fn escape_toml_string(value: &str) -> String {
+        value.replace('\\', "\\\\").replace('"', "\\\"")
     }
 }

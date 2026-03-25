@@ -44,7 +44,10 @@ impl App {
     fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
         let source = SystemSource::new();
         let handle = source
-            .select_best_match(&[FamilyName::Title(font_family.to_string())], &Properties::new())
+            .select_best_match(
+                &[FamilyName::Title(font_family.to_string())],
+                &Properties::new(),
+            )
             .ok()?;
         match handle {
             Handle::Path { path, .. } => std::fs::read(path).ok(),
@@ -55,5 +58,26 @@ impl App {
     pub(super) fn restart_settings_watcher(&mut self) {
         let watch_roots = Config::settings_watch_roots(self.workspace_path.as_deref());
         self.settings_watcher = Self::start_settings_watcher(&watch_roots, self.event_tx.clone());
+    }
+
+    pub(super) fn save_configuration_draft(&mut self) {
+        if self.config_draft == self.editor_config.settings {
+            self.config_status = Some("No configuration changes to save".to_string());
+            return;
+        }
+
+        if Config::save_settings(self.workspace_path.as_deref(), &self.config_draft).is_ok() {
+            self.editor_config.settings = self.config_draft.clone();
+            self.needs_style_refresh = true;
+            self.refresh_language_intelligence();
+            self.config_status = Some("Configuration saved".to_string());
+        } else {
+            self.config_status = Some("Failed to save configuration".to_string());
+        }
+    }
+
+    pub(super) fn revert_configuration_draft(&mut self) {
+        self.config_draft = self.editor_config.settings.clone();
+        self.config_status = Some("Configuration reverted".to_string());
     }
 }

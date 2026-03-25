@@ -1,4 +1,4 @@
-use super::App;
+use super::{App, ShellView};
 use crate::file_tree::FileTree;
 use crate::language::{HighlightSnapshot, HighlightThemeConfig, LanguageKind};
 use eframe::egui;
@@ -10,6 +10,7 @@ impl App {
     pub fn new() -> Self {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = mpsc::channel();
+        let editor_config = crate::config::Config::load(None);
         let mut app = Self {
             rt,
             event_tx,
@@ -19,13 +20,18 @@ impl App {
             file_tree: None,
             workspace_watcher: None,
             settings_watcher: None,
-            editor_config: crate::config::Config::load(None),
+            config_draft: editor_config.settings.clone(),
+            editor_config,
+            config_status: None,
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
+            shell_view: ShellView::Editor,
         };
         let initial_path = std::env::args().nth(1).map(PathBuf::from);
         app.initialize_from_path(initial_path);
-        app.editor_config.reload_settings(app.workspace_path.as_deref());
+        app.editor_config
+            .reload_settings(app.workspace_path.as_deref());
+        app.config_draft = app.editor_config.settings.clone();
         app.restart_settings_watcher();
         app.refresh_language_intelligence();
         app
@@ -45,6 +51,8 @@ impl App {
             self.needs_style_refresh = true;
             self.refresh_language_intelligence();
         }
+        self.config_draft = self.editor_config.settings.clone();
+        self.config_status = None;
     }
 
     pub(super) fn open_file(&mut self, path: PathBuf, ctx: &egui::Context) {

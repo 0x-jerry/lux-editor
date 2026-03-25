@@ -10,7 +10,7 @@
 - [ ] Integrate formatter workflow with configurable triggers
 - [ ] Refine smart bracket pairing behavior
 - [ ] Add multi-cursor editing support
-- [ ] Add shell view routing for editor and configuration page
+- [x] Add shell view routing for editor and configuration page
 - [ ] Build configuration page sections and draft/save/revert settings flow
 - [ ] Replace native title bar with custom app title bar and window controls
 - [ ] Add title bar menu and route actions through command pipeline

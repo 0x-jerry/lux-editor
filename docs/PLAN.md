@@ -114,7 +114,7 @@ This document outlines the phased implementation plan for **Lux**, the high-perf
 
 ## **Phase 6: Advanced Features & Polish**
 
-*Goal: Implement the command palette, formatting, and other smart features.*
+*Goal: Prepare advanced workflows after core editing is stabilized.*
 
 1.  **Command Palette**:
     -   Create a `CommandRegistry` to register actions the user can perform.
@@ -130,3 +130,29 @@ This document outlines the phased implementation plan for **Lux**, the high-perf
     -   Implement the full bracket and quote pairing logic as described in `DESIGN.md`.
     -   Add multi-cursor support.
     -   Implement undo/redo functionality for the text buffer.
+
+---
+
+## **Phase 7: Editing Core & Clipboard UX**
+
+*Goal: Deliver reliable core editing interactions before advanced polish.*
+
+1.  **Selection and Caret Engine**:
+    -   Add a dedicated selection state model (anchor/caret/range direction).
+    -   Implement keyboard and mouse range updates with normalized boundaries.
+    -   Keep caret mapping valid after each rope mutation.
+
+2.  **Edit Command Pipeline**:
+    -   Introduce command handlers for `Copy`, `Cut`, `Paste`, and `Select All`.
+    -   Route `Ctrl+C`, `Ctrl+X`, `Ctrl+V`, and `Ctrl+A` through keybinding dispatch.
+    -   Ensure each command produces one `EditTransaction` for undo/redo consistency.
+
+3.  **Clipboard Integration**:
+    -   Implement clipboard adapter integration through the UI runtime.
+    -   Support replacing active selections on paste and no-op behavior for invalid clipboard reads.
+    -   Optimize large selection operations using rope slices to avoid heavy allocations.
+
+4.  **Validation and UX Rules**:
+    -   Define line-wise behavior for empty selections in cut/copy flows.
+    -   Add regression scenarios for multi-line selections and repeated paste.
+    -   Verify selection, viewport, and syntax-highlighting updates remain synchronized after edits.

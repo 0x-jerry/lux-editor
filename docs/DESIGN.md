@@ -158,3 +158,36 @@ Provides intelligence to the editor.
     - `lux <file_path>`: Opens the specified file in the editor.
     - `lux <directory_path>`: Opens the specified directory in the workspace explorer.
 - **Implementation**: Uses `std::env::args` to parse command-line arguments and initialize the editor state with the specified file or workspace.
+
+### 9. Basic Editing Operations (Copy, Cut, Paste)
+- **Command Pipeline**:
+    - Keyboard shortcuts dispatch to command handlers (`Copy`, `Cut`, `Paste`, `Select All`) instead of directly mutating buffer state.
+    - Each handler works against a shared `Selection` abstraction so behavior is consistent across features.
+- **Clipboard Integration**:
+    - Copy and cut write selected text to the platform clipboard through the UI runtime.
+    - Paste reads clipboard text and applies replacement at current selection or caret.
+- **Selection Behavior**:
+    - A collapsed selection (caret only) keeps `Copy`/`Cut` as no-op unless line-wise mode is requested.
+    - A ranged selection is replaced atomically for paste and removed atomically for cut.
+- **Undo/Redo Semantics**:
+    - Cut and paste are applied as single buffer transactions.
+    - Multi-line replacements stay grouped to preserve predictable undo behavior.
+
+### 10. Next Phase Editing Architecture
+- **Editing Core Components**:
+    - `SelectionState`: stores anchor/caret, optional range, and preferred column for vertical movement.
+    - `EditCommand`: typed command enum for `InsertText`, `DeleteRange`, `Copy`, `Cut`, `Paste`, `SelectAll`.
+    - `EditTransaction`: groups one user action into one undoable unit.
+- **Input Routing**:
+    - Raw keyboard/mouse events are normalized into editor-intent actions before they reach the buffer.
+    - Shortcut dispatch is layout-aware and keeps platform differences isolated in one layer.
+- **Clipboard Boundary**:
+    - Clipboard access is isolated behind a thin adapter to keep buffer logic platform-independent.
+    - Failures to read clipboard become no-op operations that preserve editor stability.
+- **State Invariants**:
+    - Selection ranges are always normalized before mutation.
+    - Buffer edits always remap caret/selection to valid UTF-8 boundaries.
+    - Every mutating command emits a single change event for rendering and language services.
+- **Performance Constraints**:
+    - Copy/cut/paste for large selections avoids full-buffer clones and uses rope slices.
+    - Transaction application remains O(log N + K) where possible to preserve typing latency.

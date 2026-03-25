@@ -42,9 +42,17 @@ This file tracks the progress of the **Lux** editor project.
 - [ ] Refine smart bracket pairing and selection wrapping `[Pending]`
 - [ ] Add multi-cursor support and undo/redo history `[Pending]`
 
+### **Phase 7: Editing Core & Clipboard UX**
+- [ ] Build selection and caret engine for robust edit operations `[Pending]`
+- [ ] Implement copy, cut, paste, and select-all command pipeline `[Pending]`
+- [ ] Integrate platform clipboard adapter and error-safe paste behavior `[Pending]`
+- [ ] Validate multi-line edit transactions and synchronization with viewport/highlighting `[Pending]`
+
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Added next-phase editing architecture and moved edit feature work into new Phase 7 planning.
+- [2026-03-25] Planned basic editing feature implementation (copy/cut/paste/select all) across `docs/PLAN.md`, `docs/DESIGN.md`, and `todo.md`.
 - [2026-03-25] Switched editor syntax highlighting engine to `syntect`.
 - [2026-03-25] Phase 4 completed: integrated Tree-sitter incremental parsing, background syntax highlighting, and context-aware auto-indentation on Enter.
 - [2026-03-25] Refactored `lux-editor/src/main.rs` by splitting application, state, UI, config, and events logic into focused modules.

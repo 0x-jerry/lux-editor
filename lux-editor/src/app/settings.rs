@@ -56,7 +56,7 @@ impl App {
     }
 
     pub(super) fn restart_settings_watcher(&mut self) {
-        let watch_roots = Config::settings_watch_roots(self.workspace_path.as_deref());
+        let watch_roots = Config::settings_watch_roots();
         self.settings_watcher = Self::start_settings_watcher(&watch_roots, self.event_tx.clone());
     }
 
@@ -65,10 +65,17 @@ impl App {
             return;
         }
 
-        if Config::save_settings(self.workspace_path.as_deref(), &self.config_draft).is_ok() {
+        let theme_changed = self.config_draft.theme != self.editor_config.settings.theme;
+        let font_changed = self.config_draft.font != self.editor_config.settings.font;
+
+        if Config::save_settings(&self.config_draft).is_ok() {
             self.editor_config.settings = self.config_draft.clone();
-            self.needs_style_refresh = true;
-            self.refresh_language_intelligence();
+            if font_changed {
+                self.needs_style_refresh = true;
+            }
+            if theme_changed {
+                self.refresh_language_intelligence();
+            }
             self.config_status = Some("Configuration saved".to_string());
         } else {
             self.config_status = Some("Failed to save configuration".to_string());

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct RecentItem {
@@ -49,15 +49,15 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load(workspace_path: Option<&Path>) -> Self {
+    pub fn load() -> Self {
         Self {
             recent_items: Self::load_recent_items(),
-            settings: Self::load_settings(workspace_path),
+            settings: Self::load_settings(),
         }
     }
 
-    pub fn reload_settings(&mut self, workspace_path: Option<&Path>) -> bool {
-        let next = Self::load_settings(workspace_path);
+    pub fn reload_settings(&mut self) -> bool {
+        let next = Self::load_settings();
         if self.settings == next {
             return false;
         }
@@ -65,15 +65,10 @@ impl Config {
         true
     }
 
-    pub fn settings_watch_roots(workspace_path: Option<&Path>) -> Vec<PathBuf> {
+    pub fn settings_watch_roots() -> Vec<PathBuf> {
         let mut roots = Vec::new();
         if let Some(parent) = Self::user_settings_path().parent() {
             roots.push(parent.to_path_buf());
-        }
-        if let Some(workspace_path) = workspace_path
-            && !roots.contains(&workspace_path.to_path_buf())
-        {
-            roots.push(workspace_path.to_path_buf());
         }
         roots
     }
@@ -95,16 +90,8 @@ impl Config {
             .join("config.toml")
     }
 
-    pub fn project_settings_path(workspace_path: Option<&Path>) -> Option<PathBuf> {
-        workspace_path.map(|path| path.join(".lux").join("config.toml"))
-    }
-
-    pub fn save_settings(
-        workspace_path: Option<&Path>,
-        settings: &EditorSettings,
-    ) -> std::io::Result<PathBuf> {
-        let path =
-            Self::project_settings_path(workspace_path).unwrap_or_else(Self::user_settings_path);
+    pub fn save_settings(settings: &EditorSettings) -> std::io::Result<PathBuf> {
+        let path = Self::user_settings_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -112,22 +99,16 @@ impl Config {
         Ok(path)
     }
 
-    fn load_settings(workspace_path: Option<&Path>) -> EditorSettings {
+    fn load_settings() -> EditorSettings {
         let user_settings = Self::user_settings_path();
-        let mut builder = ::config::Config::builder()
+        ::config::Config::builder()
             .set_default("theme.syntax_theme", "base16-ocean.dark")
             .unwrap()
             .set_default("font.family", "JetBrains Mono")
             .unwrap()
             .set_default("font.size", 14.0)
             .unwrap()
-            .add_source(::config::File::from(user_settings).required(false));
-
-        if let Some(project_settings) = Self::project_settings_path(workspace_path) {
-            builder = builder.add_source(::config::File::from(project_settings).required(false));
-        }
-
-        builder
+            .add_source(::config::File::from(user_settings).required(false))
             .build()
             .ok()
             .and_then(|cfg| cfg.try_deserialize::<EditorSettings>().ok())

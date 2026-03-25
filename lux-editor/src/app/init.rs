@@ -10,7 +10,7 @@ impl App {
     pub fn new() -> Self {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = mpsc::channel();
-        let editor_config = crate::config::Config::load(None);
+        let editor_config = crate::config::Config::load();
         let mut app = Self {
             rt,
             event_tx,
@@ -29,8 +29,7 @@ impl App {
         };
         let initial_path = std::env::args().nth(1).map(PathBuf::from);
         app.initialize_from_path(initial_path);
-        app.editor_config
-            .reload_settings(app.workspace_path.as_deref());
+        app.editor_config.reload_settings();
         app.config_draft = app.editor_config.settings.clone();
         app.restart_settings_watcher();
         app.refresh_language_intelligence();
@@ -44,10 +43,7 @@ impl App {
         self.editor_config.add_recent(path.clone(), true);
         self.workspace_watcher = Self::start_workspace_watcher(&path, self.event_tx.clone());
         self.restart_settings_watcher();
-        if self
-            .editor_config
-            .reload_settings(self.workspace_path.as_deref())
-        {
+        if self.editor_config.reload_settings() {
             self.needs_style_refresh = true;
             self.refresh_language_intelligence();
         }

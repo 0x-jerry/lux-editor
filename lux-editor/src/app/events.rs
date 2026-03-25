@@ -48,10 +48,7 @@ impl App {
     }
 
     pub(super) fn on_config_change(&mut self) {
-        if self
-            .editor_config
-            .reload_settings(self.workspace_path.as_deref())
-        {
+        if self.editor_config.reload_settings() {
             self.needs_style_refresh = true;
             self.refresh_language_intelligence();
         }

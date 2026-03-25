@@ -13,8 +13,6 @@ pub fn render_configuration_view(
     config_status: Option<&str>,
     events: &mut Vec<CustomEvent>,
 ) {
-    let mut changed = false;
-
     ui.heading("Configuration");
     ui.add_space(8.0);
     ui.label(format!(
@@ -30,6 +28,10 @@ pub fn render_configuration_view(
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "No file opened".to_string())
     ));
+    ui.label(format!(
+        "Settings file: {}",
+        Config::user_settings_path().display()
+    ));
     ui.add_space(12.0);
     ui.separator();
     ui.add_space(12.0);
@@ -44,42 +46,34 @@ pub fn render_configuration_view(
                 .selected_text(&config_draft.theme.syntax_theme)
                 .show_ui(ui, |ui| {
                     for theme in available_syntax_themes(&config_draft.theme.syntax_theme) {
-                        let response = ui.selectable_value(
+                        ui.selectable_value(
                             &mut config_draft.theme.syntax_theme,
                             theme.clone(),
                             theme,
                         );
-                        if response.changed() {
-                            changed = true;
-                        }
                     }
                 });
             ui.end_row();
 
             ui.label("Font family");
-            if ui
-                .text_edit_singleline(&mut config_draft.font.family)
-                .changed()
-            {
-                changed = true;
-            }
+            ui.text_edit_singleline(&mut config_draft.font.family);
             ui.end_row();
 
             ui.label("Font size");
-            if ui
-                .add(
-                    egui::DragValue::new(&mut config_draft.font.size)
-                        .speed(0.1)
-                        .range(8.0..=64.0),
-                )
-                .changed()
-            {
-                changed = true;
-            }
+            ui.add(
+                egui::DragValue::new(&mut config_draft.font.size)
+                    .speed(0.1)
+                    .range(8.0..=64.0),
+            );
             ui.end_row();
         });
 
-    if changed && *config_draft != editor_config.settings {
+    let has_changes = *config_draft != editor_config.settings;
+    ui.add_space(12.0);
+    if ui
+        .add_enabled(has_changes, egui::Button::new("Save"))
+        .clicked()
+    {
         events.push(CustomEvent::SaveConfiguration);
     }
 

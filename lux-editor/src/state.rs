@@ -2,11 +2,16 @@ use crate::config::Config;
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
 use crate::file_watcher;
-use crate::language::{HighlightSnapshot, HighlightingService, LanguageKind};
+use crate::language::{HighlightSnapshot, HighlightThemeConfig, HighlightingService, LanguageKind};
+use font_kit::family_name::FamilyName;
+use font_kit::handle::Handle;
+use font_kit::properties::Properties;
+use font_kit::source::SystemSource;
+use notify::{RecursiveMode, Watcher};
 use crate::ui::{self, Action};
 use lux_core::Buffer;
 use notify::RecommendedWatcher;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoopProxy;
@@ -26,7 +31,8 @@ pub struct State {
     pub buffer: Buffer,
     pub workspace_path: Option<PathBuf>,
     file_tree: Option<FileTree>,
-    _watcher: Option<RecommendedWatcher>,
+    workspace_watcher: Option<RecommendedWatcher>,
+    settings_watcher: Option<RecommendedWatcher>,
     pub editor_config: Config,
     highlighting_service: HighlightingService,
 }
@@ -77,9 +83,6 @@ impl State {
         surface.configure(&device, &config);
 
         let egui_ctx = egui::Context::default();
-        let mut fonts = egui::FontDefinitions::default();
-        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-        egui_ctx.set_fonts(fonts);
         let egui_state = egui_winit::State::new(
             egui_ctx.clone(),
             egui::viewport::ViewportId::ROOT,
@@ -108,12 +111,18 @@ impl State {
             buffer: Buffer::new(),
             workspace_path: None,
             file_tree: None,
-            _watcher: None,
-            editor_config: Config::load(),
+            workspace_watcher: None,
+            settings_watcher: None,
+            editor_config: Config::load(None),
             highlighting_service: HighlightingService::new(),
         };
 
         state.initialize_from_path(initial_path).await;
+        state
+            .editor_config
+            .reload_settings(state.workspace_path.as_deref());
+        state.apply_editor_settings();
+        state.restart_settings_watcher();
         state.refresh_language_intelligence();
         state
     }
@@ -143,12 +152,30 @@ impl State {
         }
     }
 
+    pub fn on_config_change(&mut self) {
+        if self
+            .editor_config
+            .reload_settings(self.workspace_path.as_deref())
+        {
+            self.apply_editor_settings();
+            self.refresh_language_intelligence();
+        }
+    }
+
     pub fn open_folder(&mut self, path: PathBuf) {
         let path = path.canonicalize().unwrap_or(path);
         self.workspace_path = Some(path.clone());
         self.file_tree = Some(FileTree::new(&path, self.event_proxy.clone()));
         self.editor_config.add_recent(path.clone(), true);
-        self._watcher = Self::start_watcher(&path, self.event_proxy.clone());
+        self.workspace_watcher = Self::start_workspace_watcher(&path, self.event_proxy.clone());
+        self.restart_settings_watcher();
+        if self
+            .editor_config
+            .reload_settings(self.workspace_path.as_deref())
+        {
+            self.apply_editor_settings();
+            self.refresh_language_intelligence();
+        }
     }
 
     pub fn open_file(&mut self, path: PathBuf) {
@@ -164,6 +191,10 @@ impl State {
     }
 
     pub fn refresh_language_intelligence(&mut self) {
+        self.highlighting_service.set_theme(HighlightThemeConfig {
+            theme_name: self.editor_config.settings.theme.syntax_theme.clone(),
+            theme_path: self.editor_config.settings.theme.theme_path.clone(),
+        });
         let language = LanguageKind::from_path(self.buffer.path().map(|v| &**v));
         self.highlighting_service
             .request_parse(self.buffer.text().to_string(), language);
@@ -273,7 +304,8 @@ impl State {
             self.workspace_path = Some(path.clone());
             self.file_tree = Some(FileTree::new(&path, self.event_proxy.clone()));
             self.editor_config.add_recent(path.clone(), true);
-            self._watcher = Self::start_watcher(&path, self.event_proxy.clone());
+            self.workspace_watcher =
+                Self::start_workspace_watcher(&path, self.event_proxy.clone());
             return;
         }
 
@@ -286,8 +318,59 @@ impl State {
         }
     }
 
-    fn start_watcher(
-        workspace_path: &PathBuf,
+    fn apply_editor_settings(&mut self) {
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        if let Some(custom_font) = Self::load_custom_font(&self.editor_config.settings.font.family)
+        {
+            fonts.font_data.insert(
+                "custom-editor-font".to_string(),
+                egui::FontData::from_owned(custom_font).into(),
+            );
+            if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+                family.insert(0, "custom-editor-font".to_string());
+            }
+            if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+                family.insert(0, "custom-editor-font".to_string());
+            }
+        }
+        self.egui_ctx.set_fonts(fonts);
+
+        let mut style = (*self.egui_ctx.style()).clone();
+        style.text_styles.insert(
+            egui::TextStyle::Monospace,
+            egui::FontId::monospace(self.editor_config.settings.font.size),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Body,
+            egui::FontId::proportional(self.editor_config.settings.font.size),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Button,
+            egui::FontId::proportional(self.editor_config.settings.font.size),
+        );
+        self.egui_ctx.set_style(style);
+    }
+
+    fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
+        let source = SystemSource::new();
+        let handle = source
+            .select_best_match(&[FamilyName::Title(font_family.to_string())], &Properties::new())
+            .ok()?;
+        match handle {
+            Handle::Path { path, .. } => std::fs::read(path).ok(),
+            Handle::Memory { bytes, .. } => Some(bytes.to_vec()),
+        }
+    }
+
+    fn restart_settings_watcher(&mut self) {
+        let watch_roots = Config::settings_watch_roots(self.workspace_path.as_deref());
+        self.settings_watcher =
+            Self::start_settings_watcher(&watch_roots, self.event_proxy.clone());
+    }
+
+    fn start_workspace_watcher(
+        workspace_path: &Path,
         event_proxy: EventLoopProxy<CustomEvent>,
     ) -> Option<RecommendedWatcher> {
         if let Ok((watcher, mut rx)) = file_watcher::watch(workspace_path) {
@@ -305,5 +388,30 @@ impl State {
         } else {
             None
         }
+    }
+
+    fn start_settings_watcher(
+        watch_roots: &[PathBuf],
+        event_proxy: EventLoopProxy<CustomEvent>,
+    ) -> Option<RecommendedWatcher> {
+        let proxy_for_events = event_proxy.clone();
+        let mut watcher = RecommendedWatcher::new(
+            move |result: notify::Result<notify::Event>| {
+                if result.is_ok() {
+                    proxy_for_events.send_event(CustomEvent::ConfigChange).ok();
+                }
+            },
+            notify::Config::default(),
+        )
+        .ok()?;
+
+        for root in watch_roots {
+            if !root.exists() {
+                std::fs::create_dir_all(root).ok()?;
+            }
+            watcher.watch(root, RecursiveMode::NonRecursive).ok()?;
+        }
+
+        Some(watcher)
     }
 }

@@ -32,6 +32,7 @@ impl App {
 
         match event {
             CustomEvent::FileChange => state.on_file_change(),
+            CustomEvent::ConfigChange => state.on_config_change(),
             CustomEvent::OpenFile(path) => {
                 let title_path = path.clone();
                 if let Ok(buffer) = self.rt.block_on(Buffer::from_file(path)) {

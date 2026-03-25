@@ -1,5 +1,6 @@
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
+use std::path::PathBuf;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
@@ -36,11 +37,27 @@ pub struct HighlightSnapshot {
     pub line_tokens: Vec<Vec<HighlightSpan>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HighlightThemeConfig {
+    pub theme_name: String,
+    pub theme_path: Option<PathBuf>,
+}
+
+impl Default for HighlightThemeConfig {
+    fn default() -> Self {
+        Self {
+            theme_name: "base16-ocean.dark".to_string(),
+            theme_path: None,
+        }
+    }
+}
+
 enum WorkerRequest {
     Parse {
         version: u64,
         text: String,
         language: LanguageKind,
+        theme: HighlightThemeConfig,
     },
     Shutdown,
 }
@@ -56,6 +73,7 @@ pub struct HighlightingService {
     worker: Option<JoinHandle<()>>,
     latest: HighlightSnapshot,
     next_version: u64,
+    theme: HighlightThemeConfig,
 }
 
 impl HighlightingService {
@@ -69,7 +87,12 @@ impl HighlightingService {
             worker: Some(worker),
             latest: HighlightSnapshot::default(),
             next_version: 0,
+            theme: HighlightThemeConfig::default(),
         }
+    }
+
+    pub fn set_theme(&mut self, theme: HighlightThemeConfig) {
+        self.theme = theme;
     }
 
     pub fn request_parse(&mut self, text: String, language: LanguageKind) {
@@ -79,6 +102,7 @@ impl HighlightingService {
                 version: self.next_version,
                 text,
                 language,
+                theme: self.theme.clone(),
             })
             .ok();
     }
@@ -108,12 +132,8 @@ impl Drop for HighlightingService {
 fn worker_loop(request_rx: Receiver<WorkerRequest>, response_tx: Sender<WorkerResponse>) {
     let syntax_set = SyntaxSet::load_defaults_newlines();
     let theme_set = ThemeSet::load_defaults();
-    let theme = theme_set
-        .themes
-        .get("base16-ocean.dark")
-        .cloned()
-        .or_else(|| theme_set.themes.values().next().cloned())
-        .unwrap_or_default();
+    let mut active_theme_config = HighlightThemeConfig::default();
+    let mut active_theme = resolve_theme(&theme_set, &active_theme_config);
 
     while let Ok(request) = request_rx.recv() {
         match request {
@@ -122,6 +142,7 @@ fn worker_loop(request_rx: Receiver<WorkerRequest>, response_tx: Sender<WorkerRe
                 mut version,
                 mut text,
                 mut language,
+                mut theme,
             } => {
                 while let Ok(next_request) = request_rx.try_recv() {
                     match next_request {
@@ -130,19 +151,42 @@ fn worker_loop(request_rx: Receiver<WorkerRequest>, response_tx: Sender<WorkerRe
                             version: next_version,
                             text: next_text,
                             language: next_language,
+                            theme: next_theme,
                         } => {
                             version = next_version;
                             text = next_text;
                             language = next_language;
+                            theme = next_theme;
                         }
                     }
                 }
 
-                let snapshot = parse_snapshot(&syntax_set, &theme, &text, language, version);
+                if theme != active_theme_config {
+                    active_theme = resolve_theme(&theme_set, &theme);
+                    active_theme_config = theme;
+                }
+
+                let snapshot =
+                    parse_snapshot(&syntax_set, &active_theme, &text, language, version);
                 response_tx.send(WorkerResponse { version, snapshot }).ok();
             }
         }
     }
+}
+
+fn resolve_theme(theme_set: &ThemeSet, theme_config: &HighlightThemeConfig) -> Theme {
+    if let Some(theme_path) = &theme_config.theme_path
+        && let Ok(theme) = ThemeSet::get_theme(theme_path)
+    {
+        return theme;
+    }
+
+    theme_set
+        .themes
+        .get(&theme_config.theme_name)
+        .cloned()
+        .or_else(|| theme_set.themes.values().next().cloned())
+        .unwrap_or_default()
 }
 
 fn parse_snapshot(

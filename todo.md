@@ -32,9 +32,9 @@ This file tracks the progress of the **Lux** editor project.
 - [x] Add context-aware auto-indentation logic `[Completed]`
 
 ### **Phase 5: Configuration, Theming & Fonts**
-- [ ] Build hierarchical configuration system with `config-rs` `[Pending]`
-- [ ] Implement hot-reloadable theme engine `[Pending]`
-- [ ] Support custom font loading via `font-kit` `[Pending]`
+- [x] Build hierarchical configuration system with `config-rs` `[Completed]`
+- [x] Implement hot-reloadable theme engine `[Completed]`
+- [x] Support custom font loading via `font-kit` `[Completed]`
 
 ### **Phase 6: Advanced Features & Polish**
 - [ ] Implement fuzzy-search command palette `[Pending]`
@@ -51,6 +51,7 @@ This file tracks the progress of the **Lux** editor project.
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Phase 5 completed: added hierarchical settings with `config-rs`, hot-reloadable theme updates, and custom font loading via `font-kit`.
 - [2026-03-25] Added next-phase editing architecture and moved edit feature work into new Phase 7 planning.
 - [2026-03-25] Planned basic editing feature implementation (copy/cut/paste/select all) across `docs/PLAN.md`, `docs/DESIGN.md`, and `todo.md`.
 - [2026-03-25] Switched editor syntax highlighting engine to `syntect`.

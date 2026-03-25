@@ -112,7 +112,11 @@ pub fn draw_ui(
                             {
                                 let line_text = line.to_string();
                                 if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
-                                    let job = build_highlighted_line_job(&line_text, line_tokens);
+                                    let job = build_highlighted_line_job(
+                                        &line_text,
+                                        line_tokens,
+                                        editor_config.settings.font.size,
+                                    );
                                     ui.label(job);
                                 } else {
                                     ui.label(line_text);
@@ -127,14 +131,18 @@ pub fn draw_ui(
     action
 }
 
-fn build_highlighted_line_job(line: &str, tokens: &[HighlightSpan]) -> egui::text::LayoutJob {
+fn build_highlighted_line_job(
+    line: &str,
+    tokens: &[HighlightSpan],
+    font_size: f32,
+) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     if tokens.is_empty() {
         job.append(
             line,
             0.0,
             egui::TextFormat {
-                font_id: egui::FontId::monospace(14.0),
+                font_id: egui::FontId::monospace(font_size),
                 color: egui::Color32::LIGHT_GRAY,
                 ..Default::default()
             },
@@ -147,14 +155,14 @@ fn build_highlighted_line_job(line: &str, tokens: &[HighlightSpan]) -> egui::tex
         let start = token.start_col.min(line.len());
         let end = token.end_col.min(line.len());
         if start > cursor {
-            append_default(&mut job, &line[cursor..start]);
+            append_default(&mut job, &line[cursor..start], font_size);
         }
         if end > start {
             job.append(
                 &line[start..end],
                 0.0,
                 egui::TextFormat {
-                    font_id: egui::FontId::monospace(14.0),
+                    font_id: egui::FontId::monospace(font_size),
                     color: egui::Color32::from_rgba_unmultiplied(
                         token.color[0],
                         token.color[1],
@@ -169,17 +177,17 @@ fn build_highlighted_line_job(line: &str, tokens: &[HighlightSpan]) -> egui::tex
     }
 
     if cursor < line.len() {
-        append_default(&mut job, &line[cursor..]);
+        append_default(&mut job, &line[cursor..], font_size);
     }
     job
 }
 
-fn append_default(job: &mut egui::text::LayoutJob, text: &str) {
+fn append_default(job: &mut egui::text::LayoutJob, text: &str, font_size: f32) {
     job.append(
         text,
         0.0,
         egui::TextFormat {
-            font_id: egui::FontId::monospace(14.0),
+            font_id: egui::FontId::monospace(font_size),
             color: egui::Color32::LIGHT_GRAY,
             ..Default::default()
         },

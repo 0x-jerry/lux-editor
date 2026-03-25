@@ -27,3 +27,10 @@
 - Add multi-cursor editing.
 - Add regression coverage for large-file editing scenarios.
 - Optimize editing operations to preserve low-latency typing.
+
+### Phase E: App Shell and Settings UX
+- Add shell view routing to support editor and configuration page screens.
+- Build configuration page sections for appearance, editor behavior, workspace, and keybindings.
+- Add draft-save-revert settings flow backed by persisted config.
+- Replace native title bar with a custom app title bar and window controls.
+- Add title bar menu entries (File/Edit/View/Help) wired to command routing.

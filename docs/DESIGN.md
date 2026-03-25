@@ -20,6 +20,28 @@
 - **Language Layer**: `src/language.rs` updates parse/highlight snapshots in background.
 - **Config Layer**: `src/config.rs` loads settings, recents, and hot-reload paths.
 
+## Planned UI Shell Extensions
+
+### Configuration Page
+- Add an in-app configuration page as a first-class screen in the app shell.
+- Keep persisted settings in `src/config.rs` and use a staged draft state in UI.
+- Apply settings through an explicit save action and support revert/discard flow.
+- Organize settings by sections: appearance, editor behavior, workspace, and keybindings.
+- Keep settings updates non-blocking and immediately reflected where safe.
+
+### Custom Title Bar and Menu
+- Replace native window title bar with an app-rendered title bar in `eframe`.
+- Include window actions: minimize, maximize/restore, and close.
+- Add a top-level menu in the title bar with entries for File, Edit, View, and Help.
+- Route menu actions through the same command pipeline as shortcuts and palette.
+- Expose active workspace/file context in the title bar without blocking editor input.
+
+### UI State and Command Flow
+- Introduce a shell-level view state to switch between editor and configuration page.
+- Keep title bar and menu stateless where possible; dispatch actions to `App`.
+- Ensure platform-specific window behavior is isolated behind a small adapter.
+- Keep rendering lightweight to preserve sub-millisecond typing responsiveness.
+
 ## Implemented Capabilities
 - Open file/folder from CLI and welcome page.
 - File tree with rename/delete/new file/new folder.
@@ -35,3 +57,5 @@
 - Selection/caret model.
 - Copy, cut, paste, select-all pipeline.
 - Undo/redo and multi-cursor.
+- Configuration page architecture and settings flow.
+- Custom title bar with integrated menu system.

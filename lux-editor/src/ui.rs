@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
-use crate::language::{HighlightScope, HighlightSnapshot, HighlightSpan};
+use crate::language::{HighlightSnapshot, HighlightSpan};
 use lux_core::Buffer;
 use std::path::PathBuf;
 use winit::event_loop::EventLoopProxy;
@@ -151,7 +151,12 @@ fn build_highlighted_line_job(line: &str, tokens: &[HighlightSpan]) -> egui::tex
                 0.0,
                 egui::TextFormat {
                     font_id: egui::FontId::monospace(14.0),
-                    color: scope_color(token.scope),
+                    color: egui::Color32::from_rgba_unmultiplied(
+                        token.color[0],
+                        token.color[1],
+                        token.color[2],
+                        token.color[3],
+                    ),
                     ..Default::default()
                 },
             );
@@ -175,16 +180,4 @@ fn append_default(job: &mut egui::text::LayoutJob, text: &str) {
             ..Default::default()
         },
     );
-}
-
-fn scope_color(scope: HighlightScope) -> egui::Color32 {
-    match scope {
-        HighlightScope::Keyword => egui::Color32::from_rgb(197, 134, 192),
-        HighlightScope::String => egui::Color32::from_rgb(206, 145, 120),
-        HighlightScope::Comment => egui::Color32::from_rgb(106, 153, 85),
-        HighlightScope::Type => egui::Color32::from_rgb(78, 201, 176),
-        HighlightScope::Function => egui::Color32::from_rgb(220, 220, 170),
-        HighlightScope::Number => egui::Color32::from_rgb(181, 206, 168),
-        HighlightScope::Constant => egui::Color32::from_rgb(86, 156, 214),
-    }
 }

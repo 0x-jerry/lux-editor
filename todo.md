@@ -45,6 +45,7 @@ This file tracks the progress of the **Lux** editor project.
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Switched editor syntax highlighting engine to `syntect`.
 - [2026-03-25] Phase 4 completed: integrated Tree-sitter incremental parsing, background syntax highlighting, and context-aware auto-indentation on Enter.
 - [2026-03-25] Refactored `lux-editor/src/main.rs` by splitting application, state, UI, config, and events logic into focused modules.
 - [2026-03-25] Phase 3 completed: Workspace management, Welcome Page, and Recent Items tracking.

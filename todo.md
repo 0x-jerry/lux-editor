@@ -6,6 +6,7 @@
 - [x] Add undo/redo transaction model
 - [x] Add blinking caret rendering in editor view
 - [x] Add bottom status bar and move caret position info
+- [x] Optimize workspace watcher and apply .gitignore filtering
 
 ## Next Up
 - [ ] Add command palette with fuzzy search

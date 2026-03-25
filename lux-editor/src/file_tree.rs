@@ -1,6 +1,7 @@
 use crate::events::CustomEvent;
 use egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
 use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -20,8 +21,9 @@ pub struct FileTree {
 
 impl FileTree {
     pub fn new(path: &Path) -> Self {
+        let ignored = Self::build_gitignore(path);
         Self {
-            entry: Self::build_entry(path),
+            entry: Self::build_entry(path, &ignored),
         }
     }
 
@@ -198,11 +200,19 @@ impl FileTree {
         }
     }
 
-    fn build_entry(path: &Path) -> Entry {
+    fn build_entry(path: &Path, ignored: &Gitignore) -> Entry {
         if path.is_dir() {
             let mut entries = vec![];
             for entry in path.read_dir().expect("read_dir call failed").flatten() {
-                entries.push(Self::build_entry(&entry.path()));
+                let entry_path = entry.path();
+                let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+                if ignored
+                    .matched_path_or_any_parents(&entry_path, is_dir)
+                    .is_ignore()
+                {
+                    continue;
+                }
+                entries.push(Self::build_entry(&entry_path, ignored));
             }
             entries.sort_by(|a, b| {
                 let a_is_dir = matches!(a, Entry::Directory(_, _));
@@ -218,6 +228,18 @@ impl FileTree {
         } else {
             Entry::File(path.to_path_buf())
         }
+    }
+
+    fn build_gitignore(root: &Path) -> Gitignore {
+        let mut builder = GitignoreBuilder::new(root);
+        let gitignore_path = root.join(".gitignore");
+        if gitignore_path.exists() {
+            builder.add(gitignore_path);
+        }
+        builder.build().unwrap_or_else(|_| {
+            let fallback = GitignoreBuilder::new(root);
+            fallback.build().expect("gitignore builder must succeed")
+        })
     }
 
     fn entry_name(entry: &Entry) -> String {

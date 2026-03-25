@@ -1,17 +1,30 @@
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::sync::mpsc::Receiver;
 
 pub fn watch<P: AsRef<Path>>(
     path: P,
 ) -> notify::Result<(
     RecommendedWatcher,
-    UnboundedReceiver<notify::Result<notify::Event>>,
+    Receiver<notify::Result<Event>>,
 )> {
-    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    let root_path = path.as_ref().to_path_buf();
+    let ignored = build_gitignore(&root_path);
+    let (tx, rx) = std::sync::mpsc::channel();
 
     let mut watcher = RecommendedWatcher::new(
-        move |res| {
+        move |res: notify::Result<Event>| {
+            if let Ok(event) = res {
+                if !is_watch_event_relevant(&event) {
+                    return;
+                }
+                if event.paths.iter().all(|path| is_ignored(path, &ignored)) {
+                    return;
+                }
+                let _ = tx.send(Ok(event));
+                return;
+            }
             let _ = tx.send(res);
         },
         notify::Config::default(),
@@ -20,4 +33,32 @@ pub fn watch<P: AsRef<Path>>(
     watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
 
     Ok((watcher, rx))
+}
+
+fn build_gitignore(workspace_root: &Path) -> Gitignore {
+    let mut builder = GitignoreBuilder::new(workspace_root);
+    let gitignore_path = workspace_root.join(".gitignore");
+    if gitignore_path.exists() {
+        builder.add(gitignore_path);
+    }
+    builder.build().unwrap_or_else(|_| {
+        let fallback = GitignoreBuilder::new(workspace_root);
+        fallback.build().expect("gitignore builder must succeed")
+    })
+}
+
+fn is_watch_event_relevant(event: &Event) -> bool {
+    matches!(
+        event.kind,
+        EventKind::Create(_)
+            | EventKind::Modify(_)
+            | EventKind::Remove(_)
+            | EventKind::Any
+            | EventKind::Other
+    )
+}
+
+fn is_ignored(path: &Path, matcher: &Gitignore) -> bool {
+    let is_dir = path.is_dir();
+    matcher.matched_path_or_any_parents(path, is_dir).is_ignore()
 }

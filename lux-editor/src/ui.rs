@@ -97,34 +97,33 @@ pub fn draw_ui(
         } else {
             ui.heading("Lux Editor");
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                let total_lines = buffer.len_lines();
-                let text_style = egui::TextStyle::Monospace;
-                let row_height = ui.text_style_height(&text_style);
-                ui.spacing_mut().item_spacing.y = 0.0;
+            let total_lines = buffer.len_lines();
+            let text_style = egui::TextStyle::Monospace;
+            let row_height = ui.text_style_height(&text_style);
+            ui.spacing_mut().item_spacing.y = 0.0;
 
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2])
-                    .show_rows(ui, row_height, total_lines, |ui, row_range| {
-                        for i in row_range {
-                            if let Some(mut lines_iter) = buffer.line(i)
-                                && let Some(line) = lines_iter.next()
-                            {
-                                let line_text = line.to_string();
-                                if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
-                                    let job = build_highlighted_line_job(
-                                        &line_text,
-                                        line_tokens,
-                                        editor_config.settings.font.size,
-                                    );
-                                    ui.label(job);
-                                } else {
-                                    ui.label(line_text);
-                                }
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show_rows(ui, row_height, total_lines, |ui, row_range| {
+                    for i in row_range {
+                        if let Some(mut lines_iter) = buffer.line(i)
+                            && let Some(line) = lines_iter.next()
+                        {
+                            let line_text_owned = line.to_string();
+                            let line_text = line_text_owned.trim_end_matches(['\r', '\n']);
+                            if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
+                                let job = build_highlighted_line_job(
+                                    line_text,
+                                    line_tokens,
+                                    editor_config.settings.font.size,
+                                );
+                                ui.label(job);
+                            } else {
+                                ui.label(line_text);
                             }
                         }
-                    });
-            });
+                    }
+                });
         }
     });
 

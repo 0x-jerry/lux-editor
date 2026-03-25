@@ -28,9 +28,13 @@ pub fn draw_ui(
             .default_width(200.0)
             .width_range(100.0..=500.0)
             .show(ctx, |ui| {
-                if let Some(path) = tree.show(ui) {
-                    event_proxy.send_event(CustomEvent::OpenFile(path)).ok();
-                }
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if let Some(path) = tree.show(ui) {
+                            event_proxy.send_event(CustomEvent::OpenFile(path)).ok();
+                        }
+                    });
             });
     }
 

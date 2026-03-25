@@ -1,6 +1,6 @@
+use anyhow::Result;
 use ropey::Rope;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
@@ -22,7 +22,7 @@ impl Buffer {
         let mut file = File::open(&path).await?;
         let mut contents = String::new();
         file.read_to_string(&mut contents).await?;
-        
+
         Ok(Self {
             rope: Rope::from_str(&contents),
             path: Some(path),

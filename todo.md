@@ -27,9 +27,9 @@ This file tracks the progress of the **Lux** editor project.
 - [x] Add a welcome page for `lux` without parameters (open file/folder, recent list) `[Completed]`
 
 ### **Phase 4: Language Intelligence**
-- [ ] Integrate `tree-sitter` for incremental parsing `[Pending]`
-- [ ] Implement background syntax highlighting service `[Pending]`
-- [ ] Add context-aware auto-indentation logic `[Pending]`
+- [x] Integrate `tree-sitter` for incremental parsing `[Completed]`
+- [x] Implement background syntax highlighting service `[Completed]`
+- [x] Add context-aware auto-indentation logic `[Completed]`
 
 ### **Phase 5: Configuration, Theming & Fonts**
 - [ ] Build hierarchical configuration system with `config-rs` `[Pending]`
@@ -45,6 +45,8 @@ This file tracks the progress of the **Lux** editor project.
 ---
 
 ## **Recent Updates**
+- [2026-03-25] Phase 4 completed: integrated Tree-sitter incremental parsing, background syntax highlighting, and context-aware auto-indentation on Enter.
+- [2026-03-25] Refactored `lux-editor/src/main.rs` by splitting application, state, UI, config, and events logic into focused modules.
 - [2026-03-25] Phase 3 completed: Workspace management, Welcome Page, and Recent Items tracking.
 - [2026-03-25] Integrated `rfd` for native file dialogs.
 - [2026-03-25] Implemented `Config` system for recent items.

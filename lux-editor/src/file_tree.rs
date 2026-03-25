@@ -1,9 +1,9 @@
-
-use egui::{collapsing_header::CollapsingState, Id, Ui, TextEdit};
+use crate::events::CustomEvent;
+use egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
+use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
 use std::path::{Path, PathBuf};
-use winit::event_loop::EventLoopProxy;
-use crate::CustomEvent;
 use std::sync::Mutex;
+use winit::event_loop::EventLoopProxy;
 
 lazy_static::lazy_static! {
     static ref RENAMING_STATE: Mutex<Option<(PathBuf, String)>> = Mutex::new(None);
@@ -22,7 +22,10 @@ pub struct FileTree {
 
 impl FileTree {
     pub fn new(path: &Path, event_proxy: EventLoopProxy<CustomEvent>) -> Self {
-        Self { entry: Self::build_entry(path), event_proxy }
+        Self {
+            entry: Self::build_entry(path),
+            event_proxy,
+        }
     }
 
     pub fn show(&self, ui: &mut Ui) -> Option<PathBuf> {
@@ -36,12 +39,19 @@ impl FileTree {
                     let mut renaming = RENAMING_STATE.lock().unwrap();
                     if let Some((renaming_path, new_name)) = renaming.as_mut() {
                         if renaming_path == path {
-                            let response = ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
-                            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let response =
+                                ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
+                            if response.lost_focus()
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
                                 let new_path = path.with_file_name(&*new_name);
-                                self.event_proxy.send_event(CustomEvent::Rename(path.clone(), new_path)).ok();
+                                self.event_proxy
+                                    .send_event(CustomEvent::Rename(path.clone(), new_path))
+                                    .ok();
                                 *renaming = None;
-                            } else if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            } else if response.lost_focus()
+                                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                            {
                                 *renaming = None;
                             }
                             true
@@ -57,10 +67,19 @@ impl FileTree {
                     return None;
                 }
 
-                let response = ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
-                    ui.selectable_label(false, path.file_name().unwrap().to_str().unwrap())
-                }).inner;
-                
+                let row_height = ui.spacing().interact_size.y;
+                let file_name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let response = ui
+                    .allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), row_height),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| ui.selectable_label(false, format!("{} {}", FILE_CODE, file_name)),
+                    )
+                    .inner;
+
                 let mut clicked_path = None;
                 if response.clicked() {
                     clicked_path = Some(path.clone());
@@ -69,12 +88,17 @@ impl FileTree {
                 response.context_menu(|ui| {
                     if ui.button("Rename").clicked() {
                         let mut renaming = RENAMING_STATE.lock().unwrap();
-                        *renaming = Some((path.clone(), path.file_name().unwrap().to_string_lossy().to_string()));
-                        ui.close_menu();
+                        *renaming = Some((
+                            path.clone(),
+                            path.file_name().unwrap().to_string_lossy().to_string(),
+                        ));
+                        ui.close();
                     }
                     if ui.button("Delete").clicked() {
-                        self.event_proxy.send_event(CustomEvent::Delete(path.clone())).ok();
-                        ui.close_menu();
+                        self.event_proxy
+                            .send_event(CustomEvent::Delete(path.clone()))
+                            .ok();
+                        ui.close();
                     }
                 });
 
@@ -88,12 +112,19 @@ impl FileTree {
                     let mut renaming = RENAMING_STATE.lock().unwrap();
                     if let Some((renaming_path, new_name)) = renaming.as_mut() {
                         if renaming_path == path {
-                            let response = ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
-                            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let response =
+                                ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
+                            if response.lost_focus()
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
                                 let new_path = path.with_file_name(&*new_name);
-                                self.event_proxy.send_event(CustomEvent::Rename(path.clone(), new_path)).ok();
+                                self.event_proxy
+                                    .send_event(CustomEvent::Rename(path.clone(), new_path))
+                                    .ok();
                                 *renaming = None;
-                            } else if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                            } else if response.lost_focus()
+                                || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                            {
                                 *renaming = None;
                             }
                             true
@@ -109,36 +140,59 @@ impl FileTree {
                     return None;
                 }
 
-                let is_open = CollapsingState::load_with_default_open(ui.ctx(), id, false).is_open();
+                let is_open =
+                    CollapsingState::load_with_default_open(ui.ctx(), id, false).is_open();
                 CollapsingState::load_with_default_open(ui.ctx(), id, false)
                     .show_header(ui, |ui| {
-                        let response = ui.with_layout(egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true), |ui| {
-                            ui.selectable_label(false, path.file_name().unwrap_or_default().to_string_lossy().to_string())
-                        }).inner;
-                        
+                        let row_height = ui.spacing().interact_size.y;
+                        let folder_name = path
+                            .file_name()
+                            .map(|name| name.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                        let icon = if is_open { FOLDER_OPEN } else { FOLDER };
+                        let response = ui
+                            .allocate_ui_with_layout(
+                                egui::vec2(ui.available_width(), row_height),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.selectable_label(false, format!("{} {}", icon, folder_name))
+                                },
+                            )
+                            .inner;
+
                         if response.clicked() {
-                            let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, false);
+                            let mut state =
+                                CollapsingState::load_with_default_open(ui.ctx(), id, false);
                             state.set_open(!is_open);
                             state.store(ui.ctx());
                         }
 
                         response.context_menu(|ui| {
                             if ui.button("New File").clicked() {
-                                self.event_proxy.send_event(CustomEvent::NewFile(path.clone())).ok();
-                                ui.close_menu();
+                                self.event_proxy
+                                    .send_event(CustomEvent::NewFile(path.clone()))
+                                    .ok();
+                                ui.close();
                             }
                             if ui.button("New Folder").clicked() {
-                                self.event_proxy.send_event(CustomEvent::NewFolder(path.clone())).ok();
-                                ui.close_menu();
+                                self.event_proxy
+                                    .send_event(CustomEvent::NewFolder(path.clone()))
+                                    .ok();
+                                ui.close();
                             }
                             if ui.button("Rename").clicked() {
                                 let mut renaming = RENAMING_STATE.lock().unwrap();
-                                *renaming = Some((path.clone(), path.file_name().unwrap().to_string_lossy().to_string()));
-                                ui.close_menu();
+                                *renaming = Some((
+                                    path.clone(),
+                                    path.file_name().unwrap().to_string_lossy().to_string(),
+                                ));
+                                ui.close();
                             }
                             if ui.button("Delete").clicked() {
-                                self.event_proxy.send_event(CustomEvent::Delete(path.clone())).ok();
-                                ui.close_menu();
+                                self.event_proxy
+                                    .send_event(CustomEvent::Delete(path.clone()))
+                                    .ok();
+                                ui.close();
                             }
                         });
                     })
@@ -149,7 +203,7 @@ impl FileTree {
                             }
                         }
                     });
-                
+
                 clicked_path
             }
         }
@@ -158,14 +212,35 @@ impl FileTree {
     fn build_entry(path: &Path) -> Entry {
         if path.is_dir() {
             let mut entries = vec![];
-            for entry in path.read_dir().expect("read_dir call failed") {
-                if let Ok(entry) = entry {
-                    entries.push(Self::build_entry(&entry.path()));
-                }
+            for entry in path.read_dir().expect("read_dir call failed").flatten() {
+                entries.push(Self::build_entry(&entry.path()));
             }
+            entries.sort_by(|a, b| {
+                let a_is_dir = matches!(a, Entry::Directory(_, _));
+                let b_is_dir = matches!(b, Entry::Directory(_, _));
+                if a_is_dir != b_is_dir {
+                    return b_is_dir.cmp(&a_is_dir);
+                }
+                let a_name = Self::entry_name(a).to_lowercase();
+                let b_name = Self::entry_name(b).to_lowercase();
+                a_name.cmp(&b_name)
+            });
             Entry::Directory(path.to_path_buf(), entries)
         } else {
             Entry::File(path.to_path_buf())
+        }
+    }
+
+    fn entry_name(entry: &Entry) -> String {
+        match entry {
+            Entry::File(path) => path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            Entry::Directory(path, _) => path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default(),
         }
     }
 }

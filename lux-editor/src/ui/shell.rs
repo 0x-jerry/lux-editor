@@ -26,6 +26,39 @@ pub fn draw_shell_navigation(
     });
 }
 
+pub fn draw_status_bar(
+    ctx: &egui::Context,
+    shell_view: ShellView,
+    caret_line: usize,
+    caret_column: usize,
+    selection_len: usize,
+) {
+    egui::TopBottomPanel::bottom("status_bar")
+        .exact_height(24.0)
+        .show(ctx, |ui| {
+            let fill = ui.visuals().widgets.noninteractive.bg_fill;
+            egui::Frame::default().fill(fill).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let mode_label = if shell_view == ShellView::Editor {
+                        "EDITOR"
+                    } else {
+                        "CONFIGURATION"
+                    };
+                    ui.label(mode_label);
+                    ui.separator();
+                    if shell_view == ShellView::Editor {
+                        ui.label(format!(
+                            "Ln {}, Col {}  Sel {}",
+                            caret_line, caret_column, selection_len
+                        ));
+                    } else {
+                        ui.label("Configuration View");
+                    }
+                });
+            });
+        });
+}
+
 pub fn draw_file_tree_panel(ctx: &egui::Context, tree: &FileTree, events: &mut Vec<CustomEvent>) {
     egui::SidePanel::left("file_tree")
         .resizable(true)

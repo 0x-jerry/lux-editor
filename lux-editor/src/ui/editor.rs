@@ -86,10 +86,6 @@ pub fn render_editor_view(ui: &mut egui::Ui, state: EditorViewState<'_>, events:
     }
 
     ui.heading("Lux Editor");
-    ui.label(format!(
-        "Ln {}, Col {}  Sel {}",
-        caret_line, caret_column, selection_len
-    ));
     ui.separator();
 
     let total_lines = buffer.len_lines();

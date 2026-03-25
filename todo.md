@@ -5,6 +5,7 @@
 - [x] Implement copy, cut, paste, and select-all command pipeline
 - [x] Add undo/redo transaction model
 - [x] Add blinking caret rendering in editor view
+- [x] Add bottom status bar and move caret position info
 
 ## Next Up
 - [ ] Add command palette with fuzzy search

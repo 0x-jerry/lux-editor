@@ -28,6 +28,7 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
     let mut events = Vec::new();
 
     shell::draw_shell_navigation(ctx, shell_view, &mut events);
+    shell::draw_status_bar(ctx, shell_view, caret_line, caret_column, selection_len);
 
     if shell_view == ShellView::Editor
         && let Some(tree) = file_tree

@@ -98,6 +98,40 @@ impl CaretState {
         self.preferred_column = None;
     }
 
+    pub fn move_word_left(&mut self, buffer: &Buffer, selecting: bool) {
+        if !selecting && let Some(range) = self.selection_range() {
+            self.caret_char = range.start;
+            self.anchor_char = None;
+            self.preferred_column = None;
+            return;
+        }
+
+        let target = self.previous_word_boundary(buffer);
+        self.set_caret_char(target, buffer, selecting);
+        self.preferred_column = None;
+    }
+
+    pub fn move_word_right(&mut self, buffer: &Buffer, selecting: bool) {
+        if !selecting && let Some(range) = self.selection_range() {
+            self.caret_char = range.end;
+            self.anchor_char = None;
+            self.preferred_column = None;
+            return;
+        }
+
+        let target = self.next_word_boundary(buffer);
+        self.set_caret_char(target, buffer, selecting);
+        self.preferred_column = None;
+    }
+
+    pub fn previous_word_boundary(&self, buffer: &Buffer) -> usize {
+        previous_word_boundary(buffer, self.caret_char)
+    }
+
+    pub fn next_word_boundary(&self, buffer: &Buffer) -> usize {
+        next_word_boundary(buffer, self.caret_char)
+    }
+
     pub fn move_home(&mut self, buffer: &Buffer, selecting: bool) {
         let line = current_line_index(buffer, self.caret_char);
         let start = buffer.text().line_to_char(line);
@@ -243,6 +277,63 @@ fn line_visual_end_char(buffer: &Buffer, line: usize) -> usize {
     start + content_len
 }
 
+fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+    if caret_char == 0 {
+        return 0;
+    }
+
+    let chars = buffer
+        .text()
+        .slice(..caret_char)
+        .to_string()
+        .chars()
+        .collect::<Vec<_>>();
+    let mut index = chars.len();
+
+    while index > 0 && chars[index - 1].is_whitespace() {
+        index -= 1;
+    }
+    while index > 0 && is_word_char(chars[index - 1]) {
+        index -= 1;
+    }
+    while index > 0 && !chars[index - 1].is_whitespace() && !is_word_char(chars[index - 1]) {
+        index -= 1;
+    }
+
+    index
+}
+
+fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+    let total_chars = buffer.text().len_chars();
+    if caret_char >= total_chars {
+        return total_chars;
+    }
+
+    let chars = buffer
+        .text()
+        .slice(caret_char..total_chars)
+        .to_string()
+        .chars()
+        .collect::<Vec<_>>();
+    let mut offset = 0usize;
+
+    while offset < chars.len() && chars[offset].is_whitespace() {
+        offset += 1;
+    }
+    while offset < chars.len() && is_word_char(chars[offset]) {
+        offset += 1;
+    }
+    while offset < chars.len() && !chars[offset].is_whitespace() && !is_word_char(chars[offset]) {
+        offset += 1;
+    }
+
+    caret_char + offset
+}
+
+fn is_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CaretState, EditHistory, EditTransaction};
@@ -255,6 +346,29 @@ mod tests {
         let mut caret = CaretState::default();
         caret.select_all(&buffer);
         assert_eq!(caret.selection_range().unwrap_or(0..0), 0..3);
+    }
+
+    #[test]
+    fn move_word_right_skips_to_next_word_boundary() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "alpha beta");
+        let mut caret = CaretState::default();
+        caret.move_word_right(&buffer, false);
+        assert_eq!(caret.caret_char(), 5);
+        caret.move_word_right(&buffer, false);
+        assert_eq!(caret.caret_char(), 10);
+    }
+
+    #[test]
+    fn move_word_left_skips_to_previous_word_boundary() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "alpha beta");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(buffer.text().len_chars(), &buffer, false);
+        caret.move_word_left(&buffer, false);
+        assert_eq!(caret.caret_char(), 6);
+        caret.move_word_left(&buffer, false);
+        assert_eq!(caret.caret_char(), 0);
     }
 
     #[test]

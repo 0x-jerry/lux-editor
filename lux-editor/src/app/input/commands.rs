@@ -1,17 +1,21 @@
-use super::editor::{EditTransaction, line_column};
-use super::{App, ShellView};
+use crate::app::App;
 use eframe::egui;
-use lux_core::Buffer;
 
-enum EditorCommand {
+pub(super) enum EditorCommand {
     InsertText(String),
     Paste(String),
+    CopyEvent,
+    CutEvent,
     InsertNewline,
     InsertTab,
     Backspace,
     Delete,
+    DeleteWordBackward,
+    DeleteWordForward,
     MoveLeft { selecting: bool },
     MoveRight { selecting: bool },
+    MoveWordLeft { selecting: bool },
+    MoveWordRight { selecting: bool },
     MoveUp { selecting: bool },
     MoveDown { selecting: bool },
     MoveHome { selecting: bool },
@@ -26,54 +30,7 @@ enum EditorCommand {
 }
 
 impl App {
-    const CARET_BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(1000);
-
-    pub(super) fn reset_editor_state(&mut self) {
-        self.caret_state.reset_to_buffer_end(&self.buffer);
-        self.edit_history.clear();
-        self.touch_caret_blink();
-    }
-
-    pub(super) fn caret_position(&self) -> (usize, usize) {
-        line_column(&self.buffer, self.caret_state.caret_char())
-    }
-
-    pub(super) fn selection_len(&self) -> usize {
-        self.caret_state.selection_len()
-    }
-
-    pub(super) fn set_caret_from_pointer(
-        &mut self,
-        line_index: usize,
-        column: usize,
-        selecting: bool,
-    ) {
-        let total_lines = self.buffer.len_lines();
-        if total_lines == 0 {
-            self.caret_state.set_caret_char(0, &self.buffer, selecting);
-            self.touch_caret_blink();
-            return;
-        }
-        let line = line_index.min(total_lines.saturating_sub(1));
-        let line_start = self.buffer.text().line_to_char(line);
-        let line_text = self.buffer.text().line(line).to_string();
-        let line_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
-        let next = line_start + column.min(line_len);
-        self.caret_state
-            .set_caret_char(next, &self.buffer, selecting);
-        self.touch_caret_blink();
-    }
-
-    pub(super) fn caret_blink_visible(&self) -> bool {
-        self.caret_blink_anchor.elapsed().as_millis() % Self::CARET_BLINK_PERIOD.as_millis()
-            < (Self::CARET_BLINK_PERIOD.as_millis() / 2)
-    }
-
-    fn touch_caret_blink(&mut self) {
-        self.caret_blink_anchor = std::time::Instant::now();
-    }
-
-    pub(super) fn handle_keyboard_input(&mut self, ctx: &egui::Context) {
+    pub(in crate::app) fn handle_keyboard_input(&mut self, ctx: &egui::Context) {
         let mut changed = false;
         let events = ctx.input(|input| input.events.clone());
         for event in events {
@@ -99,6 +56,8 @@ impl App {
                 }
             }
             egui::Event::Paste(text) => vec![EditorCommand::Paste(text)],
+            egui::Event::Copy => vec![EditorCommand::CopyEvent],
+            egui::Event::Cut => vec![EditorCommand::CutEvent],
             egui::Event::Key {
                 key,
                 pressed: true,
@@ -121,7 +80,13 @@ impl App {
                     };
                 }
                 if modifiers.alt {
-                    return Vec::new();
+                    return match key {
+                        egui::Key::ArrowLeft => vec![EditorCommand::MoveWordLeft { selecting }],
+                        egui::Key::ArrowRight => vec![EditorCommand::MoveWordRight { selecting }],
+                        egui::Key::Backspace => vec![EditorCommand::DeleteWordBackward],
+                        egui::Key::Delete => vec![EditorCommand::DeleteWordForward],
+                        _ => Vec::new(),
+                    };
                 }
                 match key {
                     egui::Key::Enter => vec![EditorCommand::InsertNewline],
@@ -147,17 +112,14 @@ impl App {
             return false;
         }
 
-        if self.command_panel_open() || self.shell_view != ShellView::Editor {
-            return false;
-        }
-
-        if ctx.wants_keyboard_input() {
+        if self.should_ignore_editor_command(&command, ctx) {
             return false;
         }
 
         if !matches!(&command, EditorCommand::Copy) {
             self.touch_caret_blink();
         }
+
         match command {
             EditorCommand::InsertText(text) | EditorCommand::Paste(text) => {
                 self.insert_or_replace_selection(&text, ctx)
@@ -170,12 +132,22 @@ impl App {
             EditorCommand::InsertTab => self.insert_or_replace_selection("    ", ctx),
             EditorCommand::Backspace => self.delete_backward(ctx),
             EditorCommand::Delete => self.delete_forward(ctx),
+            EditorCommand::DeleteWordBackward => self.delete_word_backward(ctx),
+            EditorCommand::DeleteWordForward => self.delete_word_forward(ctx),
             EditorCommand::MoveLeft { selecting } => {
                 self.caret_state.move_left(&self.buffer, selecting);
                 false
             }
             EditorCommand::MoveRight { selecting } => {
                 self.caret_state.move_right(&self.buffer, selecting);
+                false
+            }
+            EditorCommand::MoveWordLeft { selecting } => {
+                self.caret_state.move_word_left(&self.buffer, selecting);
+                false
+            }
+            EditorCommand::MoveWordRight { selecting } => {
+                self.caret_state.move_word_right(&self.buffer, selecting);
                 false
             }
             EditorCommand::MoveUp { selecting } => {
@@ -204,7 +176,21 @@ impl App {
                 }
                 false
             }
+            EditorCommand::CopyEvent => {
+                if let Some(selected_text) = self.selected_text() {
+                    ctx.copy_text(selected_text);
+                }
+                false
+            }
             EditorCommand::Cut => {
+                if let Some(selected_text) = self.selected_text() {
+                    ctx.copy_text(selected_text);
+                    self.delete_selection(ctx)
+                } else {
+                    false
+                }
+            }
+            EditorCommand::CutEvent => {
                 if let Some(selected_text) = self.selected_text() {
                     ctx.copy_text(selected_text);
                     self.delete_selection(ctx)
@@ -233,135 +219,5 @@ impl App {
             EditorCommand::Save => self.save_current_buffer(ctx),
             EditorCommand::ToggleCommandPanel => false,
         }
-    }
-
-    fn selected_text(&self) -> Option<String> {
-        let range = self.caret_state.selection_range()?;
-        Some(self.buffer.text().slice(range).to_string())
-    }
-
-    fn insert_or_replace_selection(&mut self, text: &str, ctx: &egui::Context) -> bool {
-        let range = self
-            .caret_state
-            .selection_range()
-            .unwrap_or(self.caret_state.caret_char()..self.caret_state.caret_char());
-        self.apply_edit(range.start, range.end, text, ctx)
-    }
-
-    fn delete_selection(&mut self, ctx: &egui::Context) -> bool {
-        let Some(range) = self.caret_state.selection_range() else {
-            return false;
-        };
-        self.apply_edit(range.start, range.end, "", ctx)
-    }
-
-    fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
-            return self.delete_selection(ctx);
-        }
-        let caret = self.caret_state.caret_char();
-        if caret == 0 {
-            return false;
-        }
-        self.apply_edit(caret - 1, caret, "", ctx)
-    }
-
-    fn delete_forward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
-            return self.delete_selection(ctx);
-        }
-        let caret = self.caret_state.caret_char();
-        let total_chars = self.buffer.text().len_chars();
-        if caret >= total_chars {
-            return false;
-        }
-        self.apply_edit(caret, caret + 1, "", ctx)
-    }
-
-    fn apply_edit(
-        &mut self,
-        start: usize,
-        end: usize,
-        inserted_text: &str,
-        ctx: &egui::Context,
-    ) -> bool {
-        let total_chars = self.buffer.text().len_chars();
-        let start = start.min(total_chars);
-        let end = end.min(total_chars).max(start);
-        let deleted_text = self.buffer.text().slice(start..end).to_string();
-        if deleted_text.is_empty() && inserted_text.is_empty() {
-            return false;
-        }
-        let before = self.caret_state.snapshot();
-        if end > start {
-            self.buffer.remove(start..end);
-        }
-        if !inserted_text.is_empty() {
-            self.buffer.insert(start, inserted_text);
-        }
-        let next_caret = start + inserted_text.chars().count();
-        self.caret_state
-            .set_caret_char(next_caret, &self.buffer, false);
-        self.caret_state.clear_selection();
-        let after = self.caret_state.snapshot();
-        self.edit_history.push(EditTransaction {
-            start_char: start,
-            deleted_text,
-            inserted_text: inserted_text.to_string(),
-            before,
-            after,
-        });
-        self.mark_document_dirty(ctx);
-        true
-    }
-
-    fn indentation_for_newline(buffer: &Buffer, caret_char: usize) -> String {
-        const INDENT: &str = "    ";
-
-        let total_chars = buffer.text().len_chars();
-        if total_chars == 0 {
-            return "\n".to_string();
-        }
-
-        let line_probe = if caret_char == 0 {
-            0
-        } else {
-            caret_char
-                .saturating_sub(1)
-                .min(total_chars.saturating_sub(1))
-        };
-        let line_idx = buffer.text().char_to_line(line_probe);
-        let line = buffer.text().line(line_idx).to_string();
-        let content = line.trim_end_matches(['\n', '\r']);
-        let leading = content
-            .chars()
-            .take_while(|c| *c == ' ' || *c == '\t')
-            .collect::<String>();
-        let trimmed = content.trim_end();
-
-        if trimmed.ends_with('{') {
-            return format!("\n{}{}", leading, INDENT);
-        }
-
-        if trimmed.starts_with('}') {
-            let dedented = if leading.ends_with('\t') {
-                leading.trim_end_matches('\t').to_string()
-            } else if leading.ends_with(INDENT) {
-                leading.trim_end_matches(INDENT).to_string()
-            } else {
-                String::new()
-            };
-            return format!("\n{}", dedented);
-        }
-
-        format!("\n{}", leading)
-    }
-}
-
-impl App {
-    fn mark_document_dirty(&mut self, ctx: &egui::Context) {
-        self.document_dirty = true;
-        self.document_status = Some("Modified".to_string());
-        self.update_window_title(ctx);
     }
 }

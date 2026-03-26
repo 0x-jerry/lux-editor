@@ -38,6 +38,11 @@ impl App {
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
             CustomEvent::ConfigurationDraftChanged => self.schedule_configuration_autosave(),
+            CustomEvent::SetCaretFromPointer {
+                line_index,
+                column,
+                selecting,
+            } => self.set_caret_from_pointer(line_index, column, selecting),
         }
     }
 

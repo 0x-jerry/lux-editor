@@ -5,10 +5,7 @@ use std::sync::mpsc::Receiver;
 
 pub fn watch<P: AsRef<Path>>(
     path: P,
-) -> notify::Result<(
-    RecommendedWatcher,
-    Receiver<notify::Result<Event>>,
-)> {
+) -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
     let root_path = path.as_ref().to_path_buf();
     let ignored = build_gitignore(&root_path);
     let (tx, rx) = std::sync::mpsc::channel();
@@ -60,5 +57,7 @@ fn is_watch_event_relevant(event: &Event) -> bool {
 
 fn is_ignored(path: &Path, matcher: &Gitignore) -> bool {
     let is_dir = path.is_dir();
-    matcher.matched_path_or_any_parents(path, is_dir).is_ignore()
+    matcher
+        .matched_path_or_any_parents(path, is_dir)
+        .is_ignore()
 }

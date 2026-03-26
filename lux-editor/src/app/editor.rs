@@ -75,9 +75,7 @@ impl CaretState {
     }
 
     pub fn move_left(&mut self, buffer: &Buffer, selecting: bool) {
-        if !selecting
-            && let Some(range) = self.selection_range()
-        {
+        if !selecting && let Some(range) = self.selection_range() {
             self.caret_char = range.start;
             self.anchor_char = None;
             self.preferred_column = None;
@@ -89,9 +87,7 @@ impl CaretState {
     }
 
     pub fn move_right(&mut self, buffer: &Buffer, selecting: bool) {
-        if !selecting
-            && let Some(range) = self.selection_range()
-        {
+        if !selecting && let Some(range) = self.selection_range() {
             self.caret_char = range.end;
             self.anchor_char = None;
             self.preferred_column = None;

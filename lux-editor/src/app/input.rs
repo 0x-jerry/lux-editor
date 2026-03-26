@@ -1,5 +1,5 @@
-use super::editor::{EditTransaction, line_column};
 use super::App;
+use super::editor::{EditTransaction, line_column};
 use eframe::egui;
 use lux_core::Buffer;
 
@@ -38,6 +38,28 @@ impl App {
 
     pub(super) fn selection_len(&self) -> usize {
         self.caret_state.selection_len()
+    }
+
+    pub(super) fn set_caret_from_pointer(
+        &mut self,
+        line_index: usize,
+        column: usize,
+        selecting: bool,
+    ) {
+        let total_lines = self.buffer.len_lines();
+        if total_lines == 0 {
+            self.caret_state.set_caret_char(0, &self.buffer, selecting);
+            self.touch_caret_blink();
+            return;
+        }
+        let line = line_index.min(total_lines.saturating_sub(1));
+        let line_start = self.buffer.text().line_to_char(line);
+        let line_text = self.buffer.text().line(line).to_string();
+        let line_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
+        let next = line_start + column.min(line_len);
+        self.caret_state
+            .set_caret_char(next, &self.buffer, selecting);
+        self.touch_caret_blink();
     }
 
     pub(super) fn caret_blink_visible(&self) -> bool {
@@ -255,7 +277,8 @@ impl App {
             self.buffer.insert(start, inserted_text);
         }
         let next_caret = start + inserted_text.chars().count();
-        self.caret_state.set_caret_char(next_caret, &self.buffer, false);
+        self.caret_state
+            .set_caret_char(next_caret, &self.buffer, false);
         self.caret_state.clear_selection();
         let after = self.caret_state.snapshot();
         self.edit_history.push(EditTransaction {
@@ -279,7 +302,9 @@ impl App {
         let line_probe = if caret_char == 0 {
             0
         } else {
-            caret_char.saturating_sub(1).min(total_chars.saturating_sub(1))
+            caret_char
+                .saturating_sub(1)
+                .min(total_chars.saturating_sub(1))
         };
         let line_idx = buffer.text().char_to_line(line_probe);
         let line = buffer.text().line(line_idx).to_string();

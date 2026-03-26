@@ -12,10 +12,11 @@ pub fn main() {
     env_logger::init();
 
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native(
+    if let Err(err) = eframe::run_native(
         "Lux Editor",
         native_options,
         Box::new(|_cc| Ok(Box::new(App::new()))),
-    )
-    .unwrap();
+    ) {
+        log::error!("failed to run Lux Editor: {err}");
+    }
 }

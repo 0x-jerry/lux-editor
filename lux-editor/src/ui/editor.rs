@@ -16,7 +16,11 @@ pub struct EditorViewState<'a> {
     pub caret_visible: bool,
 }
 
-pub fn render_editor_view(ui: &mut egui::Ui, state: EditorViewState<'_>, events: &mut Vec<CustomEvent>) {
+pub fn render_editor_view(
+    ui: &mut egui::Ui,
+    state: EditorViewState<'_>,
+    events: &mut Vec<CustomEvent>,
+) {
     let EditorViewState {
         workspace_path,
         buffer,
@@ -106,18 +110,53 @@ pub fn render_editor_view(ui: &mut egui::Ui, state: EditorViewState<'_>, events:
                 {
                     let line_text_owned = line.to_string();
                     let line_text = line_text_owned.trim_end_matches(['\r', '\n']);
-                    let response = if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
+                    let response = if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i)
+                    {
                         let job = build_highlighted_line_job(
                             line_text,
                             line_tokens,
                             editor_config.settings.font.size,
                         );
-                        ui.label(job)
+                        ui.add(egui::Label::new(job).sense(egui::Sense::click_and_drag()))
                     } else {
-                        ui.label(line_text)
+                        ui.add(egui::Label::new(line_text).sense(egui::Sense::click_and_drag()))
                     };
+                    if response.clicked_by(egui::PointerButton::Primary)
+                        && let Some(pointer) = response.interact_pointer_pos()
+                    {
+                        let selecting = ui.input(|input| input.modifiers.shift);
+                        let (_, column) = pointer_to_line_column(
+                            pointer,
+                            response.rect,
+                            row_height,
+                            i,
+                            char_width,
+                        );
+                        events.push(CustomEvent::SetCaretFromPointer {
+                            line_index: i,
+                            column,
+                            selecting,
+                        });
+                    }
+                    if response.dragged_by(egui::PointerButton::Primary)
+                        && let Some(pointer) = response.interact_pointer_pos()
+                    {
+                        let (line_index, column) = pointer_to_line_column(
+                            pointer,
+                            response.rect,
+                            row_height,
+                            i,
+                            char_width,
+                        );
+                        events.push(CustomEvent::SetCaretFromPointer {
+                            line_index,
+                            column,
+                            selecting: true,
+                        });
+                    }
                     if selection_len == 0 && caret_visible && i + 1 == caret_line {
-                        let x = response.rect.min.x + (caret_column.saturating_sub(1) as f32 * char_width);
+                        let x = response.rect.min.x
+                            + (caret_column.saturating_sub(1) as f32 * char_width);
                         ui.painter().line_segment(
                             [
                                 egui::pos2(x, response.rect.top()),
@@ -129,4 +168,19 @@ pub fn render_editor_view(ui: &mut egui::Ui, state: EditorViewState<'_>, events:
                 }
             }
         });
+}
+
+fn pointer_to_line_column(
+    pointer: egui::Pos2,
+    line_rect: egui::Rect,
+    row_height: f32,
+    row_index: usize,
+    char_width: f32,
+) -> (usize, usize) {
+    let row_delta = ((pointer.y - line_rect.top()) / row_height).floor() as isize;
+    let line_index = (row_index as isize + row_delta).max(0) as usize;
+    let column = ((pointer.x - line_rect.left()) / char_width)
+        .floor()
+        .max(0.0) as usize;
+    (line_index, column)
 }

@@ -50,11 +50,11 @@ pub fn render_configuration_view(
                     for theme in available_syntax_themes(&config_draft.theme.syntax_theme) {
                         if ui
                             .selectable_value(
-                            &mut config_draft.theme.syntax_theme,
-                            theme.clone(),
-                            theme,
-                        )
-                        .changed()
+                                &mut config_draft.theme.syntax_theme,
+                                theme.clone(),
+                                theme,
+                            )
+                            .changed()
                         {
                             changed = true;
                         }
@@ -63,7 +63,10 @@ pub fn render_configuration_view(
             ui.end_row();
 
             ui.label("Font family");
-            if ui.text_edit_singleline(&mut config_draft.font.family).changed() {
+            if ui
+                .text_edit_singleline(&mut config_draft.font.family)
+                .changed()
+            {
                 changed = true;
             }
             ui.end_row();

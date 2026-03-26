@@ -7,6 +7,9 @@
 - [x] Add blinking caret rendering in editor view
 - [x] Add bottom status bar and move caret position info
 - [x] Optimize workspace watcher and apply .gitignore filtering
+- [x] Fix pointer caret placement and drag selection behavior in editor view
+- [x] Prevent crash on app quit by handling native run errors safely
+- [x] Add macOS close-request fast-exit workaround for AppKit touch bar crash
 
 ## Next Up
 - [ ] Add command palette with fuzzy search

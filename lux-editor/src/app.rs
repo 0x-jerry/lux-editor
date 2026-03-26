@@ -1,5 +1,5 @@
-mod events;
 mod editor;
+mod events;
 mod init;
 mod input;
 mod settings;

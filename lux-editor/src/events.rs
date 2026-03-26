@@ -11,4 +11,9 @@ pub enum CustomEvent {
     SwitchToEditor,
     SwitchToConfiguration,
     ConfigurationDraftChanged,
+    SetCaretFromPointer {
+        line_index: usize,
+        column: usize,
+        selecting: bool,
+    },
 }

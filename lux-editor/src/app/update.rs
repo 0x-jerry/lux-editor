@@ -4,6 +4,11 @@ use eframe::{App as EframeApp, Frame, egui};
 
 impl EframeApp for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        #[cfg(target_os = "macos")]
+        if ctx.input(|input| input.viewport().close_requested()) {
+            std::process::exit(0);
+        }
+
         self.process_pending_events(ctx);
         self.highlighting_service.update();
         if self.shell_view == ShellView::Editor {

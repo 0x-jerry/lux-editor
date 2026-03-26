@@ -9,12 +9,30 @@ impl App {
         Some(self.buffer.text().slice(range).to_string())
     }
 
+    pub(super) fn copy_selection_to_clipboard(&self, ctx: &egui::Context) -> bool {
+        if let Some(selected_text) = self.selected_text() {
+            ctx.copy_text(selected_text);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn cut_selection_to_clipboard(&mut self, ctx: &egui::Context) -> bool {
+        let Some(range) = self.caret_state.selection_range() else {
+            return false;
+        };
+        let selected_text = self.buffer.text().slice(range.clone()).to_string();
+        ctx.copy_text(selected_text);
+        self.apply_edit(range.start, range.end, "", ctx)
+    }
+
     pub(super) fn insert_or_replace_selection(&mut self, text: &str, ctx: &egui::Context) -> bool {
-        let range = self
-            .caret_state
-            .selection_range()
-            .unwrap_or(self.caret_state.caret_char()..self.caret_state.caret_char());
-        self.apply_edit(range.start, range.end, text, ctx)
+        if let Some(range) = self.caret_state.selection_range() {
+            return self.apply_edit(range.start, range.end, text, ctx);
+        }
+        let caret = self.caret_state.caret_char();
+        self.apply_edit(caret, caret, text, ctx)
     }
 
     pub(super) fn delete_selection(&mut self, ctx: &egui::Context) -> bool {
@@ -80,8 +98,22 @@ impl App {
         ctx: &egui::Context,
     ) -> bool {
         let total_chars = self.buffer.text().len_chars();
-        let start = start.min(total_chars);
-        let end = end.min(total_chars).max(start);
+        // If caller passes a collapsed range while a selection exists, replace the selection.
+        let (start, end) = if start == end {
+            if let Some(range) = self.caret_state.selection_range() {
+                let start = range.start.min(total_chars);
+                let end = range.end.min(total_chars).max(start);
+                (start, end)
+            } else {
+                let start = start.min(total_chars);
+                let end = end.min(total_chars).max(start);
+                (start, end)
+            }
+        } else {
+            let start = start.min(total_chars);
+            let end = end.min(total_chars).max(start);
+            (start, end)
+        };
         let deleted_text = self.buffer.text().slice(start..end).to_string();
         if deleted_text.is_empty() && inserted_text.is_empty() {
             return false;
@@ -96,6 +128,7 @@ impl App {
         let next_caret = start + inserted_text.chars().count();
         self.caret_state
             .set_caret_char(next_caret, &self.buffer, false);
+        // Ensure selection is cleared after any edit, including selection replacement.
         self.caret_state.clear_selection();
         let after = self.caret_state.snapshot();
         self.edit_history.push(EditTransaction {

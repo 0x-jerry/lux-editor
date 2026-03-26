@@ -4,8 +4,6 @@ use eframe::egui;
 pub(super) enum EditorCommand {
     InsertText(String),
     Paste(String),
-    CopyEvent,
-    CutEvent,
     InsertNewline,
     InsertTab,
     Backspace,
@@ -56,8 +54,8 @@ impl App {
                 }
             }
             egui::Event::Paste(text) => vec![EditorCommand::Paste(text)],
-            egui::Event::Copy => vec![EditorCommand::CopyEvent],
-            egui::Event::Cut => vec![EditorCommand::CutEvent],
+            egui::Event::Copy => vec![EditorCommand::Copy],
+            egui::Event::Cut => vec![EditorCommand::Cut],
             egui::Event::Key {
                 key,
                 pressed: true,
@@ -171,33 +169,10 @@ impl App {
                 false
             }
             EditorCommand::Copy => {
-                if let Some(selected_text) = self.selected_text() {
-                    ctx.copy_text(selected_text);
-                }
+                self.copy_selection_to_clipboard(ctx);
                 false
             }
-            EditorCommand::CopyEvent => {
-                if let Some(selected_text) = self.selected_text() {
-                    ctx.copy_text(selected_text);
-                }
-                false
-            }
-            EditorCommand::Cut => {
-                if let Some(selected_text) = self.selected_text() {
-                    ctx.copy_text(selected_text);
-                    self.delete_selection(ctx)
-                } else {
-                    false
-                }
-            }
-            EditorCommand::CutEvent => {
-                if let Some(selected_text) = self.selected_text() {
-                    ctx.copy_text(selected_text);
-                    self.delete_selection(ctx)
-                } else {
-                    false
-                }
-            }
+            EditorCommand::Cut => self.cut_selection_to_clipboard(ctx),
             EditorCommand::Undo => {
                 if let Some(snapshot) = self.edit_history.undo(&mut self.buffer) {
                     self.caret_state.restore(snapshot, &self.buffer);

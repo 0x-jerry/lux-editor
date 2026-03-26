@@ -39,11 +39,13 @@ pub fn render_text_area(
         .max(editor_config.settings.font.size * 0.5);
     let gutter_digits = total_lines.max(1).to_string().len();
     let gutter_width = (gutter_digits as f32 * char_width) + (char_width * 2.0);
+    let gutter_total_width = gutter_width + 5.0;
     let gutter_text_color = ui.visuals().weak_text_color();
-    let gutter_bg = ui.visuals().faint_bg_color;
+    let gutter_bg = ui.visuals().extreme_bg_color;
     let gutter_active_bg = ui.visuals().selection.bg_fill.gamma_multiply(0.2);
     let gutter_separator_color = ui.visuals().widgets.noninteractive.bg_stroke.color;
     let gutter_font_id = font_id.clone();
+    let mut visible_rows = Vec::new();
 
     let scroll_output = egui::ScrollArea::both()
         .id_salt("editor_text_area_scroll")
@@ -64,7 +66,7 @@ pub fn render_text_area(
 
                     let response = ui
                         .horizontal(|ui| {
-                            ui.add_space(gutter_width);
+                            ui.add_space(gutter_total_width);
 
                             if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i) {
                                 let job = build_highlighted_line_job(
@@ -81,6 +83,7 @@ pub fn render_text_area(
                             }
                         })
                         .inner;
+                    visible_rows.push((i, response.rect.top(), response.rect.bottom()));
                     if response.clicked_by(egui::PointerButton::Primary)
                         && let Some(pointer) = response.interact_pointer_pos()
                     {
@@ -130,35 +133,26 @@ pub fn render_text_area(
         });
 
     let inner_rect = scroll_output.inner_rect;
-    let scroll_offset = scroll_output.state.offset;
-    let first_visible_row = (scroll_offset.y / row_height).floor().max(0.0) as usize;
-    let visible_row_count = ((inner_rect.height() / row_height).ceil() as usize).saturating_add(1);
-    let last_visible_row = (first_visible_row + visible_row_count).min(total_lines);
     let gutter_rect = egui::Rect::from_min_max(
         inner_rect.left_top(),
-        egui::pos2(inner_rect.left() + gutter_width, inner_rect.bottom()),
+        egui::pos2(inner_rect.left() + gutter_total_width, inner_rect.bottom()),
     );
 
     ui.painter().rect_filled(gutter_rect, 0.0, gutter_bg);
 
-    for row in first_visible_row..last_visible_row {
-        let top = inner_rect.top() + (row as f32 * row_height) - scroll_offset.y;
+    for (row, top, bottom) in visible_rows {
         let row_rect = egui::Rect::from_min_max(
             egui::pos2(gutter_rect.left(), top),
-            egui::pos2(gutter_rect.right(), top + row_height),
+            egui::pos2(gutter_rect.right(), bottom),
         );
 
         if row + 1 == caret_line {
             ui.painter().rect_filled(row_rect, 0.0, gutter_active_bg);
         }
 
-        let text_pos = egui::pos2(
-            row_rect.right() - char_width,
-            row_rect.center().y - (row_height * 0.5),
-        );
         ui.painter().text(
-            text_pos,
-            egui::Align2::RIGHT_TOP,
+            egui::pos2(row_rect.right() - char_width, row_rect.center().y),
+            egui::Align2::RIGHT_CENTER,
             (row + 1).to_string(),
             gutter_font_id.clone(),
             gutter_text_color,

@@ -1,9 +1,21 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct RecentItem {
     pub path: PathBuf,
     pub is_dir: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct WorkspaceFileState {
+    pub workspace_path: PathBuf,
+    pub file_path: PathBuf,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+struct RecentConfigFile {
+    recent_items: Vec<RecentItem>,
+    workspace_file_states: Vec<WorkspaceFileState>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -45,13 +57,16 @@ pub struct EditorSettings {
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     pub recent_items: Vec<RecentItem>,
+    workspace_file_states: Vec<WorkspaceFileState>,
     pub settings: EditorSettings,
 }
 
 impl Config {
     pub fn load() -> Self {
+        let recent_config = Self::load_recent_config();
         Self {
-            recent_items: Self::load_recent_items(),
+            recent_items: recent_config.recent_items,
+            workspace_file_states: recent_config.workspace_file_states,
             settings: Self::load_settings(),
         }
     }
@@ -80,14 +95,45 @@ impl Config {
         if self.recent_items.len() > 10 {
             self.recent_items.truncate(10);
         }
-        self.save_recent_items();
+        self.prune_workspace_file_states_to_recent_dirs();
+        self.save_recent_config();
+    }
+
+    pub fn clear_recent_items(&mut self) {
+        self.recent_items.clear();
+        self.workspace_file_states.clear();
+        self.save_recent_config();
+    }
+
+    pub fn set_workspace_last_file(&mut self, workspace_path: &Path, file_path: &Path) {
+        self.workspace_file_states
+            .retain(|entry| entry.workspace_path != workspace_path);
+        self.workspace_file_states.insert(
+            0,
+            WorkspaceFileState {
+                workspace_path: workspace_path.to_path_buf(),
+                file_path: file_path.to_path_buf(),
+            },
+        );
+        if self.workspace_file_states.len() > 50 {
+            self.workspace_file_states.truncate(50);
+        }
+        self.prune_workspace_file_states_to_recent_dirs();
+        self.save_recent_config();
+    }
+
+    pub fn workspace_last_file(&self, workspace_path: &Path) -> Option<PathBuf> {
+        self.workspace_file_states
+            .iter()
+            .find(|entry| entry.workspace_path == workspace_path)
+            .map(|entry| entry.file_path.clone())
     }
 
     pub fn user_settings_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lux")
-            .join("config.toml")
+            .join("config.json")
     }
 
     pub fn save_settings(settings: &EditorSettings) -> std::io::Result<PathBuf> {
@@ -95,7 +141,8 @@ impl Config {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, Self::serialize_settings(settings))?;
+        let content = serde_json::to_string_pretty(settings)?;
+        std::fs::write(&path, content)?;
         Ok(path)
     }
 
@@ -115,22 +162,34 @@ impl Config {
             .unwrap_or_default()
     }
 
-    fn load_recent_items() -> Vec<RecentItem> {
+    fn load_recent_config() -> RecentConfigFile {
         if let Ok(data) = std::fs::read_to_string(Self::recent_items_path()) {
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str::<RecentConfigFile>(&data).unwrap_or_default()
         } else {
-            Vec::new()
+            RecentConfigFile::default()
         }
     }
 
-    fn save_recent_items(&self) {
+    fn save_recent_config(&self) {
         let path = Self::recent_items_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
         }
-        if let Ok(data) = serde_json::to_string(&self.recent_items) {
+        let data = RecentConfigFile {
+            recent_items: self.recent_items.clone(),
+            workspace_file_states: self.workspace_file_states.clone(),
+        };
+        if let Ok(data) = serde_json::to_string(&data) {
             std::fs::write(path, data).ok();
         }
+    }
+
+    fn prune_workspace_file_states_to_recent_dirs(&mut self) {
+        self.workspace_file_states.retain(|workspace_state| {
+            self.recent_items
+                .iter()
+                .any(|item| item.is_dir && item.path == workspace_state.workspace_path)
+        });
     }
 
     fn recent_items_path() -> PathBuf {
@@ -138,32 +197,5 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lux")
             .join("recent.json")
-    }
-
-    fn serialize_settings(settings: &EditorSettings) -> String {
-        let mut output = String::new();
-        output.push_str("[theme]\n");
-        output.push_str(&format!(
-            "syntax_theme = \"{}\"\n",
-            Self::escape_toml_string(&settings.theme.syntax_theme)
-        ));
-        if let Some(path) = &settings.theme.theme_path {
-            output.push_str(&format!(
-                "theme_path = \"{}\"\n",
-                Self::escape_toml_string(&path.display().to_string())
-            ));
-        }
-        output.push('\n');
-        output.push_str("[font]\n");
-        output.push_str(&format!(
-            "family = \"{}\"\n",
-            Self::escape_toml_string(&settings.font.family)
-        ));
-        output.push_str(&format!("size = {}\n", settings.font.size));
-        output
-    }
-
-    fn escape_toml_string(value: &str) -> String {
-        value.replace('\\', "\\\\").replace('"', "\\\"")
     }
 }

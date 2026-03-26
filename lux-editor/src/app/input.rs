@@ -1,5 +1,5 @@
-use super::App;
 use super::editor::{EditTransaction, line_column};
+use super::{App, ShellView};
 use eframe::egui;
 use lux_core::Buffer;
 
@@ -21,6 +21,7 @@ enum EditorCommand {
     Cut,
     Undo,
     Redo,
+    ToggleCommandPanel,
 }
 
 impl App {
@@ -72,10 +73,6 @@ impl App {
     }
 
     pub(super) fn handle_keyboard_input(&mut self, ctx: &egui::Context) {
-        if ctx.wants_keyboard_input() {
-            return;
-        }
-
         let mut changed = false;
         let events = ctx.input(|input| input.events.clone());
         for event in events {
@@ -113,6 +110,7 @@ impl App {
                     return match key {
                         egui::Key::A => vec![EditorCommand::SelectAll],
                         egui::Key::C => vec![EditorCommand::Copy],
+                        egui::Key::K => vec![EditorCommand::ToggleCommandPanel],
                         egui::Key::X => vec![EditorCommand::Cut],
                         egui::Key::Z if modifiers.shift => vec![EditorCommand::Redo],
                         egui::Key::Z => vec![EditorCommand::Undo],
@@ -142,6 +140,19 @@ impl App {
     }
 
     fn execute_command(&mut self, command: EditorCommand, ctx: &egui::Context) -> bool {
+        if matches!(&command, EditorCommand::ToggleCommandPanel) {
+            self.toggle_command_panel();
+            return false;
+        }
+
+        if self.command_panel_open() || self.shell_view != ShellView::Editor {
+            return false;
+        }
+
+        if ctx.wants_keyboard_input() {
+            return false;
+        }
+
         if !matches!(&command, EditorCommand::Copy) {
             self.touch_caret_blink();
         }
@@ -215,6 +226,7 @@ impl App {
                     false
                 }
             }
+            EditorCommand::ToggleCommandPanel => false,
         }
     }
 

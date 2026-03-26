@@ -3,7 +3,7 @@ use crate::file_tree::FileTree;
 use crate::language::{HighlightSnapshot, HighlightThemeConfig, LanguageKind};
 use eframe::egui;
 use lux_core::Buffer;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 impl App {
@@ -26,7 +26,9 @@ impl App {
             config_autosave_deadline: None,
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
+            reveal_active_in_tree: false,
             shell_view: ShellView::Editor,
+            command_panel: Default::default(),
             caret_state: Default::default(),
             edit_history: Default::default(),
             caret_blink_anchor: std::time::Instant::now(),
@@ -47,6 +49,8 @@ impl App {
         self.editor_config.add_recent(path.clone(), true);
         self.workspace_watcher = Self::start_workspace_watcher(&path, self.event_tx.clone());
         self.reset_editor_state();
+        self.open_workspace_last_file(&path);
+        self.reveal_active_in_tree = true;
         self.restart_settings_watcher();
         if self.editor_config.reload_settings() {
             self.needs_style_refresh = true;
@@ -65,7 +69,7 @@ impl App {
                 "lux - {}",
                 path.display()
             )));
-            self.editor_config.add_recent(path, false);
+            self.track_file_open(&path);
             self.refresh_language_intelligence();
         }
     }
@@ -95,6 +99,8 @@ impl App {
             self.file_tree = Some(FileTree::new(&path));
             self.editor_config.add_recent(path.clone(), true);
             self.workspace_watcher = Self::start_workspace_watcher(&path, self.event_tx.clone());
+            self.open_workspace_last_file(&path);
+            self.reveal_active_in_tree = true;
             return;
         }
 
@@ -104,6 +110,33 @@ impl App {
             self.buffer = buffer;
             self.reset_editor_state();
             self.editor_config.add_recent(path, false);
+        }
+    }
+
+    fn track_file_open(&mut self, path: &Path) {
+        if let Some(workspace_path) = self
+            .workspace_path
+            .as_ref()
+            .filter(|workspace_path| path.starts_with(workspace_path))
+        {
+            self.editor_config
+                .set_workspace_last_file(workspace_path, path);
+            self.reveal_active_in_tree = true;
+            return;
+        }
+        self.editor_config.add_recent(path.to_path_buf(), false);
+    }
+
+    fn open_workspace_last_file(&mut self, workspace_path: &Path) {
+        let Some(path) = self.editor_config.workspace_last_file(workspace_path) else {
+            return;
+        };
+        if path.is_file()
+            && let Ok(buffer) = self.rt.block_on(Buffer::from_file(&path))
+        {
+            self.buffer = buffer;
+            self.reset_editor_state();
+            self.refresh_language_intelligence();
         }
     }
 }

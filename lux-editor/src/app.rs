@@ -1,3 +1,4 @@
+mod command_panel;
 mod editor;
 mod events;
 mod init;
@@ -10,6 +11,7 @@ use crate::config::{Config, EditorSettings};
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
 use crate::language::HighlightingService;
+use command_panel::CommandPanelState;
 use editor::{CaretState, EditHistory};
 use lux_core::Buffer;
 use notify::RecommendedWatcher;
@@ -38,7 +40,9 @@ pub struct App {
     config_autosave_deadline: Option<Instant>,
     highlighting_service: HighlightingService,
     needs_style_refresh: bool,
+    reveal_active_in_tree: bool,
     shell_view: ShellView,
+    command_panel: CommandPanelState,
     caret_state: CaretState,
     edit_history: EditHistory,
     caret_blink_anchor: Instant,

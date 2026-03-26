@@ -12,7 +12,7 @@ pub fn build_highlighted_line_job(
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::monospace(font_size),
-                color: egui::Color32::LIGHT_GRAY,
+                color: egui::Color32::BLACK,
                 ..Default::default()
             },
         );
@@ -57,7 +57,7 @@ fn append_default(job: &mut egui::text::LayoutJob, text: &str, font_size: f32) {
         0.0,
         egui::TextFormat {
             font_id: egui::FontId::monospace(font_size),
-            color: egui::Color32::LIGHT_GRAY,
+            color: egui::Color32::BLACK,
             ..Default::default()
         },
     );

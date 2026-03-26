@@ -27,11 +27,22 @@ impl FileTree {
         }
     }
 
-    pub fn show(&self, ui: &mut Ui) -> Option<CustomEvent> {
-        self.show_entry(ui, &self.entry)
+    pub fn show(
+        &self,
+        ui: &mut Ui,
+        active_file_path: Option<&Path>,
+        reveal_active_file: bool,
+    ) -> Option<CustomEvent> {
+        self.show_entry(ui, &self.entry, active_file_path, reveal_active_file)
     }
 
-    fn show_entry(&self, ui: &mut Ui, entry: &Entry) -> Option<CustomEvent> {
+    fn show_entry(
+        &self,
+        ui: &mut Ui,
+        entry: &Entry,
+        active_file_path: Option<&Path>,
+        reveal_active_file: bool,
+    ) -> Option<CustomEvent> {
         match entry {
             Entry::File(path) => {
                 let is_renaming = {
@@ -71,11 +82,12 @@ impl FileTree {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let is_active = active_file_path == Some(path.as_path());
                 let response = ui
                     .allocate_ui_with_layout(
                         egui::vec2(ui.available_width(), row_height),
                         egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| ui.selectable_label(false, format!("{} {}", FILE_CODE, file_name)),
+                        |ui| ui.selectable_label(is_active, format!("{} {}", FILE_CODE, file_name)),
                     )
                     .inner;
 
@@ -137,9 +149,16 @@ impl FileTree {
                     return None;
                 }
 
-                let is_open =
-                    CollapsingState::load_with_default_open(ui.ctx(), id, false).is_open();
-                CollapsingState::load_with_default_open(ui.ctx(), id, false)
+                let should_reveal = reveal_active_file
+                    && active_file_path.is_some_and(|active_path| active_path.starts_with(path));
+                let mut state =
+                    CollapsingState::load_with_default_open(ui.ctx(), id, should_reveal);
+                if should_reveal && !state.is_open() {
+                    state.set_open(true);
+                    state.store(ui.ctx());
+                }
+                let is_open = state.is_open();
+                state
                     .show_header(ui, |ui| {
                         let row_height = ui.spacing().interact_size.y;
                         let folder_name = path
@@ -158,8 +177,11 @@ impl FileTree {
                             .inner;
 
                         if response.clicked() {
-                            let mut state =
-                                CollapsingState::load_with_default_open(ui.ctx(), id, false);
+                            let mut state = CollapsingState::load_with_default_open(
+                                ui.ctx(),
+                                id,
+                                should_reveal,
+                            );
                             state.set_open(!is_open);
                             state.store(ui.ctx());
                         }
@@ -189,7 +211,9 @@ impl FileTree {
                     })
                     .body(|ui| {
                         for entry in entries {
-                            if let Some(child_event) = self.show_entry(ui, entry) {
+                            if let Some(child_event) =
+                                self.show_entry(ui, entry, active_file_path, reveal_active_file)
+                            {
                                 event = Some(child_event);
                             }
                         }

@@ -7,10 +7,10 @@ use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 use syntect::util::LinesWithEndings;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LanguageKind {
     PlainText,
-    Rust,
+    Extension(String),
 }
 
 impl LanguageKind {
@@ -18,10 +18,10 @@ impl LanguageKind {
         let Some(path) = path else {
             return Self::PlainText;
         };
-        match path.extension().and_then(|ext| ext.to_str()) {
-            Some("rs") => Self::Rust,
-            _ => Self::PlainText,
-        }
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| Self::Extension(ext.to_ascii_lowercase()))
+            .unwrap_or(Self::PlainText)
     }
 }
 
@@ -217,11 +217,11 @@ fn parse_snapshot(
         line_tokens: vec![Vec::new(); line_count],
     };
 
-    if language != LanguageKind::Rust {
+    let LanguageKind::Extension(extension) = language else {
         return snapshot;
-    }
-
-    let Some(syntax) = syntax_set.find_syntax_by_extension("rs") else {
+    };
+    let Some(syntax) = syntax_set.find_syntax_by_extension(&extension) else {
+        fill_black_fallback(&mut snapshot, text);
         return snapshot;
     };
     let mut highlighter = HighlightLines::new(syntax, theme);
@@ -237,6 +237,23 @@ fn parse_snapshot(
     }
 
     snapshot
+}
+
+fn fill_black_fallback(snapshot: &mut HighlightSnapshot, text: &str) {
+    for (line_idx, line) in LinesWithEndings::from(text).enumerate() {
+        if line_idx >= snapshot.line_tokens.len() {
+            break;
+        }
+        let line_len = line.trim_end_matches(['\r', '\n']).len();
+        if line_len == 0 {
+            continue;
+        }
+        snapshot.line_tokens[line_idx].push(HighlightSpan {
+            start_col: 0,
+            end_col: line_len,
+            color: [0, 0, 0, 255],
+        });
+    }
 }
 
 fn append_ranges(line_tokens: &mut Vec<HighlightSpan>, ranges: Vec<(Style, &str)>) {

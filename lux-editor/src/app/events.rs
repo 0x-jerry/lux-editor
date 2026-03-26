@@ -35,6 +35,7 @@ impl App {
                 std::fs::create_dir(parent.join("new_folder")).ok();
                 self.on_file_change();
             }
+            CustomEvent::ClearRecentItems => self.editor_config.clear_recent_items(),
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
             CustomEvent::ConfigurationDraftChanged => self.schedule_configuration_autosave(),

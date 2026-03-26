@@ -1,4 +1,4 @@
-use super::{App, ShellView};
+use super::App;
 use crate::ui;
 use eframe::{App as EframeApp, Frame, egui};
 
@@ -11,9 +11,7 @@ impl EframeApp for App {
 
         self.process_pending_events(ctx);
         self.highlighting_service.update();
-        if self.shell_view == ShellView::Editor {
-            self.handle_keyboard_input(ctx);
-        }
+        self.handle_keyboard_input(ctx);
 
         if self.needs_style_refresh {
             self.apply_editor_settings(ctx);
@@ -24,6 +22,7 @@ impl EframeApp for App {
         let (caret_line, caret_column) = self.caret_position();
         let selection_len = self.selection_len();
         let caret_visible = self.caret_blink_visible();
+        let reveal_active_in_tree = self.reveal_active_in_tree;
         let events = ui::draw_ui(
             ctx,
             ui::DrawUiState {
@@ -35,15 +34,18 @@ impl EframeApp for App {
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
                 shell_view: self.shell_view,
+                reveal_active_in_tree,
                 caret_line,
                 caret_column,
                 selection_len,
                 caret_visible,
             },
         );
+        self.reveal_active_in_tree = false;
         for event in events {
             self.handle_event(event, ctx);
         }
+        self.render_command_panel(ctx);
         self.flush_configuration_autosave();
 
         ctx.request_repaint();

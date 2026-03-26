@@ -3,6 +3,7 @@ mod editor;
 mod highlight;
 mod shell;
 mod types;
+mod welcome;
 
 use crate::app::ShellView;
 use crate::events::CustomEvent;
@@ -19,6 +20,7 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         config_draft,
         config_status,
         shell_view,
+        reveal_active_in_tree,
         caret_line,
         caret_column,
         selection_len,
@@ -33,7 +35,13 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
     if shell_view == ShellView::Editor
         && let Some(tree) = file_tree
     {
-        shell::draw_file_tree_panel(ctx, tree, &mut events);
+        shell::draw_file_tree_panel(
+            ctx,
+            tree,
+            buffer.path().map(|path| path.as_path()),
+            reveal_active_in_tree,
+            &mut events,
+        );
     }
 
     egui::CentralPanel::default().show(ctx, |ui| {

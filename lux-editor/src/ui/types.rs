@@ -13,10 +13,12 @@ pub struct DrawUiState<'a> {
     pub editor_config: &'a Config,
     pub config_draft: &'a mut EditorSettings,
     pub config_status: Option<&'a str>,
+    pub document_status: Option<&'a str>,
     pub shell_view: ShellView,
     pub reveal_active_in_tree: bool,
     pub caret_line: usize,
     pub caret_column: usize,
     pub selection_len: usize,
     pub caret_visible: bool,
+    pub document_dirty: bool,
 }

@@ -20,6 +20,7 @@ pub(super) struct CommandPanelState {
 
 #[derive(Clone)]
 enum CommandPanelAction {
+    SaveFile,
     OpenFile,
     OpenRecently,
     OpenFolder,
@@ -234,6 +235,9 @@ impl App {
 
     fn run_command_panel_action(&mut self, action: CommandPanelAction, ctx: &egui::Context) {
         match action {
+            CommandPanelAction::SaveFile => {
+                self.save_current_buffer(ctx);
+            }
             CommandPanelAction::OpenFile => {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
                     self.open_file(path, ctx);
@@ -265,6 +269,16 @@ impl App {
 
 fn build_root_commands() -> Vec<CommandPanelCommand> {
     vec![
+        CommandPanelCommand {
+            title: "Save File".to_string(),
+            keywords: vec![
+                "save".to_string(),
+                "write".to_string(),
+                "file".to_string(),
+                "persist".to_string(),
+            ],
+            action: CommandPanelAction::SaveFile,
+        },
         CommandPanelCommand {
             title: "Open File".to_string(),
             keywords: vec!["file".to_string(), "open".to_string(), "load".to_string()],
@@ -363,6 +377,7 @@ fn build_recent_used_commands(actions: &[CommandPanelAction]) -> Vec<RankedComma
 
 fn recent_used_title(action: &CommandPanelAction) -> String {
     match action {
+        CommandPanelAction::SaveFile => "Save File".to_string(),
         CommandPanelAction::OpenFile => "Open File".to_string(),
         CommandPanelAction::OpenRecently => "Open Recently".to_string(),
         CommandPanelAction::OpenFolder => "Open Folder".to_string(),
@@ -378,6 +393,7 @@ fn recent_used_title(action: &CommandPanelAction) -> String {
 
 fn action_key(action: &CommandPanelAction) -> String {
     match action {
+        CommandPanelAction::SaveFile => "save-file".to_string(),
         CommandPanelAction::OpenFile => "open-file".to_string(),
         CommandPanelAction::OpenRecently => "open-recently".to_string(),
         CommandPanelAction::OpenFolder => "open-folder".to_string(),

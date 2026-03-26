@@ -2,7 +2,7 @@ use anyhow::Result;
 use ropey::Rope;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 
 pub struct Buffer {
     rope: Rope,
@@ -37,6 +37,10 @@ impl Buffer {
         self.path.as_ref()
     }
 
+    pub fn set_path<P: AsRef<Path>>(&mut self, path: P) {
+        self.path = Some(path.as_ref().to_path_buf());
+    }
+
     pub fn line(&self, line_idx: usize) -> Option<ropey::iter::Lines<'_>> {
         if line_idx < self.rope.len_lines() {
             Some(self.rope.lines_at(line_idx))
@@ -55,6 +59,25 @@ impl Buffer {
 
     pub fn remove(&mut self, range: std::ops::Range<usize>) {
         self.rope.remove(range);
+    }
+
+    pub async fn save(&self) -> Result<()> {
+        let path = self
+            .path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("buffer has no file path"))?;
+        self.save_to_path(path).await
+    }
+
+    pub async fn save_to_path<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let path = path.as_ref();
+        let file = File::create(path).await?;
+        let mut writer = BufWriter::new(file);
+        for chunk in self.rope.chunks() {
+            writer.write_all(chunk.as_bytes()).await?;
+        }
+        writer.flush().await?;
+        Ok(())
     }
 }
 

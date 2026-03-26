@@ -3,3 +3,10 @@ members = ["lux-core",
     "lux-editor",
 ]
 resolver = "2"
+
+[profile.release]
+opt-level = "z"     # Optimize for size; "z" also disables loop vectorization
+lto = true          # Enable Link Time Optimization across all crates
+codegen-units = 1   # Reduce parallel units to 1 for better size optimization
+panic = "abort"     # Remove stack unwinding code; binary stops immediately on panic
+strip = true        # Automatically strip all symbols and debug info

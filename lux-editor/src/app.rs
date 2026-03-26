@@ -38,6 +38,8 @@ pub struct App {
     config_draft: EditorSettings,
     config_status: Option<String>,
     config_autosave_deadline: Option<Instant>,
+    document_dirty: bool,
+    document_status: Option<String>,
     highlighting_service: HighlightingService,
     needs_style_refresh: bool,
     reveal_active_in_tree: bool,

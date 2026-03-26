@@ -33,6 +33,9 @@ pub fn draw_status_bar(
     caret_line: usize,
     caret_column: usize,
     selection_len: usize,
+    document_dirty: bool,
+    document_status: Option<&str>,
+    config_status: Option<&str>,
 ) {
     egui::TopBottomPanel::bottom("status_bar")
         .exact_height(24.0)
@@ -52,8 +55,18 @@ pub fn draw_status_bar(
                             "Ln {}, Col {}  Sel {}",
                             caret_line, caret_column, selection_len
                         ));
+                        ui.separator();
+                        ui.label(if document_dirty { "Modified" } else { "Saved" });
+                        if let Some(status) = document_status {
+                            ui.separator();
+                            ui.label(status);
+                        }
                     } else {
                         ui.label("Configuration View");
+                        if let Some(status) = config_status {
+                            ui.separator();
+                            ui.label(status);
+                        }
                     }
                 });
             });

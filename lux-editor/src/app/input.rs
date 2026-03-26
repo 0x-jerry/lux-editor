@@ -21,6 +21,7 @@ enum EditorCommand {
     Cut,
     Undo,
     Redo,
+    Save,
     ToggleCommandPanel,
 }
 
@@ -112,6 +113,7 @@ impl App {
                         egui::Key::C => vec![EditorCommand::Copy],
                         egui::Key::K => vec![EditorCommand::ToggleCommandPanel],
                         egui::Key::X => vec![EditorCommand::Cut],
+                        egui::Key::S => vec![EditorCommand::Save],
                         egui::Key::Z if modifiers.shift => vec![EditorCommand::Redo],
                         egui::Key::Z => vec![EditorCommand::Undo],
                         egui::Key::Y => vec![EditorCommand::Redo],
@@ -158,16 +160,16 @@ impl App {
         }
         match command {
             EditorCommand::InsertText(text) | EditorCommand::Paste(text) => {
-                self.insert_or_replace_selection(&text)
+                self.insert_or_replace_selection(&text, ctx)
             }
             EditorCommand::InsertNewline => {
                 let indentation =
                     Self::indentation_for_newline(&self.buffer, self.caret_state.caret_char());
-                self.insert_or_replace_selection(&indentation)
+                self.insert_or_replace_selection(&indentation, ctx)
             }
-            EditorCommand::InsertTab => self.insert_or_replace_selection("    "),
-            EditorCommand::Backspace => self.delete_backward(),
-            EditorCommand::Delete => self.delete_forward(),
+            EditorCommand::InsertTab => self.insert_or_replace_selection("    ", ctx),
+            EditorCommand::Backspace => self.delete_backward(ctx),
+            EditorCommand::Delete => self.delete_forward(ctx),
             EditorCommand::MoveLeft { selecting } => {
                 self.caret_state.move_left(&self.buffer, selecting);
                 false
@@ -205,7 +207,7 @@ impl App {
             EditorCommand::Cut => {
                 if let Some(selected_text) = self.selected_text() {
                     ctx.copy_text(selected_text);
-                    self.delete_selection()
+                    self.delete_selection(ctx)
                 } else {
                     false
                 }
@@ -213,6 +215,7 @@ impl App {
             EditorCommand::Undo => {
                 if let Some(snapshot) = self.edit_history.undo(&mut self.buffer) {
                     self.caret_state.restore(snapshot, &self.buffer);
+                    self.mark_document_dirty(ctx);
                     true
                 } else {
                     false
@@ -221,11 +224,13 @@ impl App {
             EditorCommand::Redo => {
                 if let Some(snapshot) = self.edit_history.redo(&mut self.buffer) {
                     self.caret_state.restore(snapshot, &self.buffer);
+                    self.mark_document_dirty(ctx);
                     true
                 } else {
                     false
                 }
             }
+            EditorCommand::Save => self.save_current_buffer(ctx),
             EditorCommand::ToggleCommandPanel => false,
         }
     }
@@ -235,45 +240,51 @@ impl App {
         Some(self.buffer.text().slice(range).to_string())
     }
 
-    fn insert_or_replace_selection(&mut self, text: &str) -> bool {
+    fn insert_or_replace_selection(&mut self, text: &str, ctx: &egui::Context) -> bool {
         let range = self
             .caret_state
             .selection_range()
             .unwrap_or(self.caret_state.caret_char()..self.caret_state.caret_char());
-        self.apply_edit(range.start, range.end, text)
+        self.apply_edit(range.start, range.end, text, ctx)
     }
 
-    fn delete_selection(&mut self) -> bool {
+    fn delete_selection(&mut self, ctx: &egui::Context) -> bool {
         let Some(range) = self.caret_state.selection_range() else {
             return false;
         };
-        self.apply_edit(range.start, range.end, "")
+        self.apply_edit(range.start, range.end, "", ctx)
     }
 
-    fn delete_backward(&mut self) -> bool {
+    fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
         if self.caret_state.selection_range().is_some() {
-            return self.delete_selection();
+            return self.delete_selection(ctx);
         }
         let caret = self.caret_state.caret_char();
         if caret == 0 {
             return false;
         }
-        self.apply_edit(caret - 1, caret, "")
+        self.apply_edit(caret - 1, caret, "", ctx)
     }
 
-    fn delete_forward(&mut self) -> bool {
+    fn delete_forward(&mut self, ctx: &egui::Context) -> bool {
         if self.caret_state.selection_range().is_some() {
-            return self.delete_selection();
+            return self.delete_selection(ctx);
         }
         let caret = self.caret_state.caret_char();
         let total_chars = self.buffer.text().len_chars();
         if caret >= total_chars {
             return false;
         }
-        self.apply_edit(caret, caret + 1, "")
+        self.apply_edit(caret, caret + 1, "", ctx)
     }
 
-    fn apply_edit(&mut self, start: usize, end: usize, inserted_text: &str) -> bool {
+    fn apply_edit(
+        &mut self,
+        start: usize,
+        end: usize,
+        inserted_text: &str,
+        ctx: &egui::Context,
+    ) -> bool {
         let total_chars = self.buffer.text().len_chars();
         let start = start.min(total_chars);
         let end = end.min(total_chars).max(start);
@@ -300,6 +311,7 @@ impl App {
             before,
             after,
         });
+        self.mark_document_dirty(ctx);
         true
     }
 
@@ -343,5 +355,13 @@ impl App {
         }
 
         format!("\n{}", leading)
+    }
+}
+
+impl App {
+    fn mark_document_dirty(&mut self, ctx: &egui::Context) {
+        self.document_dirty = true;
+        self.document_status = Some("Modified".to_string());
+        self.update_window_title(ctx);
     }
 }

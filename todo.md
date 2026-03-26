@@ -15,3 +15,4 @@
 - [x] Expanded syntax highlighting to use extension-based syntect lookup and default unsupported file text to black
 - [x] Added VSCode-style `Open Recently` command flow in command palette
 - [x] Added `Recent Used` command section in command palette (up to 5 commands)
+- [x] Added file save workflow with `Cmd/Ctrl+S`, command palette support, and dirty-state status feedback

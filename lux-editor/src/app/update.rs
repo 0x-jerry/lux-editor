@@ -33,12 +33,14 @@ impl EframeApp for App {
                 editor_config: &self.editor_config,
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
+                document_status: self.document_status.as_deref(),
                 shell_view: self.shell_view,
                 reveal_active_in_tree,
                 caret_line,
                 caret_column,
                 selection_len,
                 caret_visible,
+                document_dirty: self.document_dirty,
             },
         );
         self.reveal_active_in_tree = false;

@@ -24,6 +24,8 @@ impl App {
             editor_config,
             config_status: None,
             config_autosave_deadline: None,
+            document_dirty: false,
+            document_status: None,
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
             reveal_active_in_tree: false,
@@ -65,12 +67,34 @@ impl App {
         if let Ok(buffer) = self.rt.block_on(Buffer::from_file(&path)) {
             self.buffer = buffer;
             self.reset_editor_state();
-            ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-                "lux - {}",
-                path.display()
-            )));
+            self.reset_document_state();
+            self.update_window_title(ctx);
             self.track_file_open(&path);
             self.refresh_language_intelligence();
+        }
+    }
+
+    pub(super) fn save_current_buffer(&mut self, ctx: &egui::Context) -> bool {
+        if self.buffer.path().is_none() {
+            if let Some(path) = rfd::FileDialog::new().save_file() {
+                self.buffer.set_path(&path);
+            } else {
+                self.document_status = Some("Save cancelled".to_string());
+                return false;
+            }
+        }
+
+        if self.rt.block_on(self.buffer.save()).is_ok() {
+            let saved_path = self.buffer.path().cloned().unwrap();
+            self.document_dirty = false;
+            self.document_status = Some(format!("Saved {}", saved_path.display()));
+            self.track_file_open(&saved_path);
+            self.update_window_title(ctx);
+            self.on_file_change();
+            true
+        } else {
+            self.document_status = Some("Failed to save file".to_string());
+            false
         }
     }
 
@@ -109,6 +133,7 @@ impl App {
         {
             self.buffer = buffer;
             self.reset_editor_state();
+            self.reset_document_state();
             self.editor_config.add_recent(path, false);
         }
     }
@@ -136,7 +161,25 @@ impl App {
         {
             self.buffer = buffer;
             self.reset_editor_state();
+            self.reset_document_state();
             self.refresh_language_intelligence();
         }
+    }
+
+    pub(super) fn reset_document_state(&mut self) {
+        self.document_dirty = false;
+        self.document_status = None;
+    }
+
+    pub(super) fn update_window_title(&self, ctx: &egui::Context) {
+        let title = if let Some(path) = self.buffer.path() {
+            let dirty_prefix = if self.document_dirty { "* " } else { "" };
+            format!("lux - {}{}", dirty_prefix, path.display())
+        } else if self.document_dirty {
+            "lux - * Untitled".to_string()
+        } else {
+            "lux".to_string()
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
     }
 }

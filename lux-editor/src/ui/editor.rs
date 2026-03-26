@@ -99,9 +99,9 @@ pub fn render_editor_view(
     let char_width = ui
         .fonts_mut(|fonts| fonts.glyph_width(&font_id, 'W'))
         .max(editor_config.settings.font.size * 0.5);
-    ui.spacing_mut().item_spacing.y = 0.0;
 
-    egui::ScrollArea::vertical()
+    egui::ScrollArea::both()
+        .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
         .auto_shrink([false; 2])
         .show_rows(ui, row_height, total_lines, |ui, row_range| {
             for i in row_range {
@@ -109,7 +109,13 @@ pub fn render_editor_view(
                     && let Some(line) = lines_iter.next()
                 {
                     let line_text_owned = line.to_string();
-                    let line_text = line_text_owned.trim_end_matches(['\r', '\n']);
+                    let line_text_owned = line_text_owned.trim_end_matches(['\r', '\n']);
+                    let line_text = if line_text_owned.is_empty() {
+                        "\n"
+                    } else {
+                        line_text_owned
+                    };
+
                     let response = if let Some(line_tokens) = highlight_snapshot.line_tokens.get(i)
                     {
                         let job = build_highlighted_line_job(

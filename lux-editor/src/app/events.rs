@@ -36,6 +36,8 @@ impl App {
                 self.on_file_change();
             }
             CustomEvent::ClearRecentItems => self.editor_config.clear_recent_items(),
+            CustomEvent::SwitchDocument(index) => self.switch_to_document(index, ctx),
+            CustomEvent::CloseDocument(index) => self.close_document(index, ctx),
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
             CustomEvent::ConfigurationDraftChanged => self.schedule_configuration_autosave(),

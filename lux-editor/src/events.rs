@@ -9,6 +9,8 @@ pub enum CustomEvent {
     NewFile(std::path::PathBuf),
     NewFolder(std::path::PathBuf),
     ClearRecentItems,
+    SwitchDocument(usize),
+    CloseDocument(usize),
     SwitchToEditor,
     SwitchToConfiguration,
     ConfigurationDraftChanged,

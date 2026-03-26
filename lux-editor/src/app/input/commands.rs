@@ -123,8 +123,11 @@ impl App {
                 self.insert_or_replace_selection(&text, ctx)
             }
             EditorCommand::InsertNewline => {
-                let indentation =
-                    Self::indentation_for_newline(&self.buffer, self.caret_state.caret_char());
+                let active_document = self.active_document();
+                let indentation = Self::indentation_for_newline(
+                    &active_document.buffer,
+                    active_document.caret_state.caret_char(),
+                );
                 self.insert_or_replace_selection(&indentation, ctx)
             }
             EditorCommand::InsertTab => self.insert_or_replace_selection("    ", ctx),
@@ -133,39 +136,66 @@ impl App {
             EditorCommand::DeleteWordBackward => self.delete_word_backward(ctx),
             EditorCommand::DeleteWordForward => self.delete_word_forward(ctx),
             EditorCommand::MoveLeft { selecting } => {
-                self.caret_state.move_left(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_left(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveRight { selecting } => {
-                self.caret_state.move_right(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_right(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveWordLeft { selecting } => {
-                self.caret_state.move_word_left(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_word_left(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveWordRight { selecting } => {
-                self.caret_state.move_word_right(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_word_right(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveUp { selecting } => {
-                self.caret_state.move_up(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_up(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveDown { selecting } => {
-                self.caret_state.move_down(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_down(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveHome { selecting } => {
-                self.caret_state.move_home(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_home(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::MoveEnd { selecting } => {
-                self.caret_state.move_end(&self.buffer, selecting);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .move_end(&active_document.buffer, selecting);
                 false
             }
             EditorCommand::SelectAll => {
-                self.caret_state.select_all(&self.buffer);
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .select_all(&active_document.buffer);
                 false
             }
             EditorCommand::Copy => {
@@ -174,8 +204,17 @@ impl App {
             }
             EditorCommand::Cut => self.cut_selection_to_clipboard(ctx),
             EditorCommand::Undo => {
-                if let Some(snapshot) = self.edit_history.undo(&mut self.buffer) {
-                    self.caret_state.restore(snapshot, &self.buffer);
+                let snapshot = {
+                    let active_document = self.active_document_mut();
+                    active_document
+                        .edit_history
+                        .undo(&mut active_document.buffer)
+                };
+                if let Some(snapshot) = snapshot {
+                    let active_document = self.active_document_mut();
+                    active_document
+                        .caret_state
+                        .restore(snapshot, &active_document.buffer);
                     self.mark_document_dirty(ctx);
                     true
                 } else {
@@ -183,8 +222,17 @@ impl App {
                 }
             }
             EditorCommand::Redo => {
-                if let Some(snapshot) = self.edit_history.redo(&mut self.buffer) {
-                    self.caret_state.restore(snapshot, &self.buffer);
+                let snapshot = {
+                    let active_document = self.active_document_mut();
+                    active_document
+                        .edit_history
+                        .redo(&mut active_document.buffer)
+                };
+                if let Some(snapshot) = snapshot {
+                    let active_document = self.active_document_mut();
+                    active_document
+                        .caret_state
+                        .restore(snapshot, &active_document.buffer);
                     self.mark_document_dirty(ctx);
                     true
                 } else {

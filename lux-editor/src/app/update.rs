@@ -23,24 +23,34 @@ impl EframeApp for App {
         let selection_len = self.selection_len();
         let caret_visible = self.caret_blink_visible();
         let reveal_active_in_tree = self.reveal_active_in_tree;
+        let document_tabs = self
+            .documents
+            .iter()
+            .map(|document| ui::DocumentTab {
+                title: document.title(),
+            })
+            .collect::<Vec<_>>();
+        let active_document = &self.documents[self.active_document];
         let events = ui::draw_ui(
             ctx,
             ui::DrawUiState {
                 file_tree: self.file_tree.as_ref(),
                 workspace_path: self.workspace_path.as_ref(),
-                buffer: &self.buffer,
+                buffer: &active_document.buffer,
+                document_tabs: &document_tabs,
+                active_document_index: self.active_document,
                 highlight_snapshot: &highlight_snapshot,
                 editor_config: &self.editor_config,
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
-                document_status: self.document_status.as_deref(),
+                document_status: active_document.document_status.as_deref(),
                 shell_view: self.shell_view,
                 reveal_active_in_tree,
                 caret_line,
                 caret_column,
                 selection_len,
                 caret_visible,
-                document_dirty: self.document_dirty,
+                document_dirty: active_document.document_dirty,
             },
         );
         self.reveal_active_in_tree = false;

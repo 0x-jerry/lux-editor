@@ -5,10 +5,16 @@ use crate::language::HighlightSnapshot;
 use lux_core::Buffer;
 use std::path::PathBuf;
 
+pub struct DocumentTab {
+    pub title: String,
+}
+
 pub struct DrawUiState<'a> {
     pub file_tree: Option<&'a FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a Buffer,
+    pub document_tabs: &'a [DocumentTab],
+    pub active_document_index: usize,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub config_draft: &'a mut EditorSettings,

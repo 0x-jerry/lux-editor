@@ -8,6 +8,7 @@ mod welcome;
 use crate::app::ShellView;
 use crate::events::CustomEvent;
 
+pub use types::DocumentTab;
 pub use types::DrawUiState;
 
 pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> {
@@ -15,6 +16,8 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         file_tree,
         workspace_path,
         buffer,
+        document_tabs,
+        active_document_index,
         highlight_snapshot,
         editor_config,
         config_draft,
@@ -62,6 +65,8 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
                 editor::EditorViewState {
                     workspace_path,
                     buffer,
+                    document_tabs,
+                    active_document_index,
                     highlight_snapshot,
                     editor_config,
                     caret_line,

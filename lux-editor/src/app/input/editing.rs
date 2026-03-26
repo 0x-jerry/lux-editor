@@ -5,8 +5,9 @@ use lux_core::Buffer;
 
 impl App {
     pub(super) fn selected_text(&self) -> Option<String> {
-        let range = self.caret_state.selection_range()?;
-        Some(self.buffer.text().slice(range).to_string())
+        let active_document = self.active_document();
+        let range = active_document.caret_state.selection_range()?;
+        Some(active_document.buffer.text().slice(range).to_string())
     }
 
     pub(super) fn copy_selection_to_clipboard(&self, ctx: &egui::Context) -> bool {
@@ -19,34 +20,44 @@ impl App {
     }
 
     pub(super) fn cut_selection_to_clipboard(&mut self, ctx: &egui::Context) -> bool {
-        let Some(range) = self.caret_state.selection_range() else {
+        let Some(range) = self.active_document().caret_state.selection_range() else {
             return false;
         };
-        let selected_text = self.buffer.text().slice(range.clone()).to_string();
+        let selected_text = self
+            .active_document()
+            .buffer
+            .text()
+            .slice(range.clone())
+            .to_string();
         ctx.copy_text(selected_text);
         self.apply_edit(range.start, range.end, "", ctx)
     }
 
     pub(super) fn insert_or_replace_selection(&mut self, text: &str, ctx: &egui::Context) -> bool {
-        if let Some(range) = self.caret_state.selection_range() {
+        if let Some(range) = self.active_document().caret_state.selection_range() {
             return self.apply_edit(range.start, range.end, text, ctx);
         }
-        let caret = self.caret_state.caret_char();
+        let caret = self.active_document().caret_state.caret_char();
         self.apply_edit(caret, caret, text, ctx)
     }
 
     pub(super) fn delete_selection(&mut self, ctx: &egui::Context) -> bool {
-        let Some(range) = self.caret_state.selection_range() else {
+        let Some(range) = self.active_document().caret_state.selection_range() else {
             return false;
         };
         self.apply_edit(range.start, range.end, "", ctx)
     }
 
     pub(super) fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
+        if self
+            .active_document()
+            .caret_state
+            .selection_range()
+            .is_some()
+        {
             return self.delete_selection(ctx);
         }
-        let caret = self.caret_state.caret_char();
+        let caret = self.active_document().caret_state.caret_char();
         if caret == 0 {
             return false;
         }
@@ -54,23 +65,37 @@ impl App {
     }
 
     pub(super) fn delete_word_backward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
+        if self
+            .active_document()
+            .caret_state
+            .selection_range()
+            .is_some()
+        {
             return self.delete_selection(ctx);
         }
-        let caret = self.caret_state.caret_char();
+        let active_document = self.active_document();
+        let caret = active_document.caret_state.caret_char();
         if caret == 0 {
             return false;
         }
-        let start = self.caret_state.previous_word_boundary(&self.buffer);
+        let start = active_document
+            .caret_state
+            .previous_word_boundary(&active_document.buffer);
         self.apply_edit(start, caret, "", ctx)
     }
 
     pub(super) fn delete_forward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
+        if self
+            .active_document()
+            .caret_state
+            .selection_range()
+            .is_some()
+        {
             return self.delete_selection(ctx);
         }
-        let caret = self.caret_state.caret_char();
-        let total_chars = self.buffer.text().len_chars();
+        let active_document = self.active_document();
+        let caret = active_document.caret_state.caret_char();
+        let total_chars = active_document.buffer.text().len_chars();
         if caret >= total_chars {
             return false;
         }
@@ -78,15 +103,23 @@ impl App {
     }
 
     pub(super) fn delete_word_forward(&mut self, ctx: &egui::Context) -> bool {
-        if self.caret_state.selection_range().is_some() {
+        if self
+            .active_document()
+            .caret_state
+            .selection_range()
+            .is_some()
+        {
             return self.delete_selection(ctx);
         }
-        let caret = self.caret_state.caret_char();
-        let total_chars = self.buffer.text().len_chars();
+        let active_document = self.active_document();
+        let caret = active_document.caret_state.caret_char();
+        let total_chars = active_document.buffer.text().len_chars();
         if caret >= total_chars {
             return false;
         }
-        let end = self.caret_state.next_word_boundary(&self.buffer);
+        let end = active_document
+            .caret_state
+            .next_word_boundary(&active_document.buffer);
         self.apply_edit(caret, end, "", ctx)
     }
 
@@ -97,10 +130,10 @@ impl App {
         inserted_text: &str,
         ctx: &egui::Context,
     ) -> bool {
-        let total_chars = self.buffer.text().len_chars();
+        let total_chars = self.active_document().buffer.text().len_chars();
         // If caller passes a collapsed range while a selection exists, replace the selection.
         let (start, end) = if start == end {
-            if let Some(range) = self.caret_state.selection_range() {
+            if let Some(range) = self.active_document().caret_state.selection_range() {
                 let start = range.start.min(total_chars);
                 let end = range.end.min(total_chars).max(start);
                 (start, end)
@@ -114,30 +147,41 @@ impl App {
             let end = end.min(total_chars).max(start);
             (start, end)
         };
-        let deleted_text = self.buffer.text().slice(start..end).to_string();
+        let deleted_text = self
+            .active_document()
+            .buffer
+            .text()
+            .slice(start..end)
+            .to_string();
         if deleted_text.is_empty() && inserted_text.is_empty() {
             return false;
         }
-        let before = self.caret_state.snapshot();
-        if end > start {
-            self.buffer.remove(start..end);
-        }
-        if !inserted_text.is_empty() {
-            self.buffer.insert(start, inserted_text);
-        }
+        let before = self.active_document().caret_state.snapshot();
         let next_caret = start + inserted_text.chars().count();
-        self.caret_state
-            .set_caret_char(next_caret, &self.buffer, false);
-        // Ensure selection is cleared after any edit, including selection replacement.
-        self.caret_state.clear_selection();
-        let after = self.caret_state.snapshot();
-        self.edit_history.push(EditTransaction {
-            start_char: start,
-            deleted_text,
-            inserted_text: inserted_text.to_string(),
-            before,
-            after,
-        });
+        let after = {
+            let active_document = self.active_document_mut();
+            if end > start {
+                active_document.buffer.remove(start..end);
+            }
+            if !inserted_text.is_empty() {
+                active_document.buffer.insert(start, inserted_text);
+            }
+            active_document
+                .caret_state
+                .set_caret_char(next_caret, &active_document.buffer, false);
+            // Ensure selection is cleared after any edit, including selection replacement.
+            active_document.caret_state.clear_selection();
+            active_document.caret_state.snapshot()
+        };
+        self.active_document_mut()
+            .edit_history
+            .push(EditTransaction {
+                start_char: start,
+                deleted_text,
+                inserted_text: inserted_text.to_string(),
+                before,
+                after,
+            });
         self.mark_document_dirty(ctx);
         true
     }
@@ -185,8 +229,9 @@ impl App {
     }
 
     pub(super) fn mark_document_dirty(&mut self, ctx: &egui::Context) {
-        self.document_dirty = true;
-        self.document_status = Some("Modified".to_string());
+        let active_document = self.active_document_mut();
+        active_document.document_dirty = true;
+        active_document.document_status = Some("Modified".to_string());
         self.update_window_title(ctx);
     }
 }

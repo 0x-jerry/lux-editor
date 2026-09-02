@@ -40,7 +40,7 @@ impl App {
         }
 
         if changed {
-            self.refresh_language_intelligence();
+            self.schedule_language_refresh();
         }
     }
 

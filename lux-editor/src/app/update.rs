@@ -12,6 +12,7 @@ impl EframeApp for App {
         self.process_pending_events(ctx);
         self.highlighting_service.update();
         self.handle_keyboard_input(ctx);
+        self.flush_scheduled_language_refresh();
 
         if self.needs_style_refresh {
             self.apply_editor_settings(ctx);

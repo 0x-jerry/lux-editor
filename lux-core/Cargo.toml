@@ -5,5 +5,8 @@ edition = "2024"
 
 [dependencies]
 ropey = "1.6"
-tokio = { version = "1.37", features = ["fs", "io-util"] }
+tokio = { version = "1.37", features = ["fs", "io-util", "rt", "rt-multi-thread", "macros"] }
 anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3"

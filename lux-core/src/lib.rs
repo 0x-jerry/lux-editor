@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 
+#[derive(Debug)]
 pub struct Buffer {
     rope: Rope,
     path: Option<PathBuf>,
@@ -84,5 +85,60 @@ impl Buffer {
 impl Default for Buffer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_remove_and_text_roundtrip() {
+        let mut buffer = Buffer::new();
+        assert_eq!(buffer.text().to_string(), "");
+        buffer.insert(0, "hello");
+        buffer.insert(5, " world");
+        assert_eq!(buffer.text().to_string(), "hello world");
+        buffer.remove(5..6);
+        assert_eq!(buffer.text().to_string(), "helloworld");
+    }
+
+    #[test]
+    fn len_lines_counts_newlines() {
+        let mut buffer = Buffer::new();
+        assert_eq!(buffer.len_lines(), 1);
+        buffer.insert(0, "a\nb\nc");
+        assert_eq!(buffer.len_lines(), 3);
+    }
+
+    #[test]
+    fn line_iterates_valid_lines_and_returns_none_for_invalid() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "a\nb");
+        assert!(buffer.line(0).is_some());
+        assert!(buffer.line(1).is_some());
+        assert!(buffer.line(2).is_none());
+        let mut first = buffer.line(0).unwrap();
+        assert_eq!(first.next().unwrap(), "a\n");
+    }
+
+    #[test]
+    fn path_is_none_for_new_buffer() {
+        let buffer = Buffer::new();
+        assert!(buffer.path().is_none());
+    }
+
+    #[tokio::test]
+    async fn save_and_from_file_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.txt");
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "line one\nline two");
+        buffer.set_path(&path);
+        buffer.save().await.unwrap();
+
+        let loaded = Buffer::from_file(&path).await.unwrap();
+        assert_eq!(loaded.text().to_string(), "line one\nline two");
+        assert_eq!(loaded.path().unwrap(), &path);
     }
 }

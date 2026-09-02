@@ -1,10 +1,13 @@
 use super::{App, OpenDocument, ShellView};
+use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
 use crate::language::{HighlightSnapshot, HighlightThemeConfig, LanguageKind};
 use eframe::egui;
 use lux_core::Buffer;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
+use tokio::io::AsyncWriteExt;
 
 impl App {
     pub fn new() -> Self {
@@ -31,6 +34,8 @@ impl App {
             shell_view: ShellView::Editor,
             command_panel: Default::default(),
             caret_blink_anchor: std::time::Instant::now(),
+            highlight_dirty: false,
+            highlight_deadline: None,
         };
         let initial_path = std::env::args().nth(1).map(PathBuf::from);
         app.initialize_from_path(initial_path);
@@ -70,22 +75,16 @@ impl App {
             return;
         }
 
-        if let Ok(buffer) = self.rt.block_on(Buffer::from_file(&path)) {
-            let next_doc = OpenDocument::from_buffer(buffer);
-            if self.should_reuse_active_document_slot() {
-                self.documents[self.active_document] = next_doc;
-            } else {
-                self.documents.push(next_doc);
-                self.active_document = self.documents.len().saturating_sub(1);
-            }
-            self.touch_caret_blink();
-            self.update_window_title(ctx);
-            self.track_file_open(&path);
-            self.refresh_language_intelligence();
-        }
+        let event_tx = self.event_tx.clone();
+        self.rt.spawn(async move {
+            let buffer = Buffer::from_file(&path)
+                .await
+                .map_err(|err| err.to_string());
+            let _ = event_tx.send(CustomEvent::FileLoaded { path, buffer });
+        });
     }
 
-    pub(super) fn save_current_buffer(&mut self, ctx: &egui::Context) -> bool {
+    pub(super) fn save_current_buffer(&mut self, _ctx: &egui::Context) -> bool {
         let active_path = self.active_document().buffer.path().cloned();
         if active_path.is_none() {
             if let Some(path) = rfd::FileDialog::new().save_file() {
@@ -96,25 +95,37 @@ impl App {
             }
         }
 
-        let save_result = {
-            let active_index = self.active_document;
-            let documents = &mut self.documents;
-            let buffer = &mut documents[active_index].buffer;
-            self.rt.block_on(buffer.save())
-        };
+        let save_path = self.buffer().path().cloned().unwrap();
+        let text = self.buffer().text().to_string();
+        let generation = self.active_document().edit_generation;
+        let event_tx = self.event_tx.clone();
+        self.rt.spawn(async move {
+            let ok = write_text_to_path(&save_path, &text).await.is_ok();
+            let _ = event_tx.send(CustomEvent::FileSaved {
+                path: save_path,
+                generation,
+                ok,
+            });
+        });
+        true
+    }
 
-        if save_result.is_ok() {
-            let saved_path = self.buffer().path().cloned().unwrap();
-            let active_document = self.active_document_mut();
-            active_document.document_dirty = false;
-            active_document.document_status = Some(format!("Saved {}", saved_path.display()));
-            self.track_file_open(&saved_path);
-            self.update_window_title(ctx);
-            self.on_file_change();
-            true
-        } else {
-            self.active_document_mut().document_status = Some("Failed to save file".to_string());
-            false
+    const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(60);
+
+    pub(super) fn schedule_language_refresh(&mut self) {
+        self.highlight_dirty = true;
+        self.highlight_deadline = Some(Instant::now() + Self::HIGHLIGHT_DEBOUNCE);
+    }
+
+    pub(super) fn flush_scheduled_language_refresh(&mut self) {
+        if self.highlight_dirty
+            && self
+                .highlight_deadline
+                .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            self.highlight_dirty = false;
+            self.highlight_deadline = None;
+            self.refresh_language_intelligence();
         }
     }
 
@@ -157,7 +168,7 @@ impl App {
         }
     }
 
-    fn track_file_open(&mut self, path: &Path) {
+    pub(super) fn track_file_open(&mut self, path: &Path) {
         if let Some(workspace_path) = self
             .workspace_path
             .as_ref()
@@ -217,6 +228,12 @@ impl App {
             return;
         }
 
+        if self.documents[index].document_dirty {
+            self.documents[index].document_status =
+                Some("Unsaved changes — save before closing".to_string());
+            return;
+        }
+
         if self.documents.len() == 1 {
             self.documents[0] = OpenDocument::new_empty();
             self.active_document = 0;
@@ -238,7 +255,7 @@ impl App {
         self.reveal_active_in_tree = true;
     }
 
-    fn should_reuse_active_document_slot(&self) -> bool {
+    pub(super) fn should_reuse_active_document_slot(&self) -> bool {
         if self.documents.len() != 1 || self.active_document != 0 {
             return false;
         }
@@ -247,4 +264,12 @@ impl App {
             && !active_document.document_dirty
             && active_document.buffer.text().len_chars() == 0
     }
+}
+
+async fn write_text_to_path(path: &Path, text: &str) -> std::io::Result<()> {
+    let file = tokio::fs::File::create(path).await?;
+    let mut writer = tokio::io::BufWriter::new(file);
+    writer.write_all(text.as_bytes()).await?;
+    writer.flush().await?;
+    Ok(())
 }

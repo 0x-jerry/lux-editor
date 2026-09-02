@@ -30,6 +30,7 @@ pub struct OpenDocument {
     caret_state: CaretState,
     edit_history: EditHistory,
     document_dirty: bool,
+    edit_generation: u64,
     document_status: Option<String>,
 }
 
@@ -40,6 +41,7 @@ impl OpenDocument {
             caret_state: Default::default(),
             edit_history: Default::default(),
             document_dirty: false,
+            edit_generation: 0,
             document_status: None,
         }
     }
@@ -50,6 +52,7 @@ impl OpenDocument {
             caret_state: Default::default(),
             edit_history: Default::default(),
             document_dirty: false,
+            edit_generation: 0,
             document_status: None,
         };
         doc.caret_state.reset_to_buffer_end(&doc.buffer);
@@ -92,6 +95,8 @@ pub struct App {
     shell_view: ShellView,
     command_panel: CommandPanelState,
     caret_blink_anchor: Instant,
+    highlight_dirty: bool,
+    highlight_deadline: Option<Instant>,
 }
 
 impl App {

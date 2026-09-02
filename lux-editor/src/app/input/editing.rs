@@ -131,22 +131,18 @@ impl App {
         ctx: &egui::Context,
     ) -> bool {
         let total_chars = self.active_document().buffer.text().len_chars();
-        // If caller passes a collapsed range while a selection exists, replace the selection.
-        let (start, end) = if start == end {
+        let (mut start, mut end) = if start == end {
+            // A collapsed range with an active selection replaces the selection.
             if let Some(range) = self.active_document().caret_state.selection_range() {
-                let start = range.start.min(total_chars);
-                let end = range.end.min(total_chars).max(start);
-                (start, end)
+                (range.start, range.end)
             } else {
-                let start = start.min(total_chars);
-                let end = end.min(total_chars).max(start);
                 (start, end)
             }
         } else {
-            let start = start.min(total_chars);
-            let end = end.min(total_chars).max(start);
             (start, end)
         };
+        start = start.min(total_chars);
+        end = end.min(total_chars).max(start);
         let deleted_text = self
             .active_document()
             .buffer
@@ -171,6 +167,7 @@ impl App {
                 .set_caret_char(next_caret, &active_document.buffer, false);
             // Ensure selection is cleared after any edit, including selection replacement.
             active_document.caret_state.clear_selection();
+            active_document.caret_state.clear_preferred_column();
             active_document.caret_state.snapshot()
         };
         self.active_document_mut()
@@ -231,6 +228,7 @@ impl App {
     pub(super) fn mark_document_dirty(&mut self, ctx: &egui::Context) {
         let active_document = self.active_document_mut();
         active_document.document_dirty = true;
+        active_document.edit_generation += 1;
         active_document.document_status = Some("Modified".to_string());
         self.update_window_title(ctx);
     }

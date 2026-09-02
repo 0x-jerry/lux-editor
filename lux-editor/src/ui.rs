@@ -58,7 +58,9 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         );
     }
 
-    egui::CentralPanel::default().show(ctx, |ui| {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(0))
+        .show(ctx, |ui| {
         if shell_view == ShellView::Editor {
             editor::render_editor_view(
                 ui,

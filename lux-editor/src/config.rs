@@ -90,11 +90,7 @@ impl Config {
 
     pub fn add_recent(&mut self, path: PathBuf, is_dir: bool) {
         let item = RecentItem { path, is_dir };
-        self.recent_items.retain(|i| i.path != item.path);
-        self.recent_items.insert(0, item);
-        if self.recent_items.len() > 10 {
-            self.recent_items.truncate(10);
-        }
+        insert_recent(&mut self.recent_items, item, 10);
         self.prune_workspace_file_states_to_recent_dirs();
         self.save_recent_config();
     }
@@ -106,18 +102,14 @@ impl Config {
     }
 
     pub fn set_workspace_last_file(&mut self, workspace_path: &Path, file_path: &Path) {
-        self.workspace_file_states
-            .retain(|entry| entry.workspace_path != workspace_path);
-        self.workspace_file_states.insert(
-            0,
+        insert_workspace_state(
+            &mut self.workspace_file_states,
             WorkspaceFileState {
                 workspace_path: workspace_path.to_path_buf(),
                 file_path: file_path.to_path_buf(),
             },
+            50,
         );
-        if self.workspace_file_states.len() > 50 {
-            self.workspace_file_states.truncate(50);
-        }
         self.prune_workspace_file_states_to_recent_dirs();
         self.save_recent_config();
     }
@@ -197,5 +189,104 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("."))
             .join("lux")
             .join("recent.json")
+    }
+}
+
+fn insert_recent(items: &mut Vec<RecentItem>, item: RecentItem, max: usize) {
+    items.retain(|existing| existing.path != item.path);
+    items.insert(0, item);
+    items.truncate(max);
+}
+
+fn insert_workspace_state(
+    states: &mut Vec<WorkspaceFileState>,
+    state: WorkspaceFileState,
+    max: usize,
+) {
+    states.retain(|existing| existing.workspace_path != state.workspace_path);
+    states.insert(0, state);
+    states.truncate(max);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn recent(path: &str, is_dir: bool) -> RecentItem {
+        RecentItem {
+            path: PathBuf::from(path),
+            is_dir,
+        }
+    }
+
+    #[test]
+    fn insert_recent_dedups_and_caps() {
+        let mut items = vec![recent("/a", false)];
+        insert_recent(&mut items, recent("/a", false), 10);
+        assert_eq!(items.len(), 1);
+
+        for i in 0..15 {
+            insert_recent(&mut items, recent(&format!("/f{i}"), false), 10);
+        }
+        assert_eq!(items.len(), 10);
+        assert_eq!(items[0].path, PathBuf::from("/f14"));
+    }
+
+    #[test]
+    fn insert_workspace_state_dedups_and_caps() {
+        let mut states = Vec::new();
+        for i in 0..60 {
+            insert_workspace_state(
+                &mut states,
+                WorkspaceFileState {
+                    workspace_path: PathBuf::from(format!("/ws{i}")),
+                    file_path: PathBuf::from("/f"),
+                },
+                50,
+            );
+        }
+        assert_eq!(states.len(), 50);
+        assert_eq!(states[0].workspace_path, PathBuf::from("/ws59"));
+    }
+
+    #[test]
+    fn prune_workspace_states_keeps_only_recent_dirs() {
+        let mut config = Config {
+            recent_items: vec![recent("/ws1", true)],
+            workspace_file_states: vec![
+                WorkspaceFileState {
+                    workspace_path: PathBuf::from("/ws1"),
+                    file_path: PathBuf::from("/ws1/f"),
+                },
+                WorkspaceFileState {
+                    workspace_path: PathBuf::from("/gone"),
+                    file_path: PathBuf::from("/gone/f"),
+                },
+            ],
+            settings: Default::default(),
+        };
+        config.prune_workspace_file_states_to_recent_dirs();
+        assert_eq!(config.workspace_file_states.len(), 1);
+        assert_eq!(
+            config.workspace_file_states[0].workspace_path,
+            PathBuf::from("/ws1")
+        );
+    }
+
+    #[test]
+    fn workspace_last_file_finds_matching_entry() {
+        let config = Config {
+            recent_items: vec![],
+            workspace_file_states: vec![WorkspaceFileState {
+                workspace_path: PathBuf::from("/ws"),
+                file_path: PathBuf::from("/ws/a.rs"),
+            }],
+            settings: Default::default(),
+        };
+        assert_eq!(
+            config.workspace_last_file(Path::new("/ws")),
+            Some(PathBuf::from("/ws/a.rs"))
+        );
+        assert_eq!(config.workspace_last_file(Path::new("/other")), None);
     }
 }

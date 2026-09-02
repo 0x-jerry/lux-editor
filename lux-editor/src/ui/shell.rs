@@ -27,6 +27,7 @@ pub fn draw_shell_navigation(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_status_bar(
     ctx: &egui::Context,
     shell_view: ShellView,

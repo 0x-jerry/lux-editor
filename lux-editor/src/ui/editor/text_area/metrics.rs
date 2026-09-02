@@ -30,7 +30,7 @@ pub fn measure_text_area(
         char_width,
         gutter_total_width: gutter_width + 5.0,
         gutter_text_color: ui.visuals().weak_text_color(),
-        gutter_bg: ui.visuals().extreme_bg_color,
+        gutter_bg: ui.visuals().code_bg_color,
         gutter_active_bg: ui.visuals().selection.bg_fill.gamma_multiply(0.2),
         gutter_separator_color: ui.visuals().widgets.noninteractive.bg_stroke.color,
         gutter_font_id: font_id,

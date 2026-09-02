@@ -44,28 +44,34 @@ pub fn render_editor_view(
         return;
     }
 
-    egui::ScrollArea::horizontal()
-        .id_salt("document_tabs_scroll")
-        .auto_shrink([false, true])
+    egui::Frame::new()
+        .fill(ui.visuals().code_bg_color)
+        .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                for (index, tab) in document_tabs.iter().enumerate() {
-                    let selected = index == active_document_index;
-                    let label = if selected {
-                        format!("[{}]", tab.title)
-                    } else {
-                        tab.title.clone()
-                    };
-                    if ui.selectable_label(selected, label).clicked() {
-                        events.push(CustomEvent::SwitchDocument(index));
-                    }
-                    if ui.small_button("x").clicked() {
-                        events.push(CustomEvent::CloseDocument(index));
-                    }
-                }
-            });
+            egui::ScrollArea::horizontal()
+                .id_salt("document_tabs_scroll")
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        for (index, tab) in document_tabs.iter().enumerate() {
+                            let selected = index == active_document_index;
+                            let label = if selected {
+                                format!("[{}]", tab.title)
+                            } else {
+                                tab.title.clone()
+                            };
+                            if ui.selectable_label(selected, label).clicked() {
+                                events.push(CustomEvent::SwitchDocument(index));
+                            }
+                            if ui.small_button("x").clicked() {
+                                events.push(CustomEvent::CloseDocument(index));
+                            }
+                        }
+                    });
+                });
         });
-    ui.separator();
+    ui.add(egui::Separator::default().spacing(0.0));
 
     text_area::render_text_area(
         ui,

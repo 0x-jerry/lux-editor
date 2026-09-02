@@ -21,8 +21,15 @@ pub fn build_highlighted_line_job(
 
     let mut cursor = 0usize;
     for token in tokens {
-        let start = token.start_col.min(line.len());
-        let end = token.end_col.min(line.len());
+        // Token offsets are byte-based; snap to UTF-8 boundaries so slicing can't panic.
+        let mut start = token.start_col.min(line.len());
+        let mut end = token.end_col.min(line.len());
+        while start > 0 && !line.is_char_boundary(start) {
+            start -= 1;
+        }
+        while end < line.len() && !line.is_char_boundary(end) {
+            end += 1;
+        }
         if start > cursor {
             append_default(&mut job, &line[cursor..start], font_size);
         }

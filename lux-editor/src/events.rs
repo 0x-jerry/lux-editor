@@ -2,6 +2,15 @@
 pub enum CustomEvent {
     FileChange,
     ConfigChange,
+    FileLoaded {
+        path: std::path::PathBuf,
+        buffer: Result<lux_core::Buffer, String>,
+    },
+    FileSaved {
+        path: std::path::PathBuf,
+        generation: u64,
+        ok: bool,
+    },
     OpenFile(std::path::PathBuf),
     OpenFolder(std::path::PathBuf),
     Delete(std::path::PathBuf),

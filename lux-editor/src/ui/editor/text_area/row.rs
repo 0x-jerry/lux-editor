@@ -17,6 +17,7 @@ pub struct RowRenderOutput {
     pub visible_rows: Vec<VisibleRow>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_rows(
     ui: &mut egui::Ui,
     buffer: &Buffer,
@@ -119,7 +120,7 @@ fn render_row(
 }
 
 fn display_line_text(line_text: &str) -> &str {
-    return line_text.trim_end_matches(['\r', '\n']);
+    line_text.trim_end_matches(['\r', '\n'])
 }
 
 fn push_pointer_events(
@@ -165,6 +166,7 @@ fn push_pointer_events(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_caret(
     ui: &egui::Ui,
     rect: egui::Rect,

@@ -61,3 +61,39 @@ fn is_ignored(path: &Path, matcher: &Gitignore) -> bool {
         .matched_path_or_any_parents(path, is_dir)
         .is_ignore()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{AccessKind, AccessMode, CreateKind, DataChange, ModifyKind};
+    use std::fs;
+
+    #[test]
+    fn gitignore_filters_ignored_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(".gitignore"), "target\n*.log\n").unwrap();
+        fs::create_dir(dir.path().join("target")).unwrap();
+        fs::create_dir(dir.path().join("src")).unwrap();
+        fs::write(dir.path().join("target/main.rs"), "fn main() {}").unwrap();
+        fs::write(dir.path().join("debug.log"), "x").unwrap();
+        fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+
+        let ignored = build_gitignore(dir.path());
+        assert!(is_ignored(&dir.path().join("target/main.rs"), &ignored));
+        assert!(is_ignored(&dir.path().join("debug.log"), &ignored));
+        assert!(!is_ignored(&dir.path().join("src/main.rs"), &ignored));
+    }
+
+    #[test]
+    fn watch_event_relevance() {
+        assert!(is_watch_event_relevant(&notify::Event::new(EventKind::Create(
+            CreateKind::File
+        ))));
+        assert!(is_watch_event_relevant(&notify::Event::new(EventKind::Modify(
+            ModifyKind::Data(DataChange::Any)
+        ))));
+        assert!(!is_watch_event_relevant(&notify::Event::new(EventKind::Access(
+            AccessKind::Close(AccessMode::Any)
+        ))));
+    }
+}

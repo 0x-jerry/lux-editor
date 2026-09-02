@@ -74,6 +74,10 @@ impl CaretState {
         self.anchor_char = None;
     }
 
+    pub fn clear_preferred_column(&mut self) {
+        self.preferred_column = None;
+    }
+
     pub fn move_left(&mut self, buffer: &Buffer, selecting: bool) {
         if !selecting && let Some(range) = self.selection_range() {
             self.caret_char = range.start;
@@ -209,8 +213,22 @@ pub struct EditHistory {
 }
 
 impl EditHistory {
+    const MAX_UNDO_DEPTH: usize = 1000;
+
     pub fn push(&mut self, transaction: EditTransaction) {
+        if let Some(last) = self.undo_stack.last_mut()
+            && last.deleted_text.is_empty()
+            && transaction.deleted_text.is_empty()
+            && transaction.start_char == last.start_char + last.inserted_text.chars().count()
+        {
+            last.inserted_text.push_str(&transaction.inserted_text);
+            last.after = transaction.after;
+            return;
+        }
         self.undo_stack.push(transaction);
+        if self.undo_stack.len() > Self::MAX_UNDO_DEPTH {
+            self.undo_stack.remove(0);
+        }
         self.redo_stack.clear();
     }
 
@@ -282,24 +300,18 @@ fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
         return 0;
     }
 
-    let chars = buffer
-        .text()
-        .slice(..caret_char)
-        .to_string()
-        .chars()
-        .collect::<Vec<_>>();
-    let mut index = chars.len();
-
-    while index > 0 && chars[index - 1].is_whitespace() {
+    let slice = buffer.text().slice(..caret_char);
+    let mut index = caret_char;
+    while index > 0 && slice.char(index - 1).is_whitespace() {
         index -= 1;
     }
-    while index > 0 && is_word_char(chars[index - 1]) {
+    while index > 0 && is_word_char(slice.char(index - 1)) {
         index -= 1;
     }
-    while index > 0 && !chars[index - 1].is_whitespace() && !is_word_char(chars[index - 1]) {
+    while index > 0 && !slice.char(index - 1).is_whitespace() && !is_word_char(slice.char(index - 1))
+    {
         index -= 1;
     }
-
     index
 }
 
@@ -309,24 +321,20 @@ fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
         return total_chars;
     }
 
-    let chars = buffer
-        .text()
-        .slice(caret_char..total_chars)
-        .to_string()
-        .chars()
-        .collect::<Vec<_>>();
+    let slice = buffer.text().slice(caret_char..total_chars);
     let mut offset = 0usize;
-
-    while offset < chars.len() && chars[offset].is_whitespace() {
+    while offset < slice.len_chars() && slice.char(offset).is_whitespace() {
         offset += 1;
     }
-    while offset < chars.len() && is_word_char(chars[offset]) {
+    while offset < slice.len_chars() && is_word_char(slice.char(offset)) {
         offset += 1;
     }
-    while offset < chars.len() && !chars[offset].is_whitespace() && !is_word_char(chars[offset]) {
+    while offset < slice.len_chars()
+        && !slice.char(offset).is_whitespace()
+        && !is_word_char(slice.char(offset))
+    {
         offset += 1;
     }
-
     caret_char + offset
 }
 
@@ -336,7 +344,7 @@ fn is_word_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CaretState, EditHistory, EditTransaction};
+    use super::{CaretState, EditHistory, EditTransaction, line_column};
     use lux_core::Buffer;
 
     #[test]
@@ -389,5 +397,115 @@ mod tests {
         assert_eq!(buffer.text().to_string(), "ab");
         history.redo(&mut buffer);
         assert_eq!(buffer.text().to_string(), "abc");
+    }
+
+    #[test]
+    fn consecutive_inserts_coalesce_into_one_undo_step() {
+        let mut buffer = Buffer::new();
+        let mut history = EditHistory::default();
+        for ch in ["a", "b", "c"] {
+            let caret = buffer.text().len_chars();
+            history.push(EditTransaction {
+                start_char: caret,
+                deleted_text: String::new(),
+                inserted_text: ch.to_string(),
+                before: Default::default(),
+                after: Default::default(),
+            });
+            buffer.insert(caret, ch);
+        }
+        assert_eq!(buffer.text().to_string(), "abc");
+
+        // A single undo removes the whole typed run.
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "");
+        history.redo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "abc");
+    }
+
+    #[test]
+    fn non_contiguous_inserts_do_not_coalesce() {
+        let mut buffer = Buffer::new();
+        let mut history = EditHistory::default();
+        history.push(EditTransaction {
+            start_char: 0,
+            deleted_text: String::new(),
+            inserted_text: "a".to_string(),
+            before: Default::default(),
+            after: Default::default(),
+        });
+        buffer.insert(0, "a");
+        // Edit before the existing text (start_char unchanged) stays a separate step.
+        history.push(EditTransaction {
+            start_char: 0,
+            deleted_text: String::new(),
+            inserted_text: "b".to_string(),
+            before: Default::default(),
+            after: Default::default(),
+        });
+        buffer.insert(0, "b");
+
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "a");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "");
+    }
+
+    #[test]
+    fn move_home_and_end_track_line_bounds() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "  hello\nworld");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(6, &buffer, false); // 'o' on the first line
+        caret.move_home(&buffer, false);
+        assert_eq!(caret.caret_char(), 0);
+        caret.move_end(&buffer, false);
+        assert_eq!(caret.caret_char(), 7); // end of "  hello", before the newline
+    }
+
+    #[test]
+    fn move_down_up_preserve_preferred_column() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "ab\ncdef\ngh");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(1, &buffer, false); // 'b', column 1 on line 0
+        caret.move_down(&buffer, false);
+        assert_eq!(caret.caret_char(), 4); // 'd', column 1 on line 1
+        caret.move_down(&buffer, false);
+        assert_eq!(caret.caret_char(), 9); // 'h', column 1 on short line 2
+        caret.move_up(&buffer, false);
+        assert_eq!(caret.caret_char(), 4);
+    }
+
+    #[test]
+    fn move_left_without_select_collapses_selection() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "abc");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(3, &buffer, true); // select 0..3
+        assert_eq!(caret.selection_range(), Some(0..3));
+        caret.move_left(&buffer, false);
+        assert_eq!(caret.caret_char(), 0);
+        assert!(caret.selection_range().is_none());
+    }
+
+    #[test]
+    fn selection_range_is_normalized_and_length_reported() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "abcde");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(4, &buffer, true); // anchor 0, caret 4
+        assert_eq!(caret.selection_range(), Some(0..4));
+        assert_eq!(caret.selection_len(), 4);
+        caret.clear_selection();
+        assert_eq!(caret.selection_len(), 0);
+    }
+
+    #[test]
+    fn line_column_reports_one_based_positions() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "ab\ncdef");
+        assert_eq!(line_column(&buffer, 3), (2, 1)); // 'c' -> line 2, col 1
+        assert_eq!(line_column(&buffer, 5), (2, 3)); // 'e' -> line 2, col 3
     }
 }

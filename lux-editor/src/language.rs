@@ -276,3 +276,71 @@ fn append_ranges(line_tokens: &mut Vec<HighlightSpan>, ranges: Vec<(Style, &str)
         cursor += length;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn language_kind_from_path() {
+        assert_eq!(LanguageKind::from_path(None), LanguageKind::PlainText);
+        assert_eq!(
+            LanguageKind::from_path(Some(Path::new("main.rs"))),
+            LanguageKind::Extension("rs".to_string())
+        );
+        assert_eq!(
+            LanguageKind::from_path(Some(Path::new("FILE.RS"))),
+            LanguageKind::Extension("rs".to_string())
+        );
+        assert_eq!(
+            LanguageKind::from_path(Some(Path::new("README"))),
+            LanguageKind::PlainText
+        );
+    }
+
+    #[test]
+    fn plain_text_produces_empty_line_tokens() {
+        let snapshot = parse_snapshot(
+            &SyntaxSet::load_defaults_newlines(),
+            &Theme::default(),
+            "hello\nworld",
+            LanguageKind::PlainText,
+            1,
+        );
+        assert_eq!(snapshot.line_tokens.len(), 2);
+        assert!(snapshot.line_tokens.iter().all(|line| line.is_empty()));
+    }
+
+    #[test]
+    fn unknown_extension_fills_black_spans() {
+        let snapshot = parse_snapshot(
+            &SyntaxSet::load_defaults_newlines(),
+            &Theme::default(),
+            "ab\n\ncd",
+            LanguageKind::Extension("zzz".to_string()),
+            1,
+        );
+        assert_eq!(snapshot.line_tokens.len(), 3);
+        assert_eq!(snapshot.line_tokens[0].len(), 1); // non-empty line gets one span
+        assert!(snapshot.line_tokens[1].is_empty()); // blank line stays empty
+        assert_eq!(snapshot.line_tokens[2].len(), 1);
+    }
+
+    #[test]
+    fn rust_extension_produces_highlight_spans() {
+        let snapshot = parse_snapshot(
+            &SyntaxSet::load_defaults_newlines(),
+            &Theme::default(),
+            "fn main() {}\n",
+            LanguageKind::Extension("rs".to_string()),
+            1,
+        );
+        assert!(!snapshot.line_tokens[0].is_empty());
+    }
+
+    #[test]
+    fn available_syntax_theme_names_is_not_empty() {
+        assert!(!available_syntax_theme_names().is_empty());
+    }
+}

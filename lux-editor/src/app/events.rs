@@ -1,4 +1,4 @@
-use super::{App, ShellView};
+use super::{App, OpenDocument, ShellView};
 use crate::events::CustomEvent;
 use eframe::egui;
 
@@ -13,6 +13,45 @@ impl App {
         match event {
             CustomEvent::FileChange => self.on_file_change(),
             CustomEvent::ConfigChange => self.on_config_change(),
+            CustomEvent::FileLoaded { path, buffer } => match buffer {
+                Ok(buffer) => {
+                    let next_doc = OpenDocument::from_buffer(buffer);
+                    if self.should_reuse_active_document_slot() {
+                        self.documents[self.active_document] = next_doc;
+                    } else {
+                        self.documents.push(next_doc);
+                        self.active_document = self.documents.len().saturating_sub(1);
+                    }
+                    self.touch_caret_blink();
+                    self.update_window_title(ctx);
+                    self.track_file_open(&path);
+                    self.refresh_language_intelligence();
+                }
+                Err(err) => {
+                    self.active_document_mut().document_status =
+                        Some(format!("Failed to open {}: {}", path.display(), err));
+                }
+            },
+            CustomEvent::FileSaved {
+                path,
+                generation,
+                ok,
+            } => {
+                let active_document = self.active_document_mut();
+                if ok {
+                    if active_document.edit_generation == generation {
+                        active_document.document_dirty = false;
+                    }
+                    active_document.document_status =
+                        Some(format!("Saved {}", path.display()));
+                } else {
+                    active_document.document_status =
+                        Some("Failed to save file".to_string());
+                }
+                self.update_window_title(ctx);
+                self.track_file_open(&path);
+                self.on_file_change();
+            }
             CustomEvent::OpenFile(path) => self.open_file(path, ctx),
             CustomEvent::OpenFolder(path) => self.open_folder(path),
             CustomEvent::Delete(path) => {

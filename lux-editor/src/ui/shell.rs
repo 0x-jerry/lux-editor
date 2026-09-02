@@ -1,6 +1,7 @@
 use crate::app::ShellView;
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
+use eframe::egui;
 use std::path::Path;
 
 pub fn draw_shell_navigation(

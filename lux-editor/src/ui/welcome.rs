@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::events::CustomEvent;
+use eframe::egui;
 
 pub fn render_welcome_view(
     ui: &mut egui::Ui,

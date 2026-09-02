@@ -3,6 +3,7 @@ use crate::config::{Config, EditorSettings};
 use crate::file_tree::FileTree;
 use crate::language::HighlightSnapshot;
 use lux_core::Buffer;
+use std::ops::Range;
 use std::path::PathBuf;
 
 pub struct DocumentTab {
@@ -24,7 +25,7 @@ pub struct DrawUiState<'a> {
     pub reveal_active_in_tree: bool,
     pub caret_line: usize,
     pub caret_column: usize,
-    pub selection_len: usize,
+    pub selection_range: Option<Range<usize>>,
     pub caret_visible: bool,
     pub document_dirty: bool,
 }

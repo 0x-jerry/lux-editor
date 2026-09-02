@@ -70,6 +70,13 @@ impl CaretState {
         self.preferred_column = None;
     }
 
+    pub fn select_range(&mut self, start: usize, end: usize, buffer: &Buffer) {
+        let total_chars = buffer.text().len_chars();
+        self.anchor_char = Some(start.min(total_chars));
+        self.caret_char = end.min(total_chars);
+        self.preferred_column = None;
+    }
+
     pub fn clear_selection(&mut self) {
         self.anchor_char = None;
     }
@@ -188,12 +195,6 @@ impl CaretState {
         let target = (target_start + target_column).min(target_end);
         self.set_caret_char(target, buffer, selecting);
         self.preferred_column = Some(target_column);
-    }
-
-    pub fn selection_len(&self) -> usize {
-        self.selection_range()
-            .map(|range| range.end - range.start)
-            .unwrap_or(0)
     }
 }
 
@@ -342,9 +343,40 @@ fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 
+pub(super) fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Range<usize>> {
+    let total_chars = buffer.text().len_chars();
+    if total_chars == 0 {
+        return None;
+    }
+    let index = char_index.min(total_chars.saturating_sub(1));
+    let ch = buffer.text().char(index);
+    if ch == '\n' || ch == '\r' || ch.is_whitespace() {
+        return None;
+    }
+    let word = is_word_char(ch);
+    let slice = buffer.text().slice(..total_chars);
+    let mut start = index;
+    while start > 0 {
+        let prev = slice.char(start - 1);
+        if (is_word_char(prev)) != word || prev == '\n' || prev == '\r' {
+            break;
+        }
+        start -= 1;
+    }
+    let mut end = index + 1;
+    while end < total_chars {
+        let next = slice.char(end);
+        if (is_word_char(next)) != word || next == '\n' || next == '\r' {
+            break;
+        }
+        end += 1;
+    }
+    Some(start..end)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CaretState, EditHistory, EditTransaction, line_column};
+    use super::{CaretState, EditHistory, EditTransaction, line_column, word_char_range};
     use lux_core::Buffer;
 
     #[test]
@@ -496,9 +528,9 @@ mod tests {
         let mut caret = CaretState::default();
         caret.set_caret_char(4, &buffer, true); // anchor 0, caret 4
         assert_eq!(caret.selection_range(), Some(0..4));
-        assert_eq!(caret.selection_len(), 4);
+        assert_eq!(caret.selection_range().unwrap().len(), 4);
         caret.clear_selection();
-        assert_eq!(caret.selection_len(), 0);
+        assert_eq!(caret.selection_range(), None);
     }
 
     #[test]
@@ -507,5 +539,36 @@ mod tests {
         buffer.insert(0, "ab\ncdef");
         assert_eq!(line_column(&buffer, 3), (2, 1)); // 'c' -> line 2, col 1
         assert_eq!(line_column(&buffer, 5), (2, 3)); // 'e' -> line 2, col 3
+    }
+
+    #[test]
+    fn word_char_range_selects_word_at_middle_and_edges() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "alpha beta");
+        assert_eq!(word_char_range(&buffer, 2), Some(0..5)); // middle
+        assert_eq!(word_char_range(&buffer, 0), Some(0..5)); // first char
+        assert_eq!(word_char_range(&buffer, 4), Some(0..5)); // last char
+        assert_eq!(word_char_range(&buffer, 6), Some(6..10)); // second word
+    }
+
+    #[test]
+    fn word_char_range_handles_punctuation_and_whitespace() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "foo,bar baz");
+        // Punctuation run is its own "word" of non-alphanumerics.
+        assert_eq!(word_char_range(&buffer, 3), Some(3..4));
+        // Space between words selects nothing.
+        assert_eq!(word_char_range(&buffer, 7), None);
+        // Empty buffer selects nothing.
+        let empty = Buffer::new();
+        assert_eq!(word_char_range(&empty, 0), None);
+    }
+
+    #[test]
+    fn word_char_range_does_not_cross_newlines() {
+        let mut buffer = Buffer::new();
+        buffer.insert(0, "foo\nbar");
+        assert_eq!(word_char_range(&buffer, 2), Some(0..3));
+        assert_eq!(word_char_range(&buffer, 5), Some(4..7));
     }
 }

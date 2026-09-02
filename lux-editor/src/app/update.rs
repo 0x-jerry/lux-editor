@@ -21,7 +21,7 @@ impl EframeApp for App {
 
         let highlight_snapshot = self.highlight_snapshot().clone();
         let (caret_line, caret_column) = self.caret_position();
-        let selection_len = self.selection_len();
+        let selection_range = self.selection_range();
         let caret_visible = self.caret_blink_visible();
         let reveal_active_in_tree = self.reveal_active_in_tree;
         let document_tabs = self
@@ -49,7 +49,7 @@ impl EframeApp for App {
                 reveal_active_in_tree,
                 caret_line,
                 caret_column,
-                selection_len,
+                selection_range,
                 caret_visible,
                 document_dirty: active_document.document_dirty,
             },

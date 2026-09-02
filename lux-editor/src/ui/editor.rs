@@ -1,5 +1,4 @@
-mod pointer;
-mod text_area;
+mod text_editor;
 
 use crate::config::Config;
 use crate::events::CustomEvent;
@@ -7,6 +6,8 @@ use crate::language::HighlightSnapshot;
 use crate::ui::types::DocumentTab;
 use crate::ui::welcome;
 use lux_core::Buffer;
+use eframe::egui;
+use std::ops::Range;
 use std::path::PathBuf;
 
 pub struct EditorViewState<'a> {
@@ -18,7 +19,7 @@ pub struct EditorViewState<'a> {
     pub editor_config: &'a Config,
     pub caret_line: usize,
     pub caret_column: usize,
-    pub selection_len: usize,
+    pub selection_range: Option<Range<usize>>,
     pub caret_visible: bool,
 }
 
@@ -36,7 +37,7 @@ pub fn render_editor_view(
         editor_config,
         caret_line,
         caret_column,
-        selection_len,
+        selection_range,
         caret_visible,
     } = state;
     if workspace_path.is_none() && buffer.path().is_none() {
@@ -73,15 +74,15 @@ pub fn render_editor_view(
         });
     ui.add(egui::Separator::default().spacing(0.0));
 
-    text_area::render_text_area(
+    text_editor::render_text_editor(
         ui,
-        text_area::TextAreaState {
+        text_editor::TextEditorState {
             buffer,
             highlight_snapshot,
             editor_config,
             caret_line,
             caret_column,
-            selection_len,
+            selection_range,
             caret_visible,
         },
         events,

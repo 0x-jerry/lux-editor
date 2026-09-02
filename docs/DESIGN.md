@@ -50,6 +50,7 @@
 - Syntax highlighting snapshots.
 - Theme/font hot reload.
 - Basic typing, backspace, tab, and newline indentation.
+- Glyph-accurate caret, painted selection, double-click word select, caret reveal (`text_editor` view).
 
 ## Next Technical Focus
 - Command palette.

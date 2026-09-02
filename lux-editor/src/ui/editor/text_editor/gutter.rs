@@ -1,12 +1,13 @@
-use super::metrics::TextAreaMetrics;
+use super::metrics::TextEditorMetrics;
 use super::row::VisibleRow;
+use eframe::egui;
 
 pub fn paint_gutter(
     ui: &egui::Ui,
     inner_rect: egui::Rect,
     visible_rows: &[VisibleRow],
     caret_line: usize,
-    metrics: &TextAreaMetrics,
+    metrics: &TextEditorMetrics,
 ) {
     let gutter_rect = egui::Rect::from_min_max(
         inner_rect.left_top(),

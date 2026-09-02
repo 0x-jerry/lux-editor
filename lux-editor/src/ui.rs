@@ -7,6 +7,7 @@ mod welcome;
 
 use crate::app::ShellView;
 use crate::events::CustomEvent;
+use eframe::egui;
 
 pub use types::DocumentTab;
 pub use types::DrawUiState;
@@ -27,7 +28,7 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         reveal_active_in_tree,
         caret_line,
         caret_column,
-        selection_len,
+        selection_range,
         caret_visible,
         document_dirty,
     } = state;
@@ -35,6 +36,7 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
     let mut events = Vec::new();
 
     shell::draw_shell_navigation(ctx, shell_view, &mut events);
+    let selection_len = selection_range.as_ref().map_or(0, |range| range.end - range.start);
     shell::draw_status_bar(
         ctx,
         shell_view,
@@ -73,7 +75,7 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
                     editor_config,
                     caret_line,
                     caret_column,
-                    selection_len,
+                    selection_range,
                     caret_visible,
                 },
                 &mut events,

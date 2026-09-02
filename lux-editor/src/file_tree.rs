@@ -1,5 +1,6 @@
 use crate::events::CustomEvent;
-use egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
+use eframe::egui;
+use eframe::egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
 use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::path::{Path, PathBuf};

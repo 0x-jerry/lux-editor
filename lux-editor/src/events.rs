@@ -28,4 +28,8 @@ pub enum CustomEvent {
         column: usize,
         selecting: bool,
     },
+    SelectWordFromPointer {
+        line_index: usize,
+        column: usize,
+    },
 }

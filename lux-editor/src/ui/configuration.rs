@@ -2,6 +2,7 @@ use crate::config::{Config, EditorSettings};
 use crate::events::CustomEvent;
 use crate::language::available_syntax_theme_names;
 use lux_core::Buffer;
+use eframe::egui;
 use std::path::PathBuf;
 
 pub fn render_configuration_view(

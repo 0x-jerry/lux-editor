@@ -1,5 +1,5 @@
 use super::commands::EditorCommand;
-use crate::app::editor::line_column;
+use crate::app::editor::{line_column, word_char_range};
 use crate::app::{App, ShellView};
 
 impl App {
@@ -22,8 +22,8 @@ impl App {
         )
     }
 
-    pub(in crate::app) fn selection_len(&self) -> usize {
-        self.active_document().caret_state.selection_len()
+    pub(in crate::app) fn selection_range(&self) -> Option<std::ops::Range<usize>> {
+        self.active_document().caret_state.selection_range()
     }
 
     pub(in crate::app) fn set_caret_from_pointer(
@@ -32,25 +32,45 @@ impl App {
         column: usize,
         selecting: bool,
     ) {
-        let total_lines = self.buffer().len_lines();
-        if total_lines == 0 {
+        let Some(next) = self.pointer_to_char(line_index, column) else {
             let active_document = self.active_document_mut();
             active_document
                 .caret_state
                 .set_caret_char(0, &active_document.buffer, selecting);
             self.touch_caret_blink();
             return;
-        }
-        let line = line_index.min(total_lines.saturating_sub(1));
-        let line_start = self.buffer().text().line_to_char(line);
-        let line_text = self.buffer().text().line(line).to_string();
-        let line_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
-        let next = line_start + column.min(line_len);
+        };
         let active_document = self.active_document_mut();
         active_document
             .caret_state
             .set_caret_char(next, &active_document.buffer, selecting);
         self.touch_caret_blink();
+    }
+
+    pub(in crate::app) fn select_word_from_pointer(&mut self, line_index: usize, column: usize) {
+        let Some(char_index) = self.pointer_to_char(line_index, column) else {
+            return;
+        };
+        let Some(word) = word_char_range(self.buffer(), char_index) else {
+            return;
+        };
+        let active_document = self.active_document_mut();
+        active_document
+            .caret_state
+            .select_range(word.start, word.end, &active_document.buffer);
+        self.touch_caret_blink();
+    }
+
+    fn pointer_to_char(&self, line_index: usize, column: usize) -> Option<usize> {
+        let total_lines = self.buffer().len_lines();
+        if total_lines == 0 {
+            return None;
+        }
+        let line = line_index.min(total_lines.saturating_sub(1));
+        let line_start = self.buffer().text().line_to_char(line);
+        let line_text = self.buffer().text().line(line).to_string();
+        let line_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
+        Some(line_start + column.min(line_len))
     }
 
     pub(in crate::app) fn caret_blink_visible(&self) -> bool {

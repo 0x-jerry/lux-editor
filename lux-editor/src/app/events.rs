@@ -85,6 +85,9 @@ impl App {
                 column,
                 selecting,
             } => self.set_caret_from_pointer(line_index, column, selecting),
+            CustomEvent::SelectWordFromPointer { line_index, column } => {
+                self.select_word_from_pointer(line_index, column)
+            }
         }
     }
 

@@ -1,9 +1,11 @@
 use crate::language::HighlightSpan;
+use eframe::egui;
 
 pub fn build_highlighted_line_job(
     line: &str,
     tokens: &[HighlightSpan],
     font_size: f32,
+    default_color: egui::Color32,
 ) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     if tokens.is_empty() {
@@ -12,7 +14,7 @@ pub fn build_highlighted_line_job(
             0.0,
             egui::TextFormat {
                 font_id: egui::FontId::monospace(font_size),
-                color: egui::Color32::BLACK,
+                color: default_color,
                 ..Default::default()
             },
         );
@@ -31,7 +33,7 @@ pub fn build_highlighted_line_job(
             end += 1;
         }
         if start > cursor {
-            append_default(&mut job, &line[cursor..start], font_size);
+            append_default(&mut job, &line[cursor..start], font_size, default_color);
         }
         if end > start {
             job.append(
@@ -53,18 +55,18 @@ pub fn build_highlighted_line_job(
     }
 
     if cursor < line.len() {
-        append_default(&mut job, &line[cursor..], font_size);
+        append_default(&mut job, &line[cursor..], font_size, default_color);
     }
     job
 }
 
-fn append_default(job: &mut egui::text::LayoutJob, text: &str, font_size: f32) {
+fn append_default(job: &mut egui::text::LayoutJob, text: &str, font_size: f32, color: egui::Color32) {
     job.append(
         text,
         0.0,
         egui::TextFormat {
             font_id: egui::FontId::monospace(font_size),
-            color: egui::Color32::BLACK,
+            color,
             ..Default::default()
         },
     );

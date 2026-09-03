@@ -1,4 +1,4 @@
-use crate::events::{AppEvent, CustomEvent, WorkspaceEvent, ShellEvent};
+use crate::events::{AppEvent, CustomEvent, ShellEvent, WorkspaceEvent};
 use crate::file_tree::{Entry, FileTree};
 use crate::ui::component::Component;
 use eframe::egui;
@@ -141,9 +141,7 @@ impl FileTreePanel {
                         ui.close();
                     }
                     if ui.button("Delete").clicked() {
-                        event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(
-                            path.clone(),
-                        )));
+                        event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(path.clone())));
                         ui.close();
                     }
                 });

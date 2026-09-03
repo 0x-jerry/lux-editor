@@ -30,8 +30,14 @@ impl Component for WelcomeView {
                         })
                     };
                     let icon_width = measure(ui, &egui::FontId::proportional(40.0), CODE);
-                    let text_width = measure(ui, &egui::FontId::proportional(32.0), "Welcome back to Lux")
-                        .max(measure(ui, &egui::FontId::proportional(15.0), "The editor for what's next"));
+                    let text_width =
+                        measure(ui, &egui::FontId::proportional(32.0), "Welcome back to Lux").max(
+                            measure(
+                                ui,
+                                &egui::FontId::proportional(15.0),
+                                "The editor for what's next",
+                            ),
+                        );
                     icon_width + ui.spacing().item_spacing.x + 12.0 + text_width
                 };
 

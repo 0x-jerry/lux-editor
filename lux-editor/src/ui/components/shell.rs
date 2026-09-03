@@ -213,11 +213,19 @@ impl Component for Shell {
                         },
                     ));
                 } else {
-                    events.extend(self.configuration_view.render(ui, ConfigurationViewInput {
-                        workspace_path,
-                        buffer,
-                        editor_config,
-                    }).into_iter().map(CustomEvent::Configuration));
+                    events.extend(
+                        self.configuration_view
+                            .render(
+                                ui,
+                                ConfigurationViewInput {
+                                    workspace_path,
+                                    buffer,
+                                    editor_config,
+                                },
+                            )
+                            .into_iter()
+                            .map(CustomEvent::Configuration),
+                    );
                 }
             });
 

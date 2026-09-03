@@ -61,7 +61,8 @@ impl App {
                         self.documents.tabs[self.documents.active_document] = next_doc;
                     } else {
                         self.documents.tabs.push(next_doc);
-                        self.documents.active_document = self.documents.tabs.len().saturating_sub(1);
+                        self.documents.active_document =
+                            self.documents.tabs.len().saturating_sub(1);
                     }
                     self.documents.touch_caret_blink();
                     self.update_window_title(ctx);

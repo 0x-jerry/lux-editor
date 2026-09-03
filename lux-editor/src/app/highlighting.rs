@@ -1,9 +1,7 @@
 //! Highlighting domain: the syntax service and its debounced refresh.
 
 use super::App;
-use crate::language::{
-    HighlightSnapshot, HighlightThemeConfig, HighlightingService, LanguageKind,
-};
+use crate::language::{HighlightSnapshot, HighlightThemeConfig, HighlightingService, LanguageKind};
 use crate::ui::theme::{ThemeChoice, syntax_theme_for};
 use std::time::{Duration, Instant};
 
@@ -53,7 +51,13 @@ impl App {
         };
         self.highlighting.service.set_theme(HighlightThemeConfig {
             theme_name: theme_name.to_string(),
-            theme_path: self.settings.editor_config.settings.theme.theme_path.clone(),
+            theme_path: self
+                .settings
+                .editor_config
+                .settings
+                .theme
+                .theme_path
+                .clone(),
         });
         let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
         self.highlighting

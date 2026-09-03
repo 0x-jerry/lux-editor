@@ -66,11 +66,7 @@ impl Component for ConfigurationView {
     type Message = ConfigurationEvent;
     type Input<'a> = ConfigurationViewInput<'a>;
 
-    fn render(
-        &mut self,
-        ui: &mut egui::Ui,
-        input: Self::Input<'_>,
-    ) -> Vec<ConfigurationEvent> {
+    fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<ConfigurationEvent> {
         let ConfigurationViewInput {
             workspace_path,
             buffer,

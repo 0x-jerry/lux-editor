@@ -4,12 +4,12 @@ use lux_core::Buffer;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use super::OpenDocument;
 use super::chrome::Chrome;
 use super::documents::Documents;
 use super::highlighting::Highlighting;
 use super::settings::SettingsState;
 use super::workspace::Workspace;
-use super::OpenDocument;
 
 /// Async runtime and the channel the app's background workers report through.
 pub(crate) struct Runtime {
@@ -33,7 +33,11 @@ impl App {
         let (event_tx, event_rx) = mpsc::channel();
         let editor_config = Config::load();
         let mut app = Self {
-            runtime: Runtime { rt, event_tx, event_rx },
+            runtime: Runtime {
+                rt,
+                event_tx,
+                event_rx,
+            },
             documents: Documents::with_empty_document(),
             workspace: Workspace::default(),
             settings: SettingsState {

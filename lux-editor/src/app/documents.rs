@@ -118,12 +118,11 @@ impl App {
                 ok,
             }));
             if let Some(result) = formatted_result {
-                let _ =
-                    event_tx.send(CustomEvent::Document(DocumentEvent::FormattingFinished {
-                        generation,
-                        from_save: true,
-                        result,
-                    }));
+                let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FormattingFinished {
+                    generation,
+                    from_save: true,
+                    result,
+                }));
             }
         });
         true

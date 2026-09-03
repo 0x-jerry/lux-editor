@@ -20,8 +20,9 @@ impl EframeApp for App {
         self.flush_scheduled_language_refresh();
 
         if self.chrome.applied_theme_dark.is_some()
-            && crate::ui::theme::ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice)
-                == crate::ui::theme::ThemeChoice::Auto
+            && crate::ui::theme::ThemeChoice::from_value(
+                &self.settings.editor_config.settings.theme.choice,
+            ) == crate::ui::theme::ThemeChoice::Auto
             && self
                 .chrome
                 .last_system_theme

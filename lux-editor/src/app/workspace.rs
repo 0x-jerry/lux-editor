@@ -38,7 +38,9 @@ impl Workspace {
                             break;
                         }
                     }
-                    event_tx.send(CustomEvent::Workspace(WorkspaceEvent::FileChange)).ok();
+                    event_tx
+                        .send(CustomEvent::Workspace(WorkspaceEvent::FileChange))
+                        .ok();
                 }
             });
             Some(watcher)

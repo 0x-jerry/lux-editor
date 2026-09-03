@@ -70,14 +70,14 @@ impl Component for EditorView {
                                 let (tab_response, close_clicked) =
                                     document_tab(ui, tab, selected, index);
                                 if tab_response.clicked() {
-                                    events.push(CustomEvent::Document(DocumentEvent::SwitchDocument(
-                                        index,
-                                    )));
+                                    events.push(CustomEvent::Document(
+                                        DocumentEvent::SwitchDocument(index),
+                                    ));
                                 }
                                 if close_clicked {
-                                    events.push(CustomEvent::Document(DocumentEvent::CloseDocument(
-                                        index,
-                                    )));
+                                    events.push(CustomEvent::Document(
+                                        DocumentEvent::CloseDocument(index),
+                                    ));
                                 }
                             }
                         });

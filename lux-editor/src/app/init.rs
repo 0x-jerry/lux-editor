@@ -1,4 +1,5 @@
 use super::{App, OpenDocument, ShellView};
+use crate::app::formatter::run_formatter;
 use crate::events::CustomEvent;
 use crate::file_tree::FileTree;
 use crate::language::{HighlightSnapshot, HighlightThemeConfig, LanguageKind};
@@ -7,7 +8,6 @@ use lux_core::Buffer;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tokio::io::AsyncWriteExt;
 
 impl App {
     pub fn new() -> Self {
@@ -33,6 +33,7 @@ impl App {
             reveal_active_in_tree: false,
             shell_view: ShellView::Editor,
             command_panel: Default::default(),
+            about_open: false,
             caret_blink_anchor: std::time::Instant::now(),
             highlight_dirty: false,
             highlight_deadline: None,
@@ -98,14 +99,35 @@ impl App {
         let save_path = self.buffer().path().cloned().unwrap();
         let text = self.buffer().text().to_string();
         let generation = self.active_document().edit_generation;
+        let formatter = self.editor_config.settings.formatter.clone();
+        let format_on_save = formatter.format_on_save && !formatter.command.trim().is_empty();
         let event_tx = self.event_tx.clone();
-        self.rt.spawn(async move {
-            let ok = write_text_to_path(&save_path, &text).await.is_ok();
+        self.rt.spawn_blocking(move || {
+            let mut to_write = text.clone();
+            let mut formatted_result: Option<Result<String, String>> = None;
+            if format_on_save {
+                match run_formatter(&formatter.command, &formatter.args, &text) {
+                    Ok(formatted) if formatted != text => {
+                        to_write = formatted.clone();
+                        formatted_result = Some(Ok(formatted));
+                    }
+                    Ok(_) => {}
+                    Err(err) => formatted_result = Some(Err(err)),
+                }
+            }
+            let ok = std::fs::write(&save_path, to_write).is_ok();
             let _ = event_tx.send(CustomEvent::FileSaved {
                 path: save_path,
                 generation,
                 ok,
             });
+            if let Some(result) = formatted_result {
+                let _ = event_tx.send(CustomEvent::FormattingFinished {
+                    generation,
+                    from_save: true,
+                    result,
+                });
+            }
         });
         true
     }
@@ -264,12 +286,4 @@ impl App {
             && !active_document.document_dirty
             && active_document.buffer.text().len_chars() == 0
     }
-}
-
-async fn write_text_to_path(path: &Path, text: &str) -> std::io::Result<()> {
-    let file = tokio::fs::File::create(path).await?;
-    let mut writer = tokio::io::BufWriter::new(file);
-    writer.write_all(text.as_bytes()).await?;
-    writer.flush().await?;
-    Ok(())
 }

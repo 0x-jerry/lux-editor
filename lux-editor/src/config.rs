@@ -48,10 +48,47 @@ impl Default for FontSettings {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct FormatterSettings {
+    /// External command run with the document text on stdin; empty disables.
+    pub command: String,
+    /// Space-separated arguments passed to the command.
+    pub args: String,
+    /// Format the buffer immediately before saving.
+    pub format_on_save: bool,
+}
+
+impl Default for FormatterSettings {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            args: "--stdin".to_string(),
+            format_on_save: true,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct BehaviorSettings {
+    /// Auto-close brackets/quotes, skip over closing partners, and delete
+    /// auto-paired pairs with Backspace.
+    pub smart_pairing: bool,
+}
+
+impl Default for BehaviorSettings {
+    fn default() -> Self {
+        Self { smart_pairing: true }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct EditorSettings {
     pub theme: ThemeSettings,
     pub font: FontSettings,
+    #[serde(default)]
+    pub formatter: FormatterSettings,
+    #[serde(default)]
+    pub behavior: BehaviorSettings,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -146,6 +183,14 @@ impl Config {
             .set_default("font.family", "JetBrains Mono")
             .unwrap()
             .set_default("font.size", 14.0)
+            .unwrap()
+            .set_default("formatter.command", "")
+            .unwrap()
+            .set_default("formatter.args", "--stdin")
+            .unwrap()
+            .set_default("formatter.format_on_save", true)
+            .unwrap()
+            .set_default("behavior.smart_pairing", true)
             .unwrap()
             .add_source(::config::File::from(user_settings).required(false))
             .build()

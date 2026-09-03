@@ -20,8 +20,18 @@ impl EframeApp for App {
         }
 
         let highlight_snapshot = self.highlight_snapshot().clone();
-        let (caret_line, caret_column) = self.caret_position();
-        let selection_range = self.selection_range();
+        let (carets, active_caret_index, selection_ranges) = {
+            let active_document = &self.documents[self.active_document];
+            let caret_state = &active_document.caret_state;
+            let carets = (0..caret_state.len())
+                .map(|index| {
+                    crate::app::editor::line_column(&active_document.buffer, caret_state.caret_char_at(index))
+                })
+                .collect::<Vec<_>>();
+            let active_caret_index = caret_state.active_index();
+            let selection_ranges = caret_state.selection_ranges();
+            (carets, active_caret_index, selection_ranges)
+        };
         let caret_visible = self.caret_blink_visible();
         let reveal_active_in_tree = self.reveal_active_in_tree;
         let document_tabs = self
@@ -32,6 +42,16 @@ impl EframeApp for App {
             })
             .collect::<Vec<_>>();
         let active_document = &self.documents[self.active_document];
+        let document_title = match active_document.buffer.path() {
+            Some(path) => {
+                let dirty = if active_document.document_dirty { "* " } else { "" };
+                format!("{}{}", dirty, path.display())
+            }
+            None => {
+                let dirty = if active_document.document_dirty { "* " } else { "" };
+                format!("{}Untitled", dirty)
+            }
+        };
         let events = ui::draw_ui(
             ctx,
             ui::DrawUiState {
@@ -45,11 +65,12 @@ impl EframeApp for App {
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
                 document_status: active_document.document_status.as_deref(),
+                document_title,
                 shell_view: self.shell_view,
                 reveal_active_in_tree,
-                caret_line,
-                caret_column,
-                selection_range,
+                carets,
+                selection_ranges,
+                active_caret_index,
                 caret_visible,
                 document_dirty: active_document.document_dirty,
             },
@@ -59,8 +80,30 @@ impl EframeApp for App {
             self.handle_event(event, ctx);
         }
         self.render_command_panel(ctx);
+        self.render_about_window(ctx);
         self.flush_configuration_autosave();
 
         ctx.request_repaint();
+    }
+}
+
+impl App {
+    fn render_about_window(&mut self, ctx: &egui::Context) {
+        if !self.about_open {
+            return;
+        }
+        egui::Window::new("About Lux")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.heading("Lux Editor");
+                ui.label("A fast Rust editor focused on large-file performance.");
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.add_space(10.0);
+                if ui.button("Close").clicked() {
+                    self.about_open = false;
+                }
+            });
     }
 }

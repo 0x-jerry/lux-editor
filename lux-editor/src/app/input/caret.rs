@@ -1,5 +1,5 @@
 use super::commands::EditorCommand;
-use crate::app::editor::{line_column, word_char_range};
+use crate::app::editor::word_char_range;
 use crate::app::{App, ShellView};
 
 impl App {
@@ -14,23 +14,12 @@ impl App {
         self.touch_caret_blink();
     }
 
-    pub(in crate::app) fn caret_position(&self) -> (usize, usize) {
-        let active_document = self.active_document();
-        line_column(
-            &active_document.buffer,
-            active_document.caret_state.caret_char(),
-        )
-    }
-
-    pub(in crate::app) fn selection_range(&self) -> Option<std::ops::Range<usize>> {
-        self.active_document().caret_state.selection_range()
-    }
-
     pub(in crate::app) fn set_caret_from_pointer(
         &mut self,
         line_index: usize,
         column: usize,
         selecting: bool,
+        add_cursor: bool,
     ) {
         let Some(next) = self.pointer_to_char(line_index, column) else {
             let active_document = self.active_document_mut();
@@ -40,6 +29,12 @@ impl App {
             self.touch_caret_blink();
             return;
         };
+        if add_cursor {
+            let active_document = self.active_document_mut();
+            active_document.caret_state.add_cursor_at(next, &active_document.buffer);
+            self.touch_caret_blink();
+            return;
+        }
         let active_document = self.active_document_mut();
         active_document
             .caret_state

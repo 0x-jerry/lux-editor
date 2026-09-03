@@ -1,7 +1,7 @@
 use crate::app::App;
 use eframe::egui;
 
-pub(super) enum EditorCommand {
+pub(crate) enum EditorCommand {
     InsertText(String),
     Paste(String),
     InsertNewline,
@@ -25,6 +25,9 @@ pub(super) enum EditorCommand {
     Redo,
     Save,
     ToggleCommandPanel,
+    CollapseCarets,
+    AddCursorBelow,
+    AddCursorAbove,
 }
 
 impl App {
@@ -64,6 +67,13 @@ impl App {
             } => {
                 let shortcut = modifiers.command || modifiers.ctrl;
                 let selecting = modifiers.shift;
+                if shortcut && modifiers.alt {
+                    return match key {
+                        egui::Key::ArrowDown => vec![EditorCommand::AddCursorBelow],
+                        egui::Key::ArrowUp => vec![EditorCommand::AddCursorAbove],
+                        _ => Vec::new(),
+                    };
+                }
                 if shortcut && !modifiers.alt {
                     return match key {
                         egui::Key::A => vec![EditorCommand::SelectAll],
@@ -91,6 +101,7 @@ impl App {
                     egui::Key::Tab => vec![EditorCommand::InsertTab],
                     egui::Key::Backspace => vec![EditorCommand::Backspace],
                     egui::Key::Delete => vec![EditorCommand::Delete],
+                    egui::Key::Escape => vec![EditorCommand::CollapseCarets],
                     egui::Key::ArrowLeft => vec![EditorCommand::MoveLeft { selecting }],
                     egui::Key::ArrowRight => vec![EditorCommand::MoveRight { selecting }],
                     egui::Key::ArrowUp => vec![EditorCommand::MoveUp { selecting }],
@@ -104,7 +115,7 @@ impl App {
         }
     }
 
-    fn execute_command(&mut self, command: EditorCommand, ctx: &egui::Context) -> bool {
+    pub(crate) fn execute_command(&mut self, command: EditorCommand, ctx: &egui::Context) -> bool {
         if matches!(&command, EditorCommand::ToggleCommandPanel) {
             self.toggle_command_panel();
             return false;
@@ -119,17 +130,9 @@ impl App {
         }
 
         match command {
-            EditorCommand::InsertText(text) | EditorCommand::Paste(text) => {
-                self.insert_or_replace_selection(&text, ctx)
-            }
-            EditorCommand::InsertNewline => {
-                let active_document = self.active_document();
-                let indentation = Self::indentation_for_newline(
-                    &active_document.buffer,
-                    active_document.caret_state.caret_char(),
-                );
-                self.insert_or_replace_selection(&indentation, ctx)
-            }
+            EditorCommand::InsertText(text) => self.insert_text_with_pairing(&text, ctx),
+            EditorCommand::Paste(text) => self.insert_or_replace_selection(&text, ctx),
+            EditorCommand::InsertNewline => self.insert_newline(ctx),
             EditorCommand::InsertTab => self.insert_or_replace_selection("    ", ctx),
             EditorCommand::Backspace => self.delete_backward(ctx),
             EditorCommand::Delete => self.delete_forward(ctx),
@@ -203,6 +206,30 @@ impl App {
                 false
             }
             EditorCommand::Cut => self.cut_selection_to_clipboard(ctx),
+            EditorCommand::CollapseCarets => {
+                let active_document = self.active_document_mut();
+                if active_document.caret_state.has_multiple_cursors() {
+                    active_document.caret_state.remove_extra_cursors();
+                    self.touch_caret_blink();
+                }
+                false
+            }
+            EditorCommand::AddCursorBelow => {
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .add_cursor_below(&active_document.buffer);
+                self.touch_caret_blink();
+                false
+            }
+            EditorCommand::AddCursorAbove => {
+                let active_document = self.active_document_mut();
+                active_document
+                    .caret_state
+                    .add_cursor_above(&active_document.buffer);
+                self.touch_caret_blink();
+                false
+            }
             EditorCommand::Undo => {
                 let snapshot = {
                     let active_document = self.active_document_mut();

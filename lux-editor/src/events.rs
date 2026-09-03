@@ -11,6 +11,11 @@ pub enum CustomEvent {
         generation: u64,
         ok: bool,
     },
+    FormattingFinished {
+        generation: u64,
+        from_save: bool,
+        result: Result<String, String>,
+    },
     OpenFile(std::path::PathBuf),
     OpenFolder(std::path::PathBuf),
     Delete(std::path::PathBuf),
@@ -22,11 +27,13 @@ pub enum CustomEvent {
     CloseDocument(usize),
     SwitchToEditor,
     SwitchToConfiguration,
+    TitleBarMenu(crate::ui::kit::title_bar::TitleBarMenu),
     ConfigurationDraftChanged,
     SetCaretFromPointer {
         line_index: usize,
         column: usize,
         selecting: bool,
+        add_cursor: bool,
     },
     SelectWordFromPointer {
         line_index: usize,

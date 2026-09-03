@@ -21,6 +21,7 @@ pub(super) struct CommandPanelState {
 #[derive(Clone)]
 enum CommandPanelAction {
     SaveFile,
+    FormatFile,
     OpenFile,
     OpenRecently,
     OpenFolder,
@@ -238,6 +239,9 @@ impl App {
             CommandPanelAction::SaveFile => {
                 self.save_current_buffer(ctx);
             }
+            CommandPanelAction::FormatFile => {
+                self.format_active_document(ctx);
+            }
             CommandPanelAction::OpenFile => {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
                     self.open_file(path, ctx);
@@ -278,6 +282,16 @@ fn build_root_commands() -> Vec<CommandPanelCommand> {
                 "persist".to_string(),
             ],
             action: CommandPanelAction::SaveFile,
+        },
+        CommandPanelCommand {
+            title: "Format File".to_string(),
+            keywords: vec![
+                "format".to_string(),
+                "formatter".to_string(),
+                "style".to_string(),
+                "pretty".to_string(),
+            ],
+            action: CommandPanelAction::FormatFile,
         },
         CommandPanelCommand {
             title: "Open File".to_string(),
@@ -378,6 +392,7 @@ fn build_recent_used_commands(actions: &[CommandPanelAction]) -> Vec<RankedComma
 fn recent_used_title(action: &CommandPanelAction) -> String {
     match action {
         CommandPanelAction::SaveFile => "Save File".to_string(),
+        CommandPanelAction::FormatFile => "Format File".to_string(),
         CommandPanelAction::OpenFile => "Open File".to_string(),
         CommandPanelAction::OpenRecently => "Open Recently".to_string(),
         CommandPanelAction::OpenFolder => "Open Folder".to_string(),
@@ -394,6 +409,7 @@ fn recent_used_title(action: &CommandPanelAction) -> String {
 fn action_key(action: &CommandPanelAction) -> String {
     match action {
         CommandPanelAction::SaveFile => "save-file".to_string(),
+        CommandPanelAction::FormatFile => "format-file".to_string(),
         CommandPanelAction::OpenFile => "open-file".to_string(),
         CommandPanelAction::OpenRecently => "open-recently".to_string(),
         CommandPanelAction::OpenFolder => "open-folder".to_string(),

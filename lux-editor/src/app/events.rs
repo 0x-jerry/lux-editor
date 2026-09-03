@@ -52,6 +52,11 @@ impl App {
                 self.track_file_open(&path);
                 self.on_file_change();
             }
+            CustomEvent::FormattingFinished {
+                generation,
+                from_save,
+                result,
+            } => self.on_formatting_finished(generation, from_save, result, ctx),
             CustomEvent::OpenFile(path) => self.open_file(path, ctx),
             CustomEvent::OpenFolder(path) => self.open_folder(path),
             CustomEvent::Delete(path) => {
@@ -79,12 +84,14 @@ impl App {
             CustomEvent::CloseDocument(index) => self.close_document(index, ctx),
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
+            CustomEvent::TitleBarMenu(menu) => self.on_title_bar_menu(menu, ctx),
             CustomEvent::ConfigurationDraftChanged => self.schedule_configuration_autosave(),
             CustomEvent::SetCaretFromPointer {
                 line_index,
                 column,
                 selecting,
-            } => self.set_caret_from_pointer(line_index, column, selecting),
+                add_cursor,
+            } => self.set_caret_from_pointer(line_index, column, selecting, add_cursor),
             CustomEvent::SelectWordFromPointer { line_index, column } => {
                 self.select_word_from_pointer(line_index, column)
             }
@@ -106,4 +113,56 @@ impl App {
         self.config_status = None;
         self.config_autosave_deadline = None;
     }
+
+    fn on_title_bar_menu(
+        &mut self,
+        menu: crate::ui::kit::title_bar::TitleBarMenu,
+        ctx: &egui::Context,
+    ) {
+        use crate::app::input::EditorCommand;
+        use crate::ui::kit::title_bar::TitleBarMenu;
+        match menu {
+            TitleBarMenu::OpenFile => {
+                if let Some(path) = rfd::FileDialog::new().pick_file() {
+                    self.open_file(path, ctx);
+                }
+            }
+            TitleBarMenu::OpenFolder => {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.open_folder(path);
+                }
+            }
+            TitleBarMenu::SaveFile => {
+                self.save_current_buffer(ctx);
+            }
+            TitleBarMenu::Undo => {
+                self.execute_command(EditorCommand::Undo, ctx);
+            }
+            TitleBarMenu::Redo => {
+                self.execute_command(EditorCommand::Redo, ctx);
+            }
+            TitleBarMenu::Cut => {
+                self.execute_command(EditorCommand::Cut, ctx);
+            }
+            TitleBarMenu::Copy => {
+                self.execute_command(EditorCommand::Copy, ctx);
+            }
+            TitleBarMenu::Paste => {
+                if let Some(text) = clipboard_text() {
+                    self.execute_command(EditorCommand::Paste(text), ctx);
+                }
+            }
+            TitleBarMenu::SelectAll => {
+                self.execute_command(EditorCommand::SelectAll, ctx);
+            }
+            TitleBarMenu::CommandPalette => self.toggle_command_panel(),
+            TitleBarMenu::SwitchToEditor => self.shell_view = ShellView::Editor,
+            TitleBarMenu::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
+            TitleBarMenu::About => self.about_open = true,
+        }
+    }
+}
+
+fn clipboard_text() -> Option<String> {
+    arboard::Clipboard::new().ok()?.get_text().ok()
 }

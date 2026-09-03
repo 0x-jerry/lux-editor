@@ -1,6 +1,7 @@
 mod command_panel;
 mod editor;
 mod events;
+mod formatter;
 mod init;
 mod input;
 mod settings;
@@ -94,6 +95,7 @@ pub struct App {
     reveal_active_in_tree: bool,
     shell_view: ShellView,
     command_panel: CommandPanelState,
+    about_open: bool,
     caret_blink_anchor: Instant,
     highlight_dirty: bool,
     highlight_deadline: Option<Instant>,

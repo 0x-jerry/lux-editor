@@ -21,11 +21,13 @@ pub struct DrawUiState<'a> {
     pub config_draft: &'a mut EditorSettings,
     pub config_status: Option<&'a str>,
     pub document_status: Option<&'a str>,
+    pub document_title: String,
     pub shell_view: ShellView,
     pub reveal_active_in_tree: bool,
-    pub caret_line: usize,
-    pub caret_column: usize,
-    pub selection_range: Option<Range<usize>>,
+    /// All cursor positions as 1-based (line, column).
+    pub carets: Vec<(usize, usize)>,
+    pub selection_ranges: Vec<Range<usize>>,
+    pub active_caret_index: usize,
     pub caret_visible: bool,
     pub document_dirty: bool,
 }

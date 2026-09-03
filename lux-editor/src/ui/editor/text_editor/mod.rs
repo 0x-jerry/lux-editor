@@ -17,9 +17,10 @@ pub struct TextEditorState<'a> {
     pub buffer: &'a Buffer,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
-    pub caret_line: usize,
-    pub caret_column: usize,
-    pub selection_range: Option<Range<usize>>,
+    /// All cursor positions as 1-based (line, column).
+    pub carets: &'a [(usize, usize)],
+    pub selection_ranges: &'a [Range<usize>],
+    pub active_caret_index: usize,
     pub caret_visible: bool,
 }
 
@@ -32,9 +33,9 @@ pub fn render_text_editor(
         buffer,
         highlight_snapshot,
         editor_config,
-        caret_line,
-        caret_column,
-        selection_range,
+        carets,
+        selection_ranges,
+        active_caret_index,
         caret_visible,
     } = state;
 
@@ -45,19 +46,22 @@ pub fn render_text_editor(
         buffer,
         highlight_snapshot,
         editor_config,
-        caret_line,
-        caret_column,
-        selection_range,
+        carets,
+        selection_ranges,
+        active_caret_index,
         caret_visible,
         &metrics,
         events,
     );
 
+    let active_line = carets
+        .get(active_caret_index)
+        .map_or(1, |(line, _)| *line);
     paint_gutter(
         ui,
         scroll_output.inner_rect,
         &scroll_output.visible_rows,
-        caret_line,
+        active_line,
         &metrics,
     );
 }

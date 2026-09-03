@@ -86,6 +86,73 @@ pub fn render_configuration_view(
             ui.end_row();
         });
 
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(12.0);
+    ui.heading("Formatting");
+    ui.add_space(8.0);
+    egui::Grid::new("config_formatter_grid")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .show(ui, |ui| {
+            ui.label("Formatter command");
+            if ui
+                .text_edit_singleline(&mut config_draft.formatter.command)
+                .changed()
+            {
+                changed = true;
+            }
+            ui.end_row();
+
+            ui.label("Arguments");
+            if ui
+                .text_edit_singleline(&mut config_draft.formatter.args)
+                .changed()
+            {
+                changed = true;
+            }
+            ui.end_row();
+
+            ui.label("Format on save");
+            if ui
+                .checkbox(&mut config_draft.formatter.format_on_save, "")
+                .on_hover_text("Run the formatter before writing the file")
+                .changed()
+            {
+                changed = true;
+            }
+            ui.end_row();
+        });
+    ui.label(
+        "The document is piped to the command on stdin and replaced with its \
+         stdout. Arguments are split on whitespace. An empty command disables \
+         formatting.",
+    );
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(12.0);
+    ui.heading("Typing");
+    ui.add_space(8.0);
+    egui::Grid::new("config_typing_grid")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .show(ui, |ui| {
+            ui.label("Smart bracket pairing");
+            if ui
+                .checkbox(&mut config_draft.behavior.smart_pairing, "")
+                .on_hover_text(
+                    "Auto-close brackets and quotes, skip over closing partners, \
+                     delete empty pairs with Backspace, and open blank lines \
+                     inside empty pairs with Enter",
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            ui.end_row();
+        });
+
     if changed && *config_draft != editor_config.settings {
         events.push(CustomEvent::ConfigurationDraftChanged);
     }

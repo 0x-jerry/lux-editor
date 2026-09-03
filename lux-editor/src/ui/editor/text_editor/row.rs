@@ -31,9 +31,9 @@ pub fn render_rows(
     buffer: &Buffer,
     highlight_snapshot: &HighlightSnapshot,
     editor_config: &Config,
-    caret_line: usize,
-    caret_column: usize,
-    selection_range: Option<Range<usize>>,
+    carets: &[(usize, usize)],
+    selection_ranges: &[Range<usize>],
+    active_caret_index: usize,
     caret_visible: bool,
     metrics: &TextEditorMetrics,
     events: &mut Vec<CustomEvent>,
@@ -46,6 +46,7 @@ pub fn render_rows(
     let total_lines = buffer.len_lines();
     let mut visible_rows = Vec::new();
 
+    let (active_line, _) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
     let reveal_id = egui::Id::new("editor_text_editor_reveal");
     let mut reveal: RevealState = ui.data_mut(|data| data.get_temp(reveal_id).unwrap_or_default());
 
@@ -54,12 +55,12 @@ pub fn render_rows(
         input.smooth_scroll_delta.y.abs() > 0.0 || input.raw_scroll_delta.y.abs() > 0.0
     });
     if user_scrolling {
-        reveal.last_caret_line = caret_line;
+        reveal.last_caret_line = active_line;
     }
     let viewport_height = ui.available_height();
-    let caret_row_top = caret_line.saturating_sub(1) as f32 * metrics.row_height;
-    if !user_scrolling && reveal.last_caret_line != caret_line {
-        reveal.last_caret_line = caret_line;
+    let caret_row_top = active_line.saturating_sub(1) as f32 * metrics.row_height;
+    if !user_scrolling && reveal.last_caret_line != active_line {
+        reveal.last_caret_line = active_line;
         let margin = metrics.row_height * 3.0;
         let content_height = total_lines as f32 * metrics.row_height;
         let max_scroll = (content_height - viewport_height).max(0.0);
@@ -87,9 +88,9 @@ pub fn render_rows(
                 highlight_snapshot,
                 editor_config,
                 line_index,
-                caret_line,
-                caret_column,
-                selection_range.clone(),
+                carets,
+                selection_ranges,
+                active_caret_index,
                 caret_visible,
                 metrics,
                 events,
@@ -115,9 +116,9 @@ fn render_row(
     highlight_snapshot: &HighlightSnapshot,
     editor_config: &Config,
     line_index: usize,
-    caret_line: usize,
-    caret_column: usize,
-    selection_range: Option<Range<usize>>,
+    carets: &[(usize, usize)],
+    selection_ranges: &[Range<usize>],
+    active_caret_index: usize,
     caret_visible: bool,
     metrics: &TextEditorMetrics,
     events: &mut Vec<CustomEvent>,
@@ -147,15 +148,17 @@ fn render_row(
     );
     let text_origin = egui::pos2(rect.left() + metrics.gutter_total_width, rect.top());
 
-    paint_selection(
-        ui,
-        line_start,
-        line_len,
-        &selection_range,
-        &galley,
-        text_origin,
-        metrics,
-    );
+    for range in selection_ranges {
+        paint_selection(
+            ui,
+            line_start,
+            line_len,
+            range,
+            &galley,
+            text_origin,
+            metrics,
+        );
+    }
     ui.painter()
         .galley(text_origin, galley.clone(), ui.visuals().text_color());
     push_pointer_events(
@@ -168,17 +171,20 @@ fn render_row(
         &response,
         events,
     );
-    paint_caret(
-        ui,
-        &galley,
-        text_origin,
-        line_index,
-        caret_line,
-        caret_column,
-        &selection_range,
-        caret_visible,
-        metrics,
-    );
+    for (index, (caret_line, caret_column)) in carets.iter().enumerate() {
+        if *caret_line != line_index + 1 {
+            continue;
+        }
+        let char_pos = line_start + caret_column.saturating_sub(1);
+        let covered = selection_ranges
+            .iter()
+            .any(|range| char_pos >= range.start && char_pos < range.end);
+        if covered {
+            continue;
+        }
+        let show = caret_visible || index != active_caret_index;
+        paint_caret(ui, &galley, text_origin, *caret_column, show, metrics);
+    }
 
     visible_rows.push(VisibleRow {
         index: line_index,
@@ -195,14 +201,11 @@ fn paint_selection(
     ui: &egui::Ui,
     line_start: usize,
     line_len: usize,
-    selection_range: &Option<Range<usize>>,
+    range: &Range<usize>,
     galley: &egui::text::Galley,
     text_origin: egui::Pos2,
     metrics: &TextEditorMetrics,
 ) {
-    let Some(range) = selection_range else {
-        return;
-    };
     let line_end = line_start + line_len;
     if range.end <= line_start || range.start >= line_end {
         return;
@@ -230,19 +233,15 @@ fn paint_selection(
         .rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint_caret(
     ui: &egui::Ui,
     galley: &egui::text::Galley,
     text_origin: egui::Pos2,
-    line_index: usize,
-    caret_line: usize,
     caret_column: usize,
-    selection_range: &Option<Range<usize>>,
-    caret_visible: bool,
+    show: bool,
     metrics: &TextEditorMetrics,
 ) {
-    if selection_range.is_some() || !caret_visible || line_index + 1 != caret_line {
+    if !show {
         return;
     }
     let column = caret_column.saturating_sub(1);
@@ -289,10 +288,12 @@ fn push_pointer_events(
         && let Some(pointer) = response.interact_pointer_pos()
     {
         let selecting = ui.input(|input| input.modifiers.shift);
+        let add_cursor = ui.input(|input| input.modifiers.command || input.modifiers.ctrl);
         events.push(CustomEvent::SetCaretFromPointer {
             line_index,
             column: column_from(pointer),
             selecting,
+            add_cursor,
         });
     }
 
@@ -314,6 +315,7 @@ fn push_pointer_events(
             line_index: pointed_line,
             column,
             selecting: true,
+            add_cursor: false,
         });
     }
 }

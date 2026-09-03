@@ -4,6 +4,8 @@ use eframe::{App as EframeApp, Frame, egui};
 
 impl EframeApp for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        self.last_system_theme = ctx.system_theme();
+
         #[cfg(target_os = "macos")]
         if ctx.input(|input| input.viewport().close_requested()) {
             std::process::exit(0);
@@ -13,6 +15,27 @@ impl EframeApp for App {
         self.highlighting_service.update();
         self.handle_keyboard_input(ctx);
         self.flush_scheduled_language_refresh();
+
+        if self.applied_theme_dark.is_some()
+            && crate::ui::theme::ThemeChoice::from_value(
+                &self.editor_config.settings.theme.choice,
+            ) == crate::ui::theme::ThemeChoice::Auto
+            && self.last_system_theme.map(|theme| theme == egui::Theme::Dark)
+                != self.applied_theme_dark
+        {
+            self.needs_style_refresh = true;
+            self.refresh_language_intelligence();
+        }
+
+        let toggle_sidebar = ctx.input_mut(|input| {
+            input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND,
+                egui::Key::B,
+            ))
+        });
+        if toggle_sidebar {
+            self.sidebar_visible = !self.sidebar_visible;
+        }
 
         if self.needs_style_refresh {
             self.apply_editor_settings(ctx);
@@ -39,19 +62,10 @@ impl EframeApp for App {
             .iter()
             .map(|document| ui::DocumentTab {
                 title: document.title(),
+                dirty: document.document_dirty,
             })
             .collect::<Vec<_>>();
         let active_document = &self.documents[self.active_document];
-        let document_title = match active_document.buffer.path() {
-            Some(path) => {
-                let dirty = if active_document.document_dirty { "* " } else { "" };
-                format!("{}{}", dirty, path.display())
-            }
-            None => {
-                let dirty = if active_document.document_dirty { "* " } else { "" };
-                format!("{}Untitled", dirty)
-            }
-        };
         let events = ui::draw_ui(
             ctx,
             ui::DrawUiState {
@@ -65,9 +79,9 @@ impl EframeApp for App {
                 config_draft: &mut self.config_draft,
                 config_status: self.config_status.as_deref(),
                 document_status: active_document.document_status.as_deref(),
-                document_title,
                 shell_view: self.shell_view,
                 reveal_active_in_tree,
+                sidebar_visible: self.sidebar_visible,
                 carets,
                 selection_ranges,
                 active_caret_index,

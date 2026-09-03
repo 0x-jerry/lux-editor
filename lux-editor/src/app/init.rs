@@ -30,6 +30,9 @@ impl App {
             config_autosave_deadline: None,
             highlighting_service: crate::language::HighlightingService::new(),
             needs_style_refresh: true,
+            applied_theme_dark: None,
+            last_system_theme: None,
+            sidebar_visible: true,
             reveal_active_in_tree: false,
             shell_view: ShellView::Editor,
             command_panel: Default::default(),
@@ -152,8 +155,15 @@ impl App {
     }
 
     pub(super) fn refresh_language_intelligence(&mut self) {
+        use crate::ui::theme::{ThemeChoice, syntax_theme_for};
+        let choice = ThemeChoice::from_value(&self.editor_config.settings.theme.choice);
+        let theme_name = if choice == ThemeChoice::Auto {
+            syntax_theme_for(ThemeChoice::Auto, self.last_system_theme)
+        } else {
+            syntax_theme_for(choice, None)
+        };
         self.highlighting_service.set_theme(HighlightThemeConfig {
-            theme_name: self.editor_config.settings.theme.syntax_theme.clone(),
+            theme_name: theme_name.to_string(),
             theme_path: self.editor_config.settings.theme.theme_path.clone(),
         });
         let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));

@@ -27,6 +27,7 @@ enum CommandPanelAction {
     OpenFolder,
     SwitchToEditor,
     SwitchToConfiguration,
+    ToggleSidebar,
     ClearRecentItems,
     OpenRecentItem { path: PathBuf, is_dir: bool },
 }
@@ -257,6 +258,9 @@ impl App {
             CommandPanelAction::SwitchToConfiguration => {
                 self.shell_view = ShellView::Configuration;
             }
+            CommandPanelAction::ToggleSidebar => {
+                self.sidebar_visible = !self.sidebar_visible;
+            }
             CommandPanelAction::ClearRecentItems => self.editor_config.clear_recent_items(),
             CommandPanelAction::OpenRecentItem { path, is_dir } => {
                 if is_dir {
@@ -333,6 +337,16 @@ fn build_root_commands() -> Vec<CommandPanelCommand> {
             action: CommandPanelAction::SwitchToConfiguration,
         },
         CommandPanelCommand {
+            title: "Toggle Sidebar".to_string(),
+            keywords: vec![
+                "sidebar".to_string(),
+                "panel".to_string(),
+                "tree".to_string(),
+                "toggle".to_string(),
+            ],
+            action: CommandPanelAction::ToggleSidebar,
+        },
+        CommandPanelCommand {
             title: "Clear Recent Items".to_string(),
             keywords: vec![
                 "recent".to_string(),
@@ -398,6 +412,7 @@ fn recent_used_title(action: &CommandPanelAction) -> String {
         CommandPanelAction::OpenFolder => "Open Folder".to_string(),
         CommandPanelAction::SwitchToEditor => "Switch To Editor".to_string(),
         CommandPanelAction::SwitchToConfiguration => "Switch To Configuration".to_string(),
+        CommandPanelAction::ToggleSidebar => "Toggle Sidebar".to_string(),
         CommandPanelAction::ClearRecentItems => "Clear Recent Items".to_string(),
         CommandPanelAction::OpenRecentItem { path, is_dir } => {
             let kind = if *is_dir { "Folder" } else { "File" };
@@ -415,6 +430,7 @@ fn action_key(action: &CommandPanelAction) -> String {
         CommandPanelAction::OpenFolder => "open-folder".to_string(),
         CommandPanelAction::SwitchToEditor => "switch-editor".to_string(),
         CommandPanelAction::SwitchToConfiguration => "switch-configuration".to_string(),
+        CommandPanelAction::ToggleSidebar => "toggle-sidebar".to_string(),
         CommandPanelAction::ClearRecentItems => "clear-recent-items".to_string(),
         CommandPanelAction::OpenRecentItem { path, is_dir } => {
             format!(

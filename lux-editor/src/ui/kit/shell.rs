@@ -1,35 +1,6 @@
-//! Shell chrome: top navigation bar and bottom status bar.
+//! Shell chrome: the bottom status bar. Top navigation lives in the title bar.
 
 use eframe::egui;
-
-/// A selectable tab in the shell navigation bar.
-#[derive(Clone, Debug)]
-pub struct NavigationTab {
-    pub label: String,
-}
-
-impl NavigationTab {
-    pub fn new(label: impl Into<String>) -> Self {
-        Self { label: label.into() }
-    }
-}
-
-/// Renders the top navigation bar.
-///
-/// Returns `Some(index)` when the tab at `index` was clicked by the user.
-pub fn navigation(ctx: &egui::Context, tabs: &[NavigationTab], active: usize) -> Option<usize> {
-    let mut clicked = None;
-    egui::TopBottomPanel::top("shell_navigation").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            for (index, tab) in tabs.iter().enumerate() {
-                if ui.selectable_label(active == index, &tab.label).clicked() {
-                    clicked = Some(index);
-                }
-            }
-        });
-    });
-    clicked
-}
 
 /// The mode-specific content of the status bar.
 pub enum StatusBarSection<'a> {
@@ -49,6 +20,8 @@ pub enum StatusBarSection<'a> {
 pub struct StatusBarData<'a> {
     pub mode_label: &'a str,
     pub section: StatusBarSection<'a>,
+    /// Right-aligned context, e.g. the active file path.
+    pub right_label: &'a str,
 }
 
 /// Renders the bottom status bar.
@@ -57,9 +30,15 @@ pub fn status_bar(ctx: &egui::Context, data: StatusBarData<'_>) {
         .exact_height(24.0)
         .show(ctx, |ui| {
             let fill = ui.visuals().widgets.noninteractive.bg_fill;
+            let accent = ui.visuals().hyperlink_color;
             egui::Frame::default().fill(fill).show(ui, |ui| {
+                ui.painter().hline(
+                    ui.max_rect().x_range(),
+                    ui.max_rect().top(),
+                    egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+                );
                 ui.horizontal(|ui| {
-                    ui.label(data.mode_label);
+                    ui.label(egui::RichText::new(data.mode_label).strong().color(accent));
                     ui.separator();
                     match data.section {
                         StatusBarSection::Editor {
@@ -74,20 +53,38 @@ pub fn status_bar(ctx: &egui::Context, data: StatusBarData<'_>) {
                                 caret_line, caret_column, selection_len
                             ));
                             ui.separator();
-                            ui.label(if document_dirty { "Modified" } else { "Saved" });
+                            if document_dirty {
+                                ui.label(
+                                    egui::RichText::new("● Modified").color(accent),
+                                );
+                            } else {
+                                ui.label("Saved");
+                            }
                             if let Some(status) = document_status {
                                 ui.separator();
-                                ui.label(status);
+                                ui.label(
+                                    egui::RichText::new(status)
+                                        .color(ui.visuals().weak_text_color()),
+                                );
                             }
                         }
                         StatusBarSection::Configuration { config_status } => {
                             ui.label("Configuration View");
                             if let Some(status) = config_status {
                                 ui.separator();
-                                ui.label(status);
+                                ui.label(
+                                    egui::RichText::new(status)
+                                        .color(ui.visuals().weak_text_color()),
+                                );
                             }
                         }
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(data.right_label)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    });
                 });
             });
         });

@@ -18,8 +18,15 @@ struct RecentConfigFile {
     workspace_file_states: Vec<WorkspaceFileState>,
 }
 
+fn default_theme_choice() -> String {
+    "auto".to_string()
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ThemeSettings {
+    /// App chrome theme: "auto" | "dark" | "light". `Auto` follows the OS.
+    #[serde(default = "default_theme_choice")]
+    pub choice: String,
     pub syntax_theme: String,
     pub theme_path: Option<PathBuf>,
 }
@@ -27,6 +34,7 @@ pub struct ThemeSettings {
 impl Default for ThemeSettings {
     fn default() -> Self {
         Self {
+            choice: "auto".to_string(),
             syntax_theme: "base16-ocean.dark".to_string(),
             theme_path: None,
         }
@@ -178,6 +186,8 @@ impl Config {
     fn load_settings() -> EditorSettings {
         let user_settings = Self::user_settings_path();
         ::config::Config::builder()
+            .set_default("theme.choice", "auto")
+            .unwrap()
             .set_default("theme.syntax_theme", "base16-ocean.dark")
             .unwrap()
             .set_default("font.family", "JetBrains Mono")
@@ -316,6 +326,20 @@ mod tests {
             config.workspace_file_states[0].workspace_path,
             PathBuf::from("/ws1")
         );
+    }
+
+    #[test]
+    fn legacy_theme_settings_without_choice_parse_as_auto() {
+        let settings: ThemeSettings =
+            serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#)
+                .unwrap();
+        assert_eq!(settings.choice, "auto");
+        assert_eq!(settings.syntax_theme, "InspiredGitHub");
+    }
+
+    #[test]
+    fn theme_settings_default_choice_is_auto() {
+        assert_eq!(ThemeSettings::default().choice, "auto");
     }
 
     #[test]

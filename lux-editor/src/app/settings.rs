@@ -11,6 +11,14 @@ impl App {
     const CONFIG_AUTOSAVE_DELAY: Duration = Duration::from_millis(350);
 
     pub(super) fn apply_editor_settings(&mut self, ctx: &egui::Context) {
+        let theme = crate::ui::theme::AppTheme::resolve(
+            crate::ui::theme::ThemeChoice::from_value(&self.editor_config.settings.theme.choice),
+            ctx.system_theme(),
+        );
+        // Keep egui reporting the OS theme so `Auto` can follow it live.
+        ctx.set_theme(egui::ThemePreference::System);
+        ctx.set_visuals(theme.visuals.clone());
+
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         if let Some(custom_font) = Self::load_custom_font(&self.editor_config.settings.font.family)
@@ -42,6 +50,7 @@ impl App {
             egui::FontId::proportional(self.editor_config.settings.font.size),
         );
         ctx.set_style(style);
+        self.applied_theme_dark = Some(theme.is_dark);
     }
 
     fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
@@ -92,6 +101,7 @@ impl App {
                 self.needs_style_refresh = true;
             }
             if theme_changed {
+                self.needs_style_refresh = true;
                 self.refresh_language_intelligence();
             }
             self.config_autosave_deadline = None;

@@ -14,6 +14,7 @@ use crate::file_tree::FileTree;
 use crate::language::HighlightingService;
 use command_panel::CommandPanelState;
 use editor::{CaretState, EditHistory};
+use eframe::egui;
 use lux_core::Buffer;
 use notify::RecommendedWatcher;
 use std::path::PathBuf;
@@ -61,18 +62,12 @@ impl OpenDocument {
     }
 
     pub fn title(&self) -> String {
-        let name = self
-            .buffer
+        self.buffer
             .path()
             .and_then(|path| path.file_name())
             .and_then(|name| name.to_str())
             .map(|name| name.to_string())
-            .unwrap_or_else(|| "Untitled".to_string());
-        if self.document_dirty {
-            format!("* {}", name)
-        } else {
-            name
-        }
+            .unwrap_or_else(|| "Untitled".to_string())
     }
 }
 
@@ -92,6 +87,11 @@ pub struct App {
     config_autosave_deadline: Option<Instant>,
     highlighting_service: HighlightingService,
     needs_style_refresh: bool,
+    /// Whether the last applied chrome theme was dark; drives live `Auto` following.
+    applied_theme_dark: Option<bool>,
+    /// OS theme as reported last frame; feeds syntax-theme derivation in `Auto`.
+    last_system_theme: Option<egui::Theme>,
+    sidebar_visible: bool,
     reveal_active_in_tree: bool,
     shell_view: ShellView,
     command_panel: CommandPanelState,

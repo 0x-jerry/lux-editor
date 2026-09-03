@@ -3,6 +3,7 @@ mod text_editor;
 use crate::config::Config;
 use crate::events::CustomEvent;
 use crate::language::HighlightSnapshot;
+use crate::ui::highlight::snapshot_color;
 use crate::ui::types::DocumentTab;
 use crate::ui::welcome;
 use lux_core::Buffer;
@@ -46,8 +47,11 @@ pub fn render_editor_view(
         return;
     }
 
+    let editor_bg = snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color);
+
     egui::Frame::new()
-        .fill(ui.visuals().code_bg_color)
+        .fill(editor_bg)
+        .corner_radius(egui::CornerRadius::same(6))
         .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
             egui::ScrollArea::horizontal()
@@ -58,22 +62,18 @@ pub fn render_editor_view(
                         ui.spacing_mut().item_spacing.x = 2.0;
                         for (index, tab) in document_tabs.iter().enumerate() {
                             let selected = index == active_document_index;
-                            let label = if selected {
-                                format!("[{}]", tab.title)
-                            } else {
-                                tab.title.clone()
-                            };
-                            if ui.selectable_label(selected, label).clicked() {
+                            let (tab_response, close_clicked) =
+                                document_tab(ui, tab, selected, index);
+                            if tab_response.clicked() {
                                 events.push(CustomEvent::SwitchDocument(index));
                             }
-                            if ui.small_button("x").clicked() {
+                            if close_clicked {
                                 events.push(CustomEvent::CloseDocument(index));
                             }
                         }
                     });
                 });
         });
-    ui.add(egui::Separator::default().spacing(0.0));
 
     text_editor::render_text_editor(
         ui,
@@ -88,4 +88,89 @@ pub fn render_editor_view(
         },
         events,
     );
+}
+
+/// A document tab: filled when active with an accent top bar; the close button
+/// appears on hover, and an accent dot marks unsaved changes otherwise.
+fn document_tab(
+    ui: &mut egui::Ui,
+    tab: &DocumentTab,
+    selected: bool,
+    index: usize,
+) -> (egui::Response, bool) {
+    let row_height = ui.spacing().interact_size.y;
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let text_width =
+        ui.fonts_mut(|fonts| fonts.glyph_width(&font, 'M')) * tab.title.chars().count() as f32;
+    let close_size = 16.0;
+    let tab_width = text_width + 12.0 + close_size + 8.0;
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(tab_width, row_height), egui::Sense::click());
+
+    let hovered = response.hovered();
+    let painter = ui.painter();
+    if selected || hovered {
+        let bg = if selected {
+            ui.visuals().widgets.inactive.bg_fill
+        } else {
+            ui.visuals().widgets.hovered.bg_fill
+        };
+        painter.rect_filled(rect, egui::CornerRadius::same(5), bg);
+    }
+    if selected {
+        painter.rect_filled(
+            egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.right(), rect.top() + 2.0)),
+            0.0,
+            ui.visuals().hyperlink_color,
+        );
+    }
+
+    let text_color = if selected {
+        ui.visuals().strong_text_color()
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    painter.text(
+        egui::pos2(rect.left() + 8.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        &tab.title,
+        font,
+        text_color,
+    );
+
+    let close_center = egui::pos2(rect.right() - close_size / 2.0 - 4.0, rect.center().y);
+    let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(close_size, close_size));
+    let mut close_clicked = false;
+    if hovered {
+        let close_response = ui.interact(
+            close_rect,
+            ui.id().with(("tab_close", index)),
+            egui::Sense::click(),
+        );
+        if close_response.hovered() {
+            painter.rect_filled(
+                close_rect,
+                egui::CornerRadius::same((close_size / 2.0) as u8),
+                ui.visuals().widgets.hovered.bg_fill,
+            );
+        }
+        if close_response.clicked() {
+            close_clicked = true;
+        }
+        painter.text(
+            close_center,
+            egui::Align2::CENTER_CENTER,
+            "✕",
+            egui::FontId::proportional(11.0),
+            ui.visuals().weak_text_color(),
+        );
+    } else if tab.dirty {
+        painter.circle_filled(
+            egui::pos2(rect.right() - close_size / 2.0 - 5.0, rect.center().y),
+            3.0,
+            ui.visuals().hyperlink_color,
+        );
+    }
+
+    (response, close_clicked)
 }

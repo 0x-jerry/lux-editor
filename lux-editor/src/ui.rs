@@ -1,7 +1,8 @@
 use crate::app::ShellView;
+use crate::config::Config;
 use crate::events::CustomEvent;
 use eframe::egui;
-use kit::shell::{navigation, status_bar, NavigationTab, StatusBarData, StatusBarSection};
+use kit::shell::{status_bar, StatusBarData, StatusBarSection};
 use kit::title_bar::{TitleBarData, TitleBarMessage};
 
 mod configuration;
@@ -9,6 +10,7 @@ mod editor;
 mod highlight;
 pub mod kit;
 mod shell;
+pub mod theme;
 mod types;
 mod welcome;
 
@@ -27,8 +29,8 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         config_draft,
         config_status,
         document_status,
-        document_title,
         shell_view,
+        sidebar_visible,
         reveal_active_in_tree,
         carets,
         selection_ranges,
@@ -39,31 +41,29 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
 
     let mut events = Vec::new();
 
+    let active_nav = match shell_view {
+        ShellView::Editor => 0,
+        ShellView::Configuration => 1,
+    };
     let title_messages = kit::title_bar::title_bar(
         ctx,
         TitleBarData {
             app_title: "Lux",
-            document_title: &document_title,
+            nav_tabs: &["Editor", "Configuration"],
+            active_nav,
         },
     );
     for message in title_messages {
         match message {
             TitleBarMessage::Menu(menu) => events.push(CustomEvent::TitleBarMenu(menu)),
+            TitleBarMessage::Navigation(index) => {
+                let custom = match index {
+                    0 => CustomEvent::SwitchToEditor,
+                    _ => CustomEvent::SwitchToConfiguration,
+                };
+                events.push(custom);
+            }
         }
-    }
-
-    let tabs = [
-        NavigationTab::new("Editor"),
-        NavigationTab::new("Configuration"),
-    ];
-    let active_tab = match shell_view {
-        ShellView::Editor => 0,
-        ShellView::Configuration => 1,
-    };
-    match navigation(ctx, &tabs, active_tab) {
-        Some(0) => events.push(CustomEvent::SwitchToEditor),
-        Some(1) => events.push(CustomEvent::SwitchToConfiguration),
-        _ => {}
     }
 
     let selection_len: usize = selection_ranges
@@ -81,6 +81,13 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
         },
         ShellView::Configuration => StatusBarSection::Configuration { config_status },
     };
+    let right_label = match shell_view {
+        ShellView::Editor => buffer
+            .path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "Untitled".to_string()),
+        ShellView::Configuration => Config::user_settings_path().display().to_string(),
+    };
     status_bar(
         ctx,
         StatusBarData {
@@ -89,23 +96,38 @@ pub fn draw_ui(ctx: &egui::Context, state: DrawUiState<'_>) -> Vec<CustomEvent> 
                 ShellView::Configuration => "CONFIGURATION",
             },
             section,
+            right_label: &right_label,
         },
     );
 
     if shell_view == ShellView::Editor
+        && sidebar_visible
         && let Some(tree) = file_tree
     {
         shell::draw_file_tree_panel(
             ctx,
             tree,
+            workspace_path.map(|path| path.as_path()),
             buffer.path().map(|path| path.as_path()),
             reveal_active_in_tree,
             &mut events,
         );
     }
 
+    let central_fill = if shell_view == ShellView::Editor {
+        crate::ui::highlight::snapshot_color(
+            highlight_snapshot.background,
+            ctx.style().visuals.code_bg_color,
+        )
+    } else {
+        ctx.style().visuals.panel_fill
+    };
     egui::CentralPanel::default()
-        .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(0))
+        .frame(
+            egui::Frame::central_panel(&ctx.style())
+                .fill(central_fill)
+                .inner_margin(0),
+        )
         .show(ctx, |ui| {
         if shell_view == ShellView::Editor {
             editor::render_editor_view(

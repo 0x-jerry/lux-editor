@@ -27,6 +27,7 @@ pub enum CustomEvent {
     CloseDocument(usize),
     SwitchToEditor,
     SwitchToConfiguration,
+    ToggleSidebar,
     TitleBarMenu(crate::ui::kit::title_bar::TitleBarMenu),
     ConfigurationDraftChanged,
     SetCaretFromPointer {

@@ -84,6 +84,7 @@ impl App {
             CustomEvent::CloseDocument(index) => self.close_document(index, ctx),
             CustomEvent::SwitchToEditor => self.shell_view = ShellView::Editor,
             CustomEvent::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
+            CustomEvent::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             CustomEvent::TitleBarMenu(menu) => self.on_title_bar_menu(menu, ctx),
             CustomEvent::ConfigurationDraftChanged => self.schedule_configuration_autosave(),
             CustomEvent::SetCaretFromPointer {
@@ -158,6 +159,7 @@ impl App {
             TitleBarMenu::CommandPalette => self.toggle_command_panel(),
             TitleBarMenu::SwitchToEditor => self.shell_view = ShellView::Editor,
             TitleBarMenu::SwitchToConfiguration => self.shell_view = ShellView::Configuration,
+            TitleBarMenu::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             TitleBarMenu::About => self.about_open = true,
         }
     }

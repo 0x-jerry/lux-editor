@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 pub struct DocumentTab {
     pub title: String,
+    pub dirty: bool,
 }
 
 pub struct DrawUiState<'a> {
@@ -21,8 +22,8 @@ pub struct DrawUiState<'a> {
     pub config_draft: &'a mut EditorSettings,
     pub config_status: Option<&'a str>,
     pub document_status: Option<&'a str>,
-    pub document_title: String,
     pub shell_view: ShellView,
+    pub sidebar_visible: bool,
     pub reveal_active_in_tree: bool,
     /// All cursor positions as 1-based (line, column).
     pub carets: Vec<(usize, usize)>,

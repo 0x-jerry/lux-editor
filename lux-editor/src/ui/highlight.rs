@@ -1,6 +1,14 @@
 use crate::language::HighlightSpan;
 use eframe::egui;
 
+/// Converts an optional rgba color from the highlight worker into a `Color32`,
+/// falling back on the chrome-provided color when the theme is silent.
+pub fn snapshot_color(color: Option<[u8; 4]>, fallback: egui::Color32) -> egui::Color32 {
+    color
+        .map(|[r, g, b, a]| egui::Color32::from_rgba_unmultiplied(r, g, b, a))
+        .unwrap_or(fallback)
+}
+
 pub fn build_highlighted_line_job(
     line: &str,
     tokens: &[HighlightSpan],

@@ -1,5 +1,5 @@
-//! App-rendered title bar: window drag region, integrated menu bar, and
-//! platform-specific window controls.
+//! App-rendered title bar: window drag region, integrated navigation tabs and
+//! menu bar, plus platform-specific window controls.
 //!
 //! Platform adapter rules:
 //! - macOS: the native title bar is kept transparent (`titlebar_transparent`)
@@ -29,6 +29,7 @@ pub enum TitleBarMenu {
     CommandPalette,
     SwitchToEditor,
     SwitchToConfiguration,
+    ToggleSidebar,
     // Help
     About,
 }
@@ -37,14 +38,15 @@ pub enum TitleBarMenu {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TitleBarMessage {
     Menu(TitleBarMenu),
+    /// A shell navigation tab was clicked, by index.
+    Navigation(usize),
 }
 
 /// Content the title bar displays for the embedding app.
 pub struct TitleBarData<'a> {
     pub app_title: &'a str,
-    /// Active document or workspace context, e.g. `main.rs — /path` or
-    /// `Untitled`.
-    pub document_title: &'a str,
+    pub nav_tabs: &'a [&'a str],
+    pub active_nav: usize,
 }
 
 /// Renders the top title bar and returns the messages emitted this frame.
@@ -53,7 +55,7 @@ pub fn title_bar(ctx: &egui::Context, data: TitleBarData<'_>) -> Vec<TitleBarMes
     let mut push = |message: TitleBarMessage| messages.push(message);
 
     egui::TopBottomPanel::top("title_bar")
-        .exact_height(28.0)
+        .exact_height(32.0)
         .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
         .show(ctx, |ui| {
             // The drag region covers the whole bar; interactive widgets drawn
@@ -72,7 +74,7 @@ pub fn title_bar(ctx: &egui::Context, data: TitleBarData<'_>) -> Vec<TitleBarMes
             }
 
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.spacing_mut().item_spacing.x = 6.0;
                 if window_controls_enabled() {
                     ui.add_space(0.0);
                 } else {
@@ -80,16 +82,16 @@ pub fn title_bar(ctx: &egui::Context, data: TitleBarData<'_>) -> Vec<TitleBarMes
                     ui.add_space(74.0);
                 }
 
-                ui.label(format!(
-                    "{} — {}",
-                    data.app_title, data.document_title
-                ));
-                ui.separator();
+                ui.label(egui::RichText::new(data.app_title).strong().size(14.0));
 
-                title_bar_menu_bar(ui, &mut push);
+                for (index, tab) in data.nav_tabs.iter().enumerate() {
+                    if nav_tab(ui, tab, index == data.active_nav).clicked() {
+                        push(TitleBarMessage::Navigation(index));
+                    }
+                }
 
-                if window_controls_enabled() {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if window_controls_enabled() {
                         window_control_button(ui, "✕", |ctx| {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         });
@@ -100,12 +102,38 @@ pub fn title_bar(ctx: &egui::Context, data: TitleBarData<'_>) -> Vec<TitleBarMes
                         window_control_button(ui, "–", |ctx| {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                         });
-                    });
-                }
+                    }
+                    title_bar_menu_bar(ui, &mut push);
+                });
             });
+
+            // Hairline under the bar.
+            ui.painter().hline(
+                ui.max_rect().x_range(),
+                ui.max_rect().bottom(),
+                egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+            );
         });
 
     messages
+}
+
+/// A shell navigation tab: accented underline marks the active one.
+fn nav_tab(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+    let accent = ui.visuals().hyperlink_color;
+    let response = ui.add(
+        egui::Button::new(egui::RichText::new(label).strong())
+            .selected(selected)
+            .corner_radius(egui::CornerRadius::same(4)),
+    );
+    if selected {
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(response.rect.left() + 8.0, response.rect.bottom() - 2.0),
+            egui::pos2(response.rect.right() - 8.0, response.rect.bottom()),
+        );
+        ui.painter().rect_filled(rect, 0.0, accent);
+    }
+    response
 }
 
 fn title_bar_menu_bar(ui: &mut egui::Ui, push: &mut impl FnMut(TitleBarMessage)) {
@@ -165,6 +193,10 @@ fn title_bar_menu_bar(ui: &mut egui::Ui, push: &mut impl FnMut(TitleBarMessage))
             }
             if ui.button("Configuration").clicked() {
                 push(TitleBarMessage::Menu(TitleBarMenu::SwitchToConfiguration));
+                ui.close();
+            }
+            if ui.button("Toggle Sidebar").clicked() {
+                push(TitleBarMessage::Menu(TitleBarMenu::ToggleSidebar));
                 ui.close();
             }
         });

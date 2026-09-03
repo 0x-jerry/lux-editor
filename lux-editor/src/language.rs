@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use syntect::easy::HighlightLines;
@@ -25,21 +24,6 @@ impl LanguageKind {
     }
 }
 
-pub fn available_syntax_theme_names() -> &'static [String] {
-    static THEME_NAMES: OnceLock<Vec<String>> = OnceLock::new();
-    THEME_NAMES
-        .get_or_init(|| {
-            let mut names = ThemeSet::load_defaults()
-                .themes
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>();
-            names.sort();
-            names
-        })
-        .as_slice()
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HighlightSpan {
     pub start_col: usize,
@@ -50,6 +34,10 @@ pub struct HighlightSpan {
 #[derive(Clone, Debug, Default)]
 pub struct HighlightSnapshot {
     pub version: u64,
+    /// Resolved syntax theme background, when the theme declares one.
+    pub background: Option<[u8; 4]>,
+    /// Resolved syntax theme foreground, used for plain text tokens.
+    pub foreground: Option<[u8; 4]>,
     pub line_tokens: Vec<Vec<HighlightSpan>>,
 }
 
@@ -212,8 +200,12 @@ fn parse_snapshot(
     version: u64,
 ) -> HighlightSnapshot {
     let line_count = text.lines().count().max(1);
+    let background = theme.settings.background.map(color_to_array);
+    let foreground = theme.settings.foreground.map(color_to_array);
     let mut snapshot = HighlightSnapshot {
         version,
+        background,
+        foreground,
         line_tokens: vec![Vec::new(); line_count],
     };
 
@@ -254,6 +246,10 @@ fn fill_black_fallback(snapshot: &mut HighlightSnapshot, text: &str) {
             color: [0, 0, 0, 255],
         });
     }
+}
+
+fn color_to_array(color: syntect::highlighting::Color) -> [u8; 4] {
+    [color.r, color.g, color.b, color.a]
 }
 
 fn append_ranges(line_tokens: &mut Vec<HighlightSpan>, ranges: Vec<(Style, &str)>) {
@@ -337,10 +333,5 @@ mod tests {
             1,
         );
         assert!(!snapshot.line_tokens[0].is_empty());
-    }
-
-    #[test]
-    fn available_syntax_theme_names_is_not_empty() {
-        assert!(!available_syntax_theme_names().is_empty());
     }
 }

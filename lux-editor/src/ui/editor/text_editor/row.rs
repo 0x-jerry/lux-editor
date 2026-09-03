@@ -134,11 +134,15 @@ fn render_row(
     let line_len = line_text.chars().count();
 
     let tokens = highlight_snapshot.line_tokens.get(line_index);
+    let default_color = crate::ui::highlight::snapshot_color(
+        highlight_snapshot.foreground,
+        ui.visuals().text_color(),
+    );
     let job = build_highlighted_line_job(
         line_text,
         tokens.map(Vec::as_slice).unwrap_or(&[]),
         editor_config.settings.font.size,
-        ui.visuals().text_color(),
+        default_color,
     );
     let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
     let row_width = galley.size().x.max(ui.available_width());

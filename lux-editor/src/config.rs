@@ -85,7 +85,9 @@ pub struct BehaviorSettings {
 
 impl Default for BehaviorSettings {
     fn default() -> Self {
-        Self { smart_pairing: true }
+        Self {
+            smart_pairing: true,
+        }
     }
 }
 
@@ -331,8 +333,7 @@ mod tests {
     #[test]
     fn legacy_theme_settings_without_choice_parse_as_auto() {
         let settings: ThemeSettings =
-            serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#)
-                .unwrap();
+            serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#).unwrap();
         assert_eq!(settings.choice, "auto");
         assert_eq!(settings.syntax_theme, "InspiredGitHub");
     }

@@ -86,14 +86,14 @@ mod tests {
 
     #[test]
     fn watch_event_relevance() {
-        assert!(is_watch_event_relevant(&notify::Event::new(EventKind::Create(
-            CreateKind::File
-        ))));
-        assert!(is_watch_event_relevant(&notify::Event::new(EventKind::Modify(
-            ModifyKind::Data(DataChange::Any)
-        ))));
-        assert!(!is_watch_event_relevant(&notify::Event::new(EventKind::Access(
-            AccessKind::Close(AccessMode::Any)
-        ))));
+        assert!(is_watch_event_relevant(&notify::Event::new(
+            EventKind::Create(CreateKind::File)
+        )));
+        assert!(is_watch_event_relevant(&notify::Event::new(
+            EventKind::Modify(ModifyKind::Data(DataChange::Any))
+        )));
+        assert!(!is_watch_event_relevant(&notify::Event::new(
+            EventKind::Access(AccessKind::Close(AccessMode::Any))
+        )));
     }
 }

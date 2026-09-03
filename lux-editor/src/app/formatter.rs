@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::events::CustomEvent;
+use crate::events::{CustomEvent, DocumentEvent};
 use eframe::egui;
 use std::io::Write;
 
@@ -8,7 +8,7 @@ impl App {
     /// formatter. The result is applied only if the buffer generation still
     /// matches (i.e. the user has not typed since the request was launched).
     pub(super) fn format_active_document(&mut self, _ctx: &egui::Context) {
-        let formatter = self.editor_config.settings.formatter.clone();
+        let formatter = self.settings.editor_config.settings.formatter.clone();
         if formatter.command.trim().is_empty() {
             self.active_document_mut().document_status =
                 Some("No formatter configured".to_string());
@@ -17,16 +17,16 @@ impl App {
 
         let text = self.active_document().buffer.text().to_string();
         let generation = self.active_document().edit_generation;
-        let event_tx = self.event_tx.clone();
+        let event_tx = self.runtime.event_tx.clone();
         self.active_document_mut().document_status = Some("Formatting…".to_string());
 
-        self.rt.spawn_blocking(move || {
+        self.runtime.rt.spawn_blocking(move || {
             let result = run_formatter(&formatter.command, &formatter.args, &text);
-            let _ = event_tx.send(CustomEvent::FormattingFinished {
+            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FormattingFinished {
                 generation,
                 from_save: false,
                 result,
-            });
+            }));
         });
     }
 
@@ -96,14 +96,13 @@ pub(super) fn run_formatter(command: &str, args: &str, text: &str) -> Result<Str
         .stderr(std::process::Stdio::null());
     let mut child = cmd.spawn().map_err(|err| err.to_string())?;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(text.as_bytes()).map_err(|err| err.to_string())?;
+        stdin
+            .write_all(text.as_bytes())
+            .map_err(|err| err.to_string())?;
     }
     let output = child.wait_with_output().map_err(|err| err.to_string())?;
     if !output.status.success() {
-        return Err(format!(
-            "formatter exited with status {}",
-            output.status
-        ));
+        return Err(format!("formatter exited with status {}", output.status));
     }
     String::from_utf8(output.stdout).map_err(|err| err.to_string())
 }

@@ -1,15 +1,18 @@
-mod text_editor;
-
+use super::text_editor::{TextEditor, TextEditorState};
+use super::welcome::WelcomeView;
 use crate::config::Config;
-use crate::events::CustomEvent;
+use crate::events::{CustomEvent, DocumentEvent};
 use crate::language::HighlightSnapshot;
+use crate::ui::component::Component;
 use crate::ui::highlight::snapshot_color;
 use crate::ui::types::DocumentTab;
-use crate::ui::welcome;
-use lux_core::Buffer;
 use eframe::egui;
+use lux_core::Buffer;
 use std::ops::Range;
 use std::path::PathBuf;
+
+/// The editor tab strip, welcome fallback and text area.
+pub struct EditorView;
 
 pub struct EditorViewState<'a> {
     pub workspace_path: Option<&'a PathBuf>,
@@ -25,69 +28,82 @@ pub struct EditorViewState<'a> {
     pub caret_visible: bool,
 }
 
-pub fn render_editor_view(
-    ui: &mut egui::Ui,
-    state: EditorViewState<'_>,
-    events: &mut Vec<CustomEvent>,
-) {
-    let EditorViewState {
-        workspace_path,
-        buffer,
-        document_tabs,
-        active_document_index,
-        highlight_snapshot,
-        editor_config,
-        carets,
-        selection_ranges,
-        active_caret_index,
-        caret_visible,
-    } = state;
-    if workspace_path.is_none() && buffer.path().is_none() {
-        welcome::render_welcome_view(ui, editor_config, events);
-        return;
-    }
+impl Component for EditorView {
+    type Message = CustomEvent;
+    type Input<'a> = EditorViewState<'a>;
 
-    let editor_bg = snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color);
-
-    egui::Frame::new()
-        .fill(editor_bg)
-        .corner_radius(egui::CornerRadius::same(6))
-        .inner_margin(egui::Margin::symmetric(6, 3))
-        .show(ui, |ui| {
-            egui::ScrollArea::horizontal()
-                .id_salt("document_tabs_scroll")
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0;
-                        for (index, tab) in document_tabs.iter().enumerate() {
-                            let selected = index == active_document_index;
-                            let (tab_response, close_clicked) =
-                                document_tab(ui, tab, selected, index);
-                            if tab_response.clicked() {
-                                events.push(CustomEvent::SwitchDocument(index));
-                            }
-                            if close_clicked {
-                                events.push(CustomEvent::CloseDocument(index));
-                            }
-                        }
-                    });
-                });
-        });
-
-    text_editor::render_text_editor(
-        ui,
-        text_editor::TextEditorState {
+    fn render(&mut self, ui: &mut egui::Ui, state: Self::Input<'_>) -> Vec<CustomEvent> {
+        let EditorViewState {
+            workspace_path,
             buffer,
+            document_tabs,
+            active_document_index,
             highlight_snapshot,
             editor_config,
             carets,
             selection_ranges,
             active_caret_index,
             caret_visible,
-        },
-        events,
-    );
+        } = state;
+        let mut events = Vec::new();
+        if workspace_path.is_none() && buffer.path().is_none() {
+            let mut welcome_view = WelcomeView;
+            events.extend(welcome_view.render(ui, editor_config));
+            return events;
+        }
+
+        let editor_bg = snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color);
+
+        egui::Frame::new()
+            .fill(editor_bg)
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::symmetric(6, 3))
+            .show(ui, |ui| {
+                egui::ScrollArea::horizontal()
+                    .id_salt("document_tabs_scroll")
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            for (index, tab) in document_tabs.iter().enumerate() {
+                                let selected = index == active_document_index;
+                                let (tab_response, close_clicked) =
+                                    document_tab(ui, tab, selected, index);
+                                if tab_response.clicked() {
+                                    events.push(CustomEvent::Document(DocumentEvent::SwitchDocument(
+                                        index,
+                                    )));
+                                }
+                                if close_clicked {
+                                    events.push(CustomEvent::Document(DocumentEvent::CloseDocument(
+                                        index,
+                                    )));
+                                }
+                            }
+                        });
+                    });
+            });
+
+        let mut text_editor = TextEditor;
+        events.extend(
+            text_editor
+                .render(
+                    ui,
+                    TextEditorState {
+                        buffer,
+                        highlight_snapshot,
+                        editor_config,
+                        carets,
+                        selection_ranges,
+                        active_caret_index,
+                        caret_visible,
+                    },
+                )
+                .into_iter()
+                .map(CustomEvent::Editing),
+        );
+        events
+    }
 }
 
 /// A document tab: filled when active with an accent top bar; the close button

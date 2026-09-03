@@ -1,4 +1,4 @@
-use lux_core::Buffer;
+use crate::Buffer;
 use std::ops::Range;
 
 /// A single cursor: a caret position plus an optional selection anchor.
@@ -70,7 +70,9 @@ impl CaretState {
         if self.carets.is_empty() {
             self.carets.push(Caret::default());
         }
-        self.active_index = snapshot.active_index.min(self.carets.len().saturating_sub(1));
+        self.active_index = snapshot
+            .active_index
+            .min(self.carets.len().saturating_sub(1));
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
@@ -86,6 +88,8 @@ impl CaretState {
 
     // ---- queries ----------------------------------------------------------
 
+    /// Carets always number at least one; there is no empty state.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.carets.len()
     }
@@ -99,9 +103,7 @@ impl CaretState {
     }
 
     pub fn caret_char_at(&self, index: usize) -> usize {
-        self.carets
-            .get(index)
-            .map_or(0, |caret| caret.caret_char)
+        self.carets.get(index).map_or(0, |caret| caret.caret_char)
     }
 
     pub fn selection_range(&self) -> Option<Range<usize>> {
@@ -138,7 +140,7 @@ impl CaretState {
 
     // ---- mutation ---------------------------------------------------------
 
-    pub(super) fn set_caret_char_at(
+    pub fn set_caret_char_at(
         &mut self,
         index: usize,
         next: usize,
@@ -174,7 +176,7 @@ impl CaretState {
     }
 
     /// Move cursor `index` by `delta` characters (used after pairing edits).
-    pub(super) fn nudge_caret(&mut self, index: usize, delta: isize, buffer: &Buffer) {
+    pub fn nudge_caret(&mut self, index: usize, delta: isize, buffer: &Buffer) {
         let current = self.caret_char_at(index);
         let next = (current as isize + delta).max(0) as usize;
         self.set_caret_char_at(index, next.min(buffer.text().len_chars()), buffer, false);
@@ -263,9 +265,7 @@ impl CaretState {
 
     pub fn move_left(&mut self, buffer: &Buffer, selecting: bool) {
         for index in 0..self.carets.len() {
-            if !selecting
-                && let Some(range) = self.selection_range_at(index)
-            {
+            if !selecting && let Some(range) = self.selection_range_at(index) {
                 self.carets[index].caret_char = range.start;
                 self.carets[index].anchor_char = None;
             } else {
@@ -282,8 +282,7 @@ impl CaretState {
                 self.carets[index].caret_char = range.end;
                 self.carets[index].anchor_char = None;
             } else {
-                let next =
-                    (self.carets[index].caret_char + 1).min(buffer.text().len_chars());
+                let next = (self.carets[index].caret_char + 1).min(buffer.text().len_chars());
                 self.set_caret_char_at(index, next, buffer, selecting);
             }
         }
@@ -403,7 +402,9 @@ impl EditHistory {
     pub fn push(&mut self, transaction: EditTransaction) {
         if is_typed_text_continuation(&self.undo_stack, &transaction) {
             let last = self.undo_stack.last_mut().unwrap();
-            last.edits[0].inserted_text.push_str(&transaction.edits[0].inserted_text);
+            last.edits[0]
+                .inserted_text
+                .push_str(&transaction.edits[0].inserted_text);
             last.after = transaction.after;
             return;
         }
@@ -520,7 +521,7 @@ fn line_adjacent_char(buffer: &Buffer, caret_char: usize, down: bool) -> usize {
     (target_start + column).min(target_end)
 }
 
-pub(super) fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+pub fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
     if caret_char == 0 {
         return 0;
     }
@@ -533,14 +534,16 @@ pub(super) fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usiz
     while index > 0 && is_word_char(slice.char(index - 1)) {
         index -= 1;
     }
-    while index > 0 && !slice.char(index - 1).is_whitespace() && !is_word_char(slice.char(index - 1))
+    while index > 0
+        && !slice.char(index - 1).is_whitespace()
+        && !is_word_char(slice.char(index - 1))
     {
         index -= 1;
     }
     index
 }
 
-pub(super) fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+pub fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
     let total_chars = buffer.text().len_chars();
     if caret_char >= total_chars {
         return total_chars;
@@ -563,11 +566,11 @@ pub(super) fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
     caret_char + offset
 }
 
-fn is_word_char(ch: char) -> bool {
+pub(crate) fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 
-pub(super) fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Range<usize>> {
+pub fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Range<usize>> {
     let total_chars = buffer.text().len_chars();
     if total_chars == 0 {
         return None;
@@ -598,10 +601,77 @@ pub(super) fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Rang
     Some(start..end)
 }
 
+// ---- indentation ------------------------------------------------------------
+
+pub const INDENT: &str = "    ";
+
+/// Whitespace at the start of the line containing `caret_char`.
+pub fn leading_indent(buffer: &Buffer, caret_char: usize) -> String {
+    let total_chars = buffer.text().len_chars();
+    if total_chars == 0 {
+        return String::new();
+    }
+    let line_probe = if caret_char == 0 {
+        0
+    } else {
+        caret_char
+            .saturating_sub(1)
+            .min(total_chars.saturating_sub(1))
+    };
+    let line_idx = buffer.text().char_to_line(line_probe);
+    let line = buffer.text().line(line_idx).to_string();
+    line.trim_end_matches(['\n', '\r'])
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .collect::<String>()
+}
+
+/// Text for an Enter press at `caret_char`: newline plus the next line's
+/// indentation, growing inside `{` blocks and dedenting after `}`.
+pub fn indentation_for_newline(buffer: &Buffer, caret_char: usize) -> String {
+    let total_chars = buffer.text().len_chars();
+    if total_chars == 0 {
+        return "\n".to_string();
+    }
+
+    let line_probe = if caret_char == 0 {
+        0
+    } else {
+        caret_char
+            .saturating_sub(1)
+            .min(total_chars.saturating_sub(1))
+    };
+    let line_idx = buffer.text().char_to_line(line_probe);
+    let line = buffer.text().line(line_idx).to_string();
+    let content = line.trim_end_matches(['\n', '\r']);
+    let leading = leading_indent(buffer, caret_char);
+    let trimmed = content.trim_end();
+
+    if trimmed.ends_with('{') {
+        return format!("\n{}{}", leading, INDENT);
+    }
+
+    if trimmed.starts_with('}') {
+        let dedented = if leading.ends_with('\t') {
+            leading.trim_end_matches('\t').to_string()
+        } else if leading.ends_with(INDENT) {
+            leading.trim_end_matches(INDENT).to_string()
+        } else {
+            String::new()
+        };
+        return format!("\n{}", dedented);
+    }
+
+    format!("\n{}", leading)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CaretState, EditHistory, EditTransaction, SubEdit, line_column, word_char_range};
-    use lux_core::Buffer;
+    use super::{
+        CaretState, EditHistory, EditTransaction, SubEdit, indentation_for_newline, leading_indent,
+        line_column, word_char_range,
+    };
+    use crate::Buffer;
 
     fn insert(buffer: &mut Buffer, text: &str) {
         let caret = buffer.text().len_chars();
@@ -875,5 +945,34 @@ mod tests {
         insert(&mut buffer, "foo\nbar");
         assert_eq!(word_char_range(&buffer, 2), Some(0..3));
         assert_eq!(word_char_range(&buffer, 5), Some(4..7));
+    }
+
+    #[test]
+    fn indentation_for_newline_grows_after_open_brace() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "fn main() {");
+        let text = indentation_for_newline(&buffer, 11);
+        assert_eq!(text, "\n    ");
+    }
+
+    #[test]
+    fn indentation_for_newline_dedents_after_close_brace() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "}");
+        let text = indentation_for_newline(&buffer, 1);
+        assert_eq!(text, "\n");
+    }
+
+    #[test]
+    fn indentation_for_newline_empty_buffer_is_bare_newline() {
+        let buffer = Buffer::new();
+        assert_eq!(indentation_for_newline(&buffer, 0), "\n");
+    }
+
+    #[test]
+    fn leading_indent_collects_line_whitespace() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "  \tfoo");
+        assert_eq!(leading_indent(&buffer, 4), "  \t");
     }
 }

@@ -117,7 +117,7 @@ impl App {
 
     pub(crate) fn execute_command(&mut self, command: EditorCommand, ctx: &egui::Context) -> bool {
         if matches!(&command, EditorCommand::ToggleCommandPanel) {
-            self.toggle_command_panel();
+            self.chrome.command_panel.toggle();
             return false;
         }
 
@@ -126,7 +126,7 @@ impl App {
         }
 
         if !matches!(&command, EditorCommand::Copy) {
-            self.touch_caret_blink();
+            self.documents.touch_caret_blink();
         }
 
         match command {
@@ -210,7 +210,7 @@ impl App {
                 let active_document = self.active_document_mut();
                 if active_document.caret_state.has_multiple_cursors() {
                     active_document.caret_state.remove_extra_cursors();
-                    self.touch_caret_blink();
+                    self.documents.touch_caret_blink();
                 }
                 false
             }
@@ -219,7 +219,7 @@ impl App {
                 active_document
                     .caret_state
                     .add_cursor_below(&active_document.buffer);
-                self.touch_caret_blink();
+                self.documents.touch_caret_blink();
                 false
             }
             EditorCommand::AddCursorAbove => {
@@ -227,7 +227,7 @@ impl App {
                 active_document
                     .caret_state
                     .add_cursor_above(&active_document.buffer);
-                self.touch_caret_blink();
+                self.documents.touch_caret_blink();
                 false
             }
             EditorCommand::Undo => {

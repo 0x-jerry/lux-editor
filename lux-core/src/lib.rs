@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 
+pub mod editor;
+pub mod pairing;
+
 #[derive(Debug)]
 pub struct Buffer {
     rope: Rope,

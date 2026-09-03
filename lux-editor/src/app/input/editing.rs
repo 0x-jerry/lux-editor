@@ -1,10 +1,10 @@
-use super::smart_pairing::{PairingAction, matched_pair_around};
-use crate::app::editor::{EditTransaction, SubEdit, next_word_boundary, previous_word_boundary};
 use crate::app::App;
 use eframe::egui;
-use lux_core::Buffer;
-
-pub(super) const INDENT: &str = "    ";
+use lux_core::editor::{
+    EditTransaction, INDENT, SubEdit, indentation_for_newline, leading_indent, next_word_boundary,
+    previous_word_boundary,
+};
+use lux_core::pairing::{PairingAction, action_for, closing_pair, matched_pair_around};
 
 impl App {
     pub(super) fn selected_text(&self) -> Option<String> {
@@ -51,7 +51,7 @@ impl App {
     /// Typed single-char insert with smart pairing: auto-close openers, skip
     /// over closing partners, and no pairing behavior over selections.
     pub(super) fn insert_text_with_pairing(&mut self, text: &str, ctx: &egui::Context) -> bool {
-        let enabled = self.editor_config.settings.behavior.smart_pairing;
+        let enabled = self.settings.editor_config.settings.behavior.smart_pairing;
         if !enabled || text.chars().count() != 1 {
             return self.insert_or_replace_selection(text, ctx);
         }
@@ -68,18 +68,20 @@ impl App {
                 let (start, end) = active_document.caret_state.edit_target(index);
                 let collapsed = start == end;
                 let (prev, next) = if collapsed {
-                    active_document.caret_state.neighbor_chars(index, &active_document.buffer)
+                    active_document
+                        .caret_state
+                        .neighbor_chars(index, &active_document.buffer)
                 } else {
                     (None, None)
                 };
                 let action = if collapsed {
-                    smart_pairing_action(ch, prev, next)
+                    action_for(ch, prev, next)
                 } else {
                     PairingAction::Plain
                 };
                 match action {
                     PairingAction::AutoClose => {
-                        let closer = super::smart_pairing::closing_pair(ch).unwrap();
+                        let closer = closing_pair(ch).unwrap();
                         edits.push((start, end));
                         texts.push(format!("{ch}{closer}"));
                         auto_close.push(index);
@@ -121,7 +123,7 @@ impl App {
     }
 
     pub(super) fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
-        let smart_pairing = self.editor_config.settings.behavior.smart_pairing;
+        let smart_pairing = self.settings.editor_config.settings.behavior.smart_pairing;
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
@@ -213,7 +215,7 @@ impl App {
     /// Enter key: per-cursor indentation, with smart newlines that open a
     /// blank line inside an empty paired region (`(|)` → two indented lines).
     pub(super) fn insert_newline(&mut self, ctx: &egui::Context) -> bool {
-        let smart_pairing = self.editor_config.settings.behavior.smart_pairing;
+        let smart_pairing = self.settings.editor_config.settings.behavior.smart_pairing;
         let (edits, texts, smart_mid) = {
             let active_document = self.active_document();
             let cursor_count = active_document.caret_state.len();
@@ -223,8 +225,9 @@ impl App {
             for index in 0..cursor_count {
                 let caret = active_document.caret_state.caret_char_at(index);
                 edits.push((caret, caret));
-                let (prev, next) =
-                    active_document.caret_state.neighbor_chars(index, &active_document.buffer);
+                let (prev, next) = active_document
+                    .caret_state
+                    .neighbor_chars(index, &active_document.buffer);
                 if smart_pairing && matched_pair_around(prev, next) {
                     let leading = leading_indent(&active_document.buffer, caret);
                     let inner = format!("{leading}{INDENT}");
@@ -232,7 +235,7 @@ impl App {
                     smart_mid.push((index, caret + 1 + inner.chars().count()));
                     texts.push(text);
                 } else {
-                    texts.push(Self::indentation_for_newline(&active_document.buffer, caret));
+                    texts.push(indentation_for_newline(&active_document.buffer, caret));
                 }
             }
             (edits, texts, smart_mid)
@@ -311,8 +314,7 @@ impl App {
         for (index, (start, end)) in edits.into_iter().enumerate() {
             let start = start.min(total_chars);
             let end = end.min(total_chars).max(start);
-            let is_noop =
-                start == end && texts.get(index).is_none_or(|text| text.is_empty());
+            let is_noop = start == end && texts.get(index).is_none_or(|text| text.is_empty());
             if is_noop {
                 continue;
             }
@@ -341,12 +343,7 @@ impl App {
                 (cursor_index, start, end, delta)
             })
             .collect();
-        items.sort_by(|left, right| {
-            right
-                .1
-                .cmp(&left.1)
-                .then_with(|| right.2.cmp(&left.2))
-        });
+        items.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| right.2.cmp(&left.2)));
 
         // Undo positions must be in final-buffer coordinates: each edit's
         // start shifts by the net delta of every *lower* edit applied after it.
@@ -362,14 +359,8 @@ impl App {
         {
             let active_document = self.active_document_mut();
             for (index, &(cursor_index, start, end, _)) in items.iter().enumerate() {
-                let inserted_text = texts
-                    .get(cursor_index)
-                    .map_or("", |text| text.as_str());
-                let deleted_text = active_document
-                    .buffer
-                    .text()
-                    .slice(start..end)
-                    .to_string();
+                let inserted_text = texts.get(cursor_index).map_or("", |text| text.as_str());
+                let deleted_text = active_document.buffer.text().slice(start..end).to_string();
                 if end > start {
                     active_document.buffer.remove(start..end);
                 }
@@ -424,43 +415,6 @@ impl App {
         true
     }
 
-    pub(super) fn indentation_for_newline(buffer: &Buffer, caret_char: usize) -> String {
-        let total_chars = buffer.text().len_chars();
-        if total_chars == 0 {
-            return "\n".to_string();
-        }
-
-        let line_probe = if caret_char == 0 {
-            0
-        } else {
-            caret_char
-                .saturating_sub(1)
-                .min(total_chars.saturating_sub(1))
-        };
-        let line_idx = buffer.text().char_to_line(line_probe);
-        let line = buffer.text().line(line_idx).to_string();
-        let content = line.trim_end_matches(['\n', '\r']);
-        let leading = leading_indent(buffer, caret_char);
-        let trimmed = content.trim_end();
-
-        if trimmed.ends_with('{') {
-            return format!("\n{}{}", leading, INDENT);
-        }
-
-        if trimmed.starts_with('}') {
-            let dedented = if leading.ends_with('\t') {
-                leading.trim_end_matches('\t').to_string()
-            } else if leading.ends_with(INDENT) {
-                leading.trim_end_matches(INDENT).to_string()
-            } else {
-                String::new()
-            };
-            return format!("\n{}", dedented);
-        }
-
-        format!("\n{}", leading)
-    }
-
     pub(super) fn mark_document_dirty(&mut self, ctx: &egui::Context) {
         let active_document = self.active_document_mut();
         active_document.document_dirty = true;
@@ -468,31 +422,4 @@ impl App {
         active_document.document_status = Some("Modified".to_string());
         self.update_window_title(ctx);
     }
-}
-
-/// Whitespace at the start of the line containing `caret_char`.
-pub(super) fn leading_indent(buffer: &Buffer, caret_char: usize) -> String {
-    let total_chars = buffer.text().len_chars();
-    if total_chars == 0 {
-        return String::new();
-    }
-    let line_probe = if caret_char == 0 {
-        0
-    } else {
-        caret_char
-            .saturating_sub(1)
-            .min(total_chars.saturating_sub(1))
-    };
-    let line_idx = buffer.text().char_to_line(line_probe);
-    let line = buffer.text().line(line_idx).to_string();
-    line.trim_end_matches(['\n', '\r'])
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect::<String>()
-}
-
-/// Pairing action for typing `ch` at a collapsed caret with neighbors
-/// `(prev, next)`. Never pairs when a selection is being replaced.
-fn smart_pairing_action(ch: char, prev: Option<char>, next: Option<char>) -> PairingAction {
-    super::smart_pairing::action_for(ch, prev, next)
 }

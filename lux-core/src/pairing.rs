@@ -2,6 +2,8 @@
 //! empty-pair newline. Pure helpers over the characters immediately before
 //! (`prev`) and after (`next`) a caret position.
 
+use crate::editor::is_word_char;
+
 /// What should happen when the user types `ch` at a caret.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PairingAction {
@@ -26,7 +28,7 @@ pub fn closing_pair(opener: char) -> Option<char> {
 }
 
 /// Opening pair for a closing character, if it is one.
-pub fn opening_pair(closer: char) -> Option<char> {
+fn opening_pair(closer: char) -> Option<char> {
     match closer {
         ')' => Some('('),
         ']' => Some('['),
@@ -79,10 +81,6 @@ pub fn matched_pair_around(prev: Option<char>, next: Option<char>) -> bool {
     }
 }
 
-fn is_word_char(ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_'
-}
-
 #[cfg(test)]
 mod tests {
     use super::{PairingAction, action_for, matched_pair_around};
@@ -91,7 +89,10 @@ mod tests {
     fn brackets_auto_close() {
         for opener in ['(', '[', '{'] {
             assert_eq!(action_for(opener, None, None), PairingAction::AutoClose);
-            assert_eq!(action_for(opener, Some('a'), None), PairingAction::AutoClose);
+            assert_eq!(
+                action_for(opener, Some('a'), None),
+                PairingAction::AutoClose
+            );
         }
     }
 

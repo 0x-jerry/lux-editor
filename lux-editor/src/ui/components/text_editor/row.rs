@@ -1,10 +1,10 @@
 use super::metrics::TextEditorMetrics;
 use crate::config::Config;
-use crate::events::CustomEvent;
+use crate::events::EditingEvent;
 use crate::language::HighlightSnapshot;
 use crate::ui::highlight::build_highlighted_line_job;
-use lux_core::Buffer;
 use eframe::egui;
+use lux_core::Buffer;
 use std::ops::Range;
 
 pub struct VisibleRow {
@@ -36,7 +36,7 @@ pub fn render_rows(
     active_caret_index: usize,
     caret_visible: bool,
     metrics: &TextEditorMetrics,
-    events: &mut Vec<CustomEvent>,
+    events: &mut Vec<EditingEvent>,
 ) -> RowRenderOutput {
     // show_rows virtualizes on `row_height + item_spacing.y`; a contiguous
     // grid of lines (no gaps) is what a code editor wants, so zero the spacing
@@ -52,7 +52,12 @@ pub fn render_rows(
 
     // Don't fight the user dragging the scrollbar: only reveal on caret moves.
     let user_scrolling = ui.input(|input| {
-        input.smooth_scroll_delta.y.abs() > 0.0 || input.raw_scroll_delta.y.abs() > 0.0
+        input.smooth_scroll_delta.y.abs() > 0.0
+            || input
+                .raw
+                .events
+                .iter()
+                .any(|event| matches!(event, egui::Event::MouseWheel { .. }))
     });
     if user_scrolling {
         reveal.last_caret_line = active_line;
@@ -80,24 +85,25 @@ pub fn render_rows(
         scroll_area = scroll_area.vertical_scroll_offset(target);
     }
 
-    let scroll_output = scroll_area.show_rows(ui, metrics.row_height, total_lines, |ui, row_range| {
-        for line_index in row_range {
-            render_row(
-                ui,
-                buffer,
-                highlight_snapshot,
-                editor_config,
-                line_index,
-                carets,
-                selection_ranges,
-                active_caret_index,
-                caret_visible,
-                metrics,
-                events,
-                &mut visible_rows,
-            );
-        }
-    });
+    let scroll_output =
+        scroll_area.show_rows(ui, metrics.row_height, total_lines, |ui, row_range| {
+            for line_index in row_range {
+                render_row(
+                    ui,
+                    buffer,
+                    highlight_snapshot,
+                    editor_config,
+                    line_index,
+                    carets,
+                    selection_ranges,
+                    active_caret_index,
+                    caret_visible,
+                    metrics,
+                    events,
+                    &mut visible_rows,
+                );
+            }
+        });
 
     reveal.offset = scroll_output.state.offset.y;
     reveal.target_offset = None;
@@ -121,7 +127,7 @@ fn render_row(
     active_caret_index: usize,
     caret_visible: bool,
     metrics: &TextEditorMetrics,
-    events: &mut Vec<CustomEvent>,
+    events: &mut Vec<EditingEvent>,
     visible_rows: &mut Vec<VisibleRow>,
 ) {
     let line_start = buffer.text().line_to_char(line_index);
@@ -222,12 +228,20 @@ fn paint_selection(
     let x0 = if range.start <= line_start {
         text_origin.x
     } else {
-        text_origin.x + galley.pos_from_cursor(egui::text::CCursor::new(covered_start - line_start)).min.x
+        text_origin.x
+            + galley
+                .pos_from_cursor(egui::text::CCursor::new(covered_start - line_start))
+                .min
+                .x
     };
     let x1 = if range.end >= line_end {
         text_origin.x + galley.size().x
     } else {
-        text_origin.x + galley.pos_from_cursor(egui::text::CCursor::new(covered_end - line_start)).min.x
+        text_origin.x
+            + galley
+                .pos_from_cursor(egui::text::CCursor::new(covered_end - line_start))
+                .min
+                .x
     };
     let rect = egui::Rect::from_min_max(
         egui::pos2(x0, text_origin.y),
@@ -249,7 +263,11 @@ fn paint_caret(
         return;
     }
     let column = caret_column.saturating_sub(1);
-    let x = text_origin.x + galley.pos_from_cursor(egui::text::CCursor::new(column)).min.x;
+    let x = text_origin.x
+        + galley
+            .pos_from_cursor(egui::text::CCursor::new(column))
+            .min
+            .x;
     ui.painter().line_segment(
         [
             egui::pos2(x, text_origin.y),
@@ -268,7 +286,7 @@ fn push_pointer_events(
     rect: &egui::Rect,
     metrics: &TextEditorMetrics,
     response: &egui::Response,
-    events: &mut Vec<CustomEvent>,
+    events: &mut Vec<EditingEvent>,
 ) {
     let column_from = |pointer: egui::Pos2| {
         galley
@@ -282,9 +300,9 @@ fn push_pointer_events(
     if response.double_clicked_by(egui::PointerButton::Primary)
         && let Some(pointer) = response.interact_pointer_pos()
     {
-        events.push(CustomEvent::SelectWordFromPointer {
+        events.push(EditingEvent::SelectWordFromPointer {
             line_index,
-            column: column_from(pointer),
+            column: column_from(pointer).0,
         });
     }
 
@@ -293,9 +311,9 @@ fn push_pointer_events(
     {
         let selecting = ui.input(|input| input.modifiers.shift);
         let add_cursor = ui.input(|input| input.modifiers.command || input.modifiers.ctrl);
-        events.push(CustomEvent::SetCaretFromPointer {
+        events.push(EditingEvent::SetCaretFromPointer {
             line_index,
-            column: column_from(pointer),
+            column: column_from(pointer).0,
             selecting,
             add_cursor,
         });
@@ -315,9 +333,9 @@ fn push_pointer_events(
                 pointer.y - pointed_top,
             ))
             .index;
-        events.push(CustomEvent::SetCaretFromPointer {
+        events.push(EditingEvent::SetCaretFromPointer {
             line_index: pointed_line,
-            column,
+            column: column.0,
             selecting: true,
             add_cursor: false,
         });

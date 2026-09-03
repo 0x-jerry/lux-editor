@@ -4,8 +4,13 @@
 //! syntect theme colors the code, so token/background contrast is guaranteed.
 //! `Auto` follows the OS preference reported by [`egui::Context::system_theme`].
 
+use crate::config::EditorSettings;
 use eframe::egui;
 use egui::{Color32, CornerRadius, Stroke, Visuals};
+use font_kit::family_name::FamilyName;
+use font_kit::handle::Handle;
+use font_kit::properties::Properties;
+use font_kit::source::SystemSource;
 
 /// User-facing theme choice, persisted in config as a string.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -203,6 +208,73 @@ fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
     visuals.widgets.inactive.weak_bg_fill = weak;
 }
 
+/// Applies the configured chrome theme and fonts to the egui context and
+/// returns whether the applied theme is dark (feeds live `Auto` following).
+pub fn apply_editor_settings(ctx: &egui::Context, settings: &EditorSettings) -> bool {
+    let theme = AppTheme::resolve(
+        ThemeChoice::from_value(&settings.theme.choice),
+        ctx.system_theme(),
+    );
+    // Keep egui reporting the OS theme so `Auto` can follow it live.
+    ctx.set_theme(egui::ThemePreference::System);
+    ctx.set_visuals(theme.visuals.clone());
+
+    let mut fonts = egui::FontDefinitions::default();
+    // Phosphor icon font, shipped inside egui-phosphor (avoids bundling the
+    // .ttf in this repo; font_bytes is egui-version-agnostic, unlike add_to_fonts).
+    fonts.font_data.insert(
+        "phosphor".into(),
+        egui::FontData::from_static(egui_phosphor::Variant::Regular.font_bytes()).into(),
+    );
+    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        family.insert(1, "phosphor".into());
+    }
+    if let Some(custom_font) = load_custom_font(&settings.font.family) {
+        fonts.font_data.insert(
+            "custom-editor-font".to_string(),
+            egui::FontData::from_owned(custom_font).into(),
+        );
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+            family.insert(0, "custom-editor-font".to_string());
+        }
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+            family.insert(0, "custom-editor-font".to_string());
+        }
+    }
+    ctx.set_fonts(fonts);
+
+    // egui 0.36 keeps separate dark/light styles; keep the font sizes in sync for both.
+    let font_size = settings.font.size;
+    ctx.all_styles_mut(|style| {
+        style.text_styles.insert(
+            egui::TextStyle::Monospace,
+            egui::FontId::monospace(font_size),
+        );
+        style
+            .text_styles
+            .insert(egui::TextStyle::Body, egui::FontId::proportional(font_size));
+        style.text_styles.insert(
+            egui::TextStyle::Button,
+            egui::FontId::proportional(font_size),
+        );
+    });
+    theme.is_dark
+}
+
+fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
+    let source = SystemSource::new();
+    let handle = source
+        .select_best_match(
+            &[FamilyName::Title(font_family.to_string())],
+            &Properties::new(),
+        )
+        .ok()?;
+    match handle {
+        Handle::Path { path, .. } => std::fs::read(path).ok(),
+        Handle::Memory { bytes, .. } => Some(bytes.to_vec()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,8 +297,14 @@ mod tests {
             syntax_theme_for(ThemeChoice::Auto, Some(egui::Theme::Dark)),
             "base16-ocean.dark"
         );
-        assert_eq!(syntax_theme_for(ThemeChoice::Auto, None), "base16-ocean.dark");
-        assert_eq!(syntax_theme_for(ThemeChoice::Dark, None), "base16-ocean.dark");
+        assert_eq!(
+            syntax_theme_for(ThemeChoice::Auto, None),
+            "base16-ocean.dark"
+        );
+        assert_eq!(
+            syntax_theme_for(ThemeChoice::Dark, None),
+            "base16-ocean.dark"
+        );
         assert_eq!(
             syntax_theme_for(ThemeChoice::Light, None),
             "base16-ocean.light"

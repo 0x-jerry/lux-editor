@@ -1,6 +1,17 @@
-use super::{App, ShellView};
+//! Command palette overlay. The only stateful component in the shell; the app
+//! owns the instance so its query/selection survive between frames.
+
+use crate::config::Config;
+use crate::events::{AppEvent, CustomEvent, DocumentEvent, ShellEvent};
+use crate::ui::component::Component;
 use eframe::egui;
 use std::path::PathBuf;
+
+/// Command palette.
+#[derive(Default)]
+pub struct CommandPanel {
+    state: CommandPanelState,
+}
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
 enum CommandPanelMode {
@@ -10,10 +21,10 @@ enum CommandPanelMode {
 }
 
 #[derive(Default)]
-pub(super) struct CommandPanelState {
-    pub(super) open: bool,
-    pub(super) query: String,
-    pub(super) selected: usize,
+struct CommandPanelState {
+    open: bool,
+    query: String,
+    selected: usize,
     mode: CommandPanelMode,
     recent_used_actions: Vec<CommandPanelAction>,
 }
@@ -45,141 +56,42 @@ struct RankedCommand {
     score: i32,
 }
 
-impl App {
-    pub(super) fn toggle_command_panel(&mut self) {
-        if self.command_panel.open {
-            self.close_command_panel();
+impl CommandPanel {
+    pub fn open(&self) -> bool {
+        self.state.open
+    }
+
+    pub fn toggle(&mut self) {
+        if self.state.open {
+            self.close();
             return;
         }
-        self.command_panel.open = true;
-        self.command_panel.query.clear();
-        self.command_panel.selected = 0;
-        self.command_panel.mode = CommandPanelMode::Root;
+        self.state.open = true;
+        self.state.query.clear();
+        self.state.selected = 0;
+        self.state.mode = CommandPanelMode::Root;
     }
 
-    pub(super) fn command_panel_open(&self) -> bool {
-        self.command_panel.open
+    fn close(&mut self) {
+        self.state.open = false;
+        self.state.query.clear();
+        self.state.selected = 0;
+        self.state.mode = CommandPanelMode::Root;
     }
 
-    fn close_command_panel(&mut self) {
-        self.command_panel.open = false;
-        self.command_panel.query.clear();
-        self.command_panel.selected = 0;
-        self.command_panel.mode = CommandPanelMode::Root;
+    fn open_root_commands(&mut self) {
+        self.state.mode = CommandPanelMode::Root;
+        self.state.query.clear();
+        self.state.selected = 0;
     }
 
-    pub(super) fn render_command_panel(&mut self, ctx: &egui::Context) {
-        if !self.command_panel.open {
-            return;
-        }
-
-        let mut should_close = false;
-        let mut pending_action: Option<CommandPanelAction> = None;
-        let query_hint = self.query_hint();
-        let display_commands = self.display_commands();
-
-        egui::Window::new("Command Panel")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
-            .default_width(520.0)
-            .show(ctx, |ui| {
-                let input = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_panel.query).hint_text(query_hint),
-                );
-                input.request_focus();
-
-                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                    if self.command_panel.mode == CommandPanelMode::RecentList {
-                        self.open_root_commands();
-                    } else {
-                        should_close = true;
-                    }
-                }
-
-                if display_commands.is_empty() {
-                    self.command_panel.selected = 0;
-                    ui.add_space(8.0);
-                    ui.label("No matching commands");
-                    return;
-                }
-
-                if self.command_panel.selected >= display_commands.len() {
-                    self.command_panel.selected = display_commands.len().saturating_sub(1);
-                }
-
-                if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                    self.command_panel.selected =
-                        (self.command_panel.selected + 1) % display_commands.len();
-                }
-                if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                    self.command_panel.selected = if self.command_panel.selected == 0 {
-                        display_commands.len().saturating_sub(1)
-                    } else {
-                        self.command_panel.selected.saturating_sub(1)
-                    };
-                }
-                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    pending_action = Some(
-                        display_commands[self.command_panel.selected]
-                            .command
-                            .action
-                            .clone(),
-                    );
-                }
-
-                ui.add_space(8.0);
-                if self.show_recent_used_section() {
-                    ui.label("Recent Used");
-                    ui.separator();
-                    ui.add_space(4.0);
-                }
-                egui::ScrollArea::vertical()
-                    .max_height(280.0)
-                    .show(ui, |ui| {
-                        for (index, ranked) in display_commands.iter().enumerate() {
-                            let selected = index == self.command_panel.selected;
-                            let response = ui.selectable_label(selected, &ranked.command.title);
-                            if response.clicked() {
-                                pending_action = Some(ranked.command.action.clone());
-                            }
-                            if response.hovered() {
-                                self.command_panel.selected = index;
-                            }
-                        }
-                    });
-            });
-
-        if should_close {
-            self.close_command_panel();
-            return;
-        }
-
-        if let Some(action) = pending_action {
-            match action {
-                CommandPanelAction::OpenRecently => {
-                    self.remember_recent_command(&action);
-                    self.command_panel.mode = CommandPanelMode::RecentList;
-                    self.command_panel.query.clear();
-                    self.command_panel.selected = 0;
-                }
-                _ => {
-                    self.remember_recent_command(&action);
-                    self.run_command_panel_action(action, ctx);
-                    self.close_command_panel();
-                }
-            }
-        }
-    }
-
-    fn display_commands(&self) -> Vec<RankedCommand> {
-        let ranked_commands = rank_commands(&self.command_panel.query, self.current_commands());
+    fn display_commands(&self, config: &Config) -> Vec<RankedCommand> {
+        let ranked_commands = rank_commands(&self.state.query, self.current_commands(config));
         if !self.show_recent_used_section() {
             return ranked_commands;
         }
 
-        let mut recent_commands =
-            build_recent_used_commands(&self.command_panel.recent_used_actions);
+        let mut recent_commands = build_recent_used_commands(&self.state.recent_used_actions);
         let recent_keys = recent_commands
             .iter()
             .map(|command| action_key(&command.command.action))
@@ -196,82 +108,184 @@ impl App {
     }
 
     fn show_recent_used_section(&self) -> bool {
-        self.command_panel.mode == CommandPanelMode::Root
-            && self.command_panel.query.trim().is_empty()
-            && !self.command_panel.recent_used_actions.is_empty()
+        self.state.mode == CommandPanelMode::Root
+            && self.state.query.trim().is_empty()
+            && !self.state.recent_used_actions.is_empty()
     }
 
-    fn current_commands(&self) -> Vec<CommandPanelCommand> {
-        if self.command_panel.mode == CommandPanelMode::RecentList {
-            return build_recent_commands(&self.editor_config);
+    fn current_commands(&self, config: &Config) -> Vec<CommandPanelCommand> {
+        if self.state.mode == CommandPanelMode::RecentList {
+            return build_recent_commands(config);
         }
         build_root_commands()
     }
 
     fn query_hint(&self) -> &'static str {
-        if self.command_panel.mode == CommandPanelMode::RecentList {
+        if self.state.mode == CommandPanelMode::RecentList {
             "Select recent item"
         } else {
             "Type a command"
         }
     }
 
-    fn open_root_commands(&mut self) {
-        self.command_panel.mode = CommandPanelMode::Root;
-        self.command_panel.query.clear();
-        self.command_panel.selected = 0;
-    }
-
     fn remember_recent_command(&mut self, action: &CommandPanelAction) {
         let key = action_key(action);
-        self.command_panel
+        self.state
             .recent_used_actions
             .retain(|item| action_key(item) != key);
-        self.command_panel
-            .recent_used_actions
-            .insert(0, action.clone());
-        if self.command_panel.recent_used_actions.len() > 5 {
-            self.command_panel.recent_used_actions.truncate(5);
+        self.state.recent_used_actions.insert(0, action.clone());
+        if self.state.recent_used_actions.len() > 5 {
+            self.state.recent_used_actions.truncate(5);
         }
     }
+}
 
-    fn run_command_panel_action(&mut self, action: CommandPanelAction, ctx: &egui::Context) {
-        match action {
-            CommandPanelAction::SaveFile => {
-                self.save_current_buffer(ctx);
-            }
-            CommandPanelAction::FormatFile => {
-                self.format_active_document(ctx);
-            }
-            CommandPanelAction::OpenFile => {
-                if let Some(path) = rfd::FileDialog::new().pick_file() {
-                    self.open_file(path, ctx);
-                }
-            }
-            CommandPanelAction::OpenRecently => {}
-            CommandPanelAction::OpenFolder => {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.open_folder(path);
-                }
-            }
-            CommandPanelAction::SwitchToEditor => self.shell_view = ShellView::Editor,
-            CommandPanelAction::SwitchToConfiguration => {
-                self.shell_view = ShellView::Configuration;
-            }
-            CommandPanelAction::ToggleSidebar => {
-                self.sidebar_visible = !self.sidebar_visible;
-            }
-            CommandPanelAction::ClearRecentItems => self.editor_config.clear_recent_items(),
-            CommandPanelAction::OpenRecentItem { path, is_dir } => {
-                if is_dir {
-                    if path.is_dir() {
-                        self.open_folder(path);
+impl Component for CommandPanel {
+    type Message = CustomEvent;
+    type Input<'a> = &'a Config;
+
+    fn render(&mut self, ui: &mut egui::Ui, config: Self::Input<'_>) -> Vec<CustomEvent> {
+        if !self.state.open {
+            return Vec::new();
+        }
+
+        let mut events = Vec::new();
+        let mut should_close = false;
+        let mut pending_action: Option<CommandPanelAction> = None;
+        let query_hint = self.query_hint();
+        let display_commands = self.display_commands(config);
+
+        egui::Window::new("Command Panel")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
+            .default_width(520.0)
+            .show(ui.ctx(), |ui| {
+                let input =
+                    ui.add(egui::TextEdit::singleline(&mut self.state.query).hint_text(query_hint));
+                input.request_focus();
+
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    if self.state.mode == CommandPanelMode::RecentList {
+                        self.open_root_commands();
+                    } else {
+                        should_close = true;
                     }
-                } else if path.is_file() {
-                    self.open_file(path, ctx);
+                }
+
+                if display_commands.is_empty() {
+                    self.state.selected = 0;
+                    ui.add_space(8.0);
+                    ui.label("No matching commands");
+                    return;
+                }
+
+                if self.state.selected >= display_commands.len() {
+                    self.state.selected = display_commands.len().saturating_sub(1);
+                }
+
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    self.state.selected = (self.state.selected + 1) % display_commands.len();
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    self.state.selected = if self.state.selected == 0 {
+                        display_commands.len().saturating_sub(1)
+                    } else {
+                        self.state.selected.saturating_sub(1)
+                    };
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    pending_action =
+                        Some(display_commands[self.state.selected].command.action.clone());
+                }
+
+                ui.add_space(8.0);
+                if self.show_recent_used_section() {
+                    ui.label("Recent Used");
+                    ui.separator();
+                    ui.add_space(4.0);
+                }
+                egui::ScrollArea::vertical()
+                    .max_height(280.0)
+                    .show(ui, |ui| {
+                        for (index, ranked) in display_commands.iter().enumerate() {
+                            let selected = index == self.state.selected;
+                            let response = ui.selectable_label(selected, &ranked.command.title);
+                            if response.clicked() {
+                                pending_action = Some(ranked.command.action.clone());
+                            }
+                            if response.hovered() {
+                                self.state.selected = index;
+                            }
+                        }
+                    });
+            });
+
+        if should_close {
+            self.close();
+            return events;
+        }
+
+        if let Some(action) = pending_action {
+            match action {
+                CommandPanelAction::OpenRecently => {
+                    self.remember_recent_command(&action);
+                    self.state.mode = CommandPanelMode::RecentList;
+                    self.state.query.clear();
+                    self.state.selected = 0;
+                }
+                _ => {
+                    self.remember_recent_command(&action);
+                    run_command_panel_action(action, &mut events);
+                    self.close();
                 }
             }
         }
+
+        events
+    }
+}
+
+fn run_command_panel_action(action: CommandPanelAction, events: &mut Vec<CustomEvent>) {
+    match action {
+        CommandPanelAction::SaveFile => {
+            events.push(CustomEvent::Document(DocumentEvent::SaveFile));
+        }
+        CommandPanelAction::FormatFile => {
+            events.push(CustomEvent::Document(DocumentEvent::FormatFile));
+        }
+        CommandPanelAction::OpenFile => {
+            if let Some(path) = rfd::FileDialog::new().pick_file() {
+                events.push(CustomEvent::App(AppEvent::OpenFile(path)));
+            }
+        }
+        CommandPanelAction::OpenFolder => {
+            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                events.push(CustomEvent::App(AppEvent::OpenFolder(path)));
+            }
+        }
+        CommandPanelAction::SwitchToEditor => {
+            events.push(CustomEvent::Shell(ShellEvent::SwitchToEditor));
+        }
+        CommandPanelAction::SwitchToConfiguration => {
+            events.push(CustomEvent::Shell(ShellEvent::SwitchToConfiguration));
+        }
+        CommandPanelAction::ToggleSidebar => {
+            events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
+        }
+        CommandPanelAction::ClearRecentItems => {
+            events.push(CustomEvent::App(AppEvent::ClearRecentItems));
+        }
+        CommandPanelAction::OpenRecentItem { path, is_dir } => {
+            if is_dir {
+                if path.is_dir() {
+                    events.push(CustomEvent::App(AppEvent::OpenFolder(path)));
+                }
+            } else if path.is_file() {
+                events.push(CustomEvent::App(AppEvent::OpenFile(path)));
+            }
+        }
+        CommandPanelAction::OpenRecently => {}
     }
 }
 

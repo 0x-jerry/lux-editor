@@ -15,7 +15,7 @@ pub fn main() {
     // Platform adapter for the app-rendered title bar:
     // - macOS keeps the native title bar transparent (traffic lights stay
     //   native) and renders content underneath it.
-    // - Other platforms drop OS decorations entirely; the UI kit then renders
+    // - Other platforms drop OS decorations entirely; the widgets then render
     //   window controls and a resize handle.
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1200.0, 760.0])

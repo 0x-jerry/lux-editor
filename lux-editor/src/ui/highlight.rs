@@ -68,7 +68,12 @@ pub fn build_highlighted_line_job(
     job
 }
 
-fn append_default(job: &mut egui::text::LayoutJob, text: &str, font_size: f32, color: egui::Color32) {
+fn append_default(
+    job: &mut egui::text::LayoutJob,
+    text: &str,
+    font_size: f32,
+    color: egui::Color32,
+) {
     job.append(
         text,
         0.0,

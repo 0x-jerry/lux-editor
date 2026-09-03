@@ -8,31 +8,9 @@
 //! - Other platforms: the OS decorations are removed and this module renders
 //!   minimize/maximize/close buttons plus a bottom-right resize handle.
 
+use crate::app::TitleBarMenu;
+use crate::ui::component::Component;
 use eframe::egui;
-
-/// Actions exposed by the title bar menus. App-agnostic: the embedding crate
-/// maps these onto its own command/event pipeline.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TitleBarMenu {
-    // File
-    OpenFile,
-    OpenFolder,
-    SaveFile,
-    // Edit
-    Undo,
-    Redo,
-    Cut,
-    Copy,
-    Paste,
-    SelectAll,
-    // View
-    CommandPalette,
-    SwitchToEditor,
-    SwitchToConfiguration,
-    ToggleSidebar,
-    // Help
-    About,
-}
 
 /// Messages emitted by the title bar toward the embedding app.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -49,73 +27,91 @@ pub struct TitleBarData<'a> {
     pub active_nav: usize,
 }
 
-/// Renders the top title bar and returns the messages emitted this frame.
-pub fn title_bar(ctx: &egui::Context, data: TitleBarData<'_>) -> Vec<TitleBarMessage> {
-    let mut messages = Vec::new();
-    let mut push = |message: TitleBarMessage| messages.push(message);
+/// Top title bar: window drag region, navigation tabs and menu bar.
+pub struct TitleBar;
 
-    egui::TopBottomPanel::top("title_bar")
-        .exact_height(32.0)
-        .frame(egui::Frame::default().fill(ctx.style().visuals.panel_fill))
-        .show(ctx, |ui| {
-            // The drag region covers the whole bar; interactive widgets drawn
-            // afterwards win hit-testing, so buttons and menus still work.
-            let drag_response = ui.interact(
-                ui.max_rect(),
-                ui.id().with("title_bar_drag"),
-                egui::Sense::click_and_drag(),
-            );
-            if drag_response.drag_started() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
-            if drag_response.double_clicked() {
-                let maximized = ctx.input(|input| input.viewport().maximized).unwrap_or(false);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-            }
+impl Component for TitleBar {
+    type Message = TitleBarMessage;
+    type Input<'a> = TitleBarData<'a>;
 
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-                if window_controls_enabled() {
-                    ui.add_space(0.0);
-                } else {
-                    // Room for the native macOS traffic lights.
-                    ui.add_space(74.0);
+    fn render(&mut self, ui: &mut egui::Ui, data: Self::Input<'_>) -> Vec<Self::Message> {
+        let mut messages = Vec::new();
+        let mut push = |message: TitleBarMessage| messages.push(message);
+
+        egui::Panel::top("title_bar")
+            .exact_size(32.0)
+            .frame(egui::Frame::default().fill(ui.style().visuals.panel_fill))
+            .show(ui, |ui| {
+                let ctx = ui.ctx().clone();
+                // The drag region covers the whole bar; interactive widgets drawn
+                // afterwards win hit-testing, so buttons and menus still work.
+                let drag_response = ui.interact(
+                    ui.max_rect(),
+                    ui.id().with("title_bar_drag"),
+                    egui::Sense::click_and_drag(),
+                );
+                if drag_response.drag_started() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
+                if drag_response.double_clicked() {
+                    let maximized = ctx
+                        .input(|input| input.viewport().maximized)
+                        .unwrap_or(false);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
                 }
 
-                ui.label(egui::RichText::new(data.app_title).strong().size(14.0));
-
-                for (index, tab) in data.nav_tabs.iter().enumerate() {
-                    if nav_tab(ui, tab, index == data.active_nav).clicked() {
-                        push(TitleBarMessage::Navigation(index));
-                    }
-                }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
                     if window_controls_enabled() {
-                        window_control_button(ui, "✕", |ctx| {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        });
-                        let maximized = ctx.input(|input| input.viewport().maximized).unwrap_or(false);
-                        window_control_button(ui, if maximized { "❐" } else { "□" }, |ctx| {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
-                        });
-                        window_control_button(ui, "–", |ctx| {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                        });
+                        ui.add_space(0.0);
+                    } else {
+                        // Room for the native macOS traffic lights.
+                        ui.add_space(74.0);
                     }
-                    title_bar_menu_bar(ui, &mut push);
+
+                    ui.label(egui::RichText::new(data.app_title).strong().size(14.0));
+
+                    for (index, tab) in data.nav_tabs.iter().enumerate() {
+                        if nav_tab(ui, tab, index == data.active_nav).clicked() {
+                            push(TitleBarMessage::Navigation(index));
+                        }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if window_controls_enabled() {
+                            window_control_button(ui, "✕", |ctx| {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            });
+                            let maximized = ctx
+                                .input(|input| input.viewport().maximized)
+                                .unwrap_or(false);
+                            window_control_button(
+                                ui,
+                                if maximized { "❐" } else { "□" },
+                                |ctx| {
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(
+                                        !maximized,
+                                    ));
+                                },
+                            );
+                            window_control_button(ui, "–", |ctx| {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            });
+                        }
+                        title_bar_menu_bar(ui, &mut push);
+                    });
                 });
+
+                // Hairline under the bar.
+                ui.painter().hline(
+                    ui.max_rect().x_range(),
+                    ui.max_rect().bottom(),
+                    egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+                );
             });
 
-            // Hairline under the bar.
-            ui.painter().hline(
-                ui.max_rect().x_range(),
-                ui.max_rect().bottom(),
-                egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
-            );
-        });
-
-    messages
+        messages
+    }
 }
 
 /// A shell navigation tab: accented underline marks the active one.
@@ -209,11 +205,7 @@ fn title_bar_menu_bar(ui: &mut egui::Ui, push: &mut impl FnMut(TitleBarMessage))
     });
 }
 
-fn window_control_button(
-    ui: &mut egui::Ui,
-    glyph: &str,
-    action: impl FnOnce(&egui::Context),
-) {
+fn window_control_button(ui: &mut egui::Ui, glyph: &str, action: impl FnOnce(&egui::Context)) {
     if ui.add(egui::Button::new(glyph).frame(false)).clicked() {
         action(ui.ctx());
     }
@@ -229,8 +221,7 @@ pub fn window_controls_enabled() -> bool {
 /// A no-op on platforms that keep native window chrome.
 pub fn window_resize_handle(ui: &mut egui::Ui) {
     if !window_controls_enabled() {
-        let (rect, response) =
-            ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::drag());
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::drag());
         if response.dragged() {
             let delta = response.drag_delta();
             let current = ui

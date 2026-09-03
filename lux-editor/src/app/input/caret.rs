@@ -1,19 +1,8 @@
 use super::commands::EditorCommand;
-use crate::app::editor::word_char_range;
 use crate::app::{App, ShellView};
+use lux_core::editor::word_char_range;
 
 impl App {
-    const CARET_BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(1000);
-
-    pub(in crate::app) fn reset_editor_state(&mut self) {
-        let active_document = self.active_document_mut();
-        active_document
-            .caret_state
-            .reset_to_buffer_end(&active_document.buffer);
-        active_document.edit_history.clear();
-        self.touch_caret_blink();
-    }
-
     pub(in crate::app) fn set_caret_from_pointer(
         &mut self,
         line_index: usize,
@@ -26,20 +15,22 @@ impl App {
             active_document
                 .caret_state
                 .set_caret_char(0, &active_document.buffer, selecting);
-            self.touch_caret_blink();
+            self.documents.touch_caret_blink();
             return;
         };
         if add_cursor {
             let active_document = self.active_document_mut();
-            active_document.caret_state.add_cursor_at(next, &active_document.buffer);
-            self.touch_caret_blink();
+            active_document
+                .caret_state
+                .add_cursor_at(next, &active_document.buffer);
+            self.documents.touch_caret_blink();
             return;
         }
         let active_document = self.active_document_mut();
         active_document
             .caret_state
             .set_caret_char(next, &active_document.buffer, selecting);
-        self.touch_caret_blink();
+        self.documents.touch_caret_blink();
     }
 
     pub(in crate::app) fn select_word_from_pointer(&mut self, line_index: usize, column: usize) {
@@ -53,7 +44,7 @@ impl App {
         active_document
             .caret_state
             .select_range(word.start, word.end, &active_document.buffer);
-        self.touch_caret_blink();
+        self.documents.touch_caret_blink();
     }
 
     fn pointer_to_char(&self, line_index: usize, column: usize) -> Option<usize> {
@@ -68,15 +59,6 @@ impl App {
         Some(line_start + column.min(line_len))
     }
 
-    pub(in crate::app) fn caret_blink_visible(&self) -> bool {
-        self.caret_blink_anchor.elapsed().as_millis() % Self::CARET_BLINK_PERIOD.as_millis()
-            < (Self::CARET_BLINK_PERIOD.as_millis() / 2)
-    }
-
-    pub(in crate::app) fn touch_caret_blink(&mut self) {
-        self.caret_blink_anchor = std::time::Instant::now();
-    }
-
     pub(super) fn should_ignore_editor_command(
         &self,
         command: &EditorCommand,
@@ -86,8 +68,8 @@ impl App {
             return false;
         }
 
-        self.command_panel_open()
-            || self.shell_view != ShellView::Editor
-            || ctx.wants_keyboard_input()
+        self.chrome.command_panel.open()
+            || self.chrome.shell.shell_view() != ShellView::Editor
+            || ctx.egui_wants_keyboard_input()
     }
 }

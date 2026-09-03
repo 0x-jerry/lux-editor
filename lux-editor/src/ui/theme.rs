@@ -46,6 +46,18 @@ impl ThemeChoice {
     }
 }
 
+/// Collapse `Auto` against the system theme; never returns [`ThemeChoice::Auto`].
+pub fn resolve(choice: ThemeChoice, system: Option<egui::Theme>) -> ThemeChoice {
+    match choice {
+        ThemeChoice::Dark => ThemeChoice::Dark,
+        ThemeChoice::Light => ThemeChoice::Light,
+        ThemeChoice::Auto => match system {
+            Some(egui::Theme::Light) => ThemeChoice::Light,
+            _ => ThemeChoice::Dark,
+        },
+    }
+}
+
 /// The coupled syntax theme for a choice, resolving `Auto` against the system.
 pub fn syntax_theme_for(choice: ThemeChoice, system: Option<egui::Theme>) -> &'static str {
     match choice {
@@ -58,22 +70,17 @@ pub fn syntax_theme_for(choice: ThemeChoice, system: Option<egui::Theme>) -> &'s
     }
 }
 
-/// A fully resolved theme: chrome `Visuals` ready for `ctx.set_visuals`.
-#[derive(Clone)]
+/// A resolved theme: chrome `Visuals` ready for `ctx.set_visuals`.
 pub struct AppTheme {
-    pub is_dark: bool,
     pub visuals: Visuals,
 }
 
 impl AppTheme {
-    pub fn resolve(choice: ThemeChoice, system: Option<egui::Theme>) -> Self {
-        match choice {
-            ThemeChoice::Dark => dark(),
+    /// Visuals for a resolved choice (`Auto` falls back to dark).
+    pub fn resolve(theme: ThemeChoice) -> Self {
+        match theme {
             ThemeChoice::Light => light(),
-            ThemeChoice::Auto => match system {
-                Some(egui::Theme::Light) => light(),
-                _ => dark(),
-            },
+            ThemeChoice::Dark | ThemeChoice::Auto => dark(),
         }
     }
 }
@@ -108,10 +115,7 @@ fn dark() -> AppTheme {
         accent,
     };
     style_widgets(&mut visuals, &palette);
-    AppTheme {
-        is_dark: true,
-        visuals,
-    }
+    AppTheme { visuals }
 }
 
 fn light() -> AppTheme {
@@ -144,10 +148,7 @@ fn light() -> AppTheme {
         accent,
     };
     style_widgets(&mut visuals, &palette);
-    AppTheme {
-        is_dark: false,
-        visuals,
-    }
+    AppTheme { visuals }
 }
 
 #[derive(Clone, Copy)]
@@ -208,16 +209,9 @@ fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
     visuals.widgets.inactive.weak_bg_fill = weak;
 }
 
-/// Applies the configured chrome theme and fonts to the egui context and
-/// returns whether the applied theme is dark (feeds live `Auto` following).
-pub fn apply_editor_settings(ctx: &egui::Context, settings: &EditorSettings) -> bool {
-    let theme = AppTheme::resolve(
-        ThemeChoice::from_value(&settings.theme.choice),
-        ctx.system_theme(),
-    );
-    // Keep egui reporting the OS theme so `Auto` can follow it live.
-    ctx.set_theme(egui::ThemePreference::System);
-    ctx.set_visuals(theme.visuals.clone());
+/// Applies a resolved chrome theme and the configured fonts to the egui context.
+pub fn apply_editor_settings(ctx: &egui::Context, theme: ThemeChoice, settings: &EditorSettings) {
+    ctx.set_visuals(AppTheme::resolve(theme).visuals);
 
     let mut fonts = egui::FontDefinitions::default();
     // Phosphor icon font, shipped inside egui-phosphor (avoids bundling the
@@ -258,7 +252,6 @@ pub fn apply_editor_settings(ctx: &egui::Context, settings: &EditorSettings) -> 
             egui::FontId::proportional(font_size),
         );
     });
-    theme.is_dark
 }
 
 fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
@@ -312,11 +305,28 @@ mod tests {
     }
 
     #[test]
+    fn resolve_never_returns_auto() {
+        for choice in [ThemeChoice::Auto, ThemeChoice::Dark, ThemeChoice::Light] {
+            for system in [None, Some(egui::Theme::Dark), Some(egui::Theme::Light)] {
+                assert_ne!(resolve(choice, system), ThemeChoice::Auto);
+            }
+        }
+    }
+
+    #[test]
+    fn resolved_choice_keeps_syntax_theme_mapping() {
+        for system in [None, Some(egui::Theme::Dark), Some(egui::Theme::Light)] {
+            assert_eq!(
+                syntax_theme_for(ThemeChoice::Auto, system),
+                syntax_theme_for(resolve(ThemeChoice::Auto, system), None),
+            );
+        }
+    }
+
+    #[test]
     fn dark_and_light_visuals_differ() {
-        let dark = AppTheme::resolve(ThemeChoice::Dark, None);
-        let light = AppTheme::resolve(ThemeChoice::Light, None);
-        assert!(dark.is_dark);
-        assert!(!light.is_dark);
+        let dark = AppTheme::resolve(ThemeChoice::Dark);
+        let light = AppTheme::resolve(ThemeChoice::Light);
         assert_ne!(dark.visuals.panel_fill, light.visuals.panel_fill);
         assert!(dark.visuals.panel_fill.r() < light.visuals.panel_fill.r());
     }

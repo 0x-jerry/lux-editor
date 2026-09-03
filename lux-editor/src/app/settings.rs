@@ -52,19 +52,12 @@ impl App {
         let theme_changed = settings.theme != self.settings.editor_config.settings.theme;
         let font_changed = settings.font != self.settings.editor_config.settings.font;
         self.settings.editor_config.settings = settings;
-        if font_changed {
-            self.chrome.needs_style_refresh = true;
-        }
-        if theme_changed {
-            self.chrome.needs_style_refresh = true;
-            self.refresh_language_intelligence();
-        }
+        self.chrome.needs_style_refresh |= theme_changed || font_changed;
     }
 
     pub(super) fn on_config_change(&mut self) {
         if self.settings.editor_config.reload_settings() {
             self.chrome.needs_style_refresh = true;
-            self.refresh_language_intelligence();
         }
         self.chrome
             .shell

@@ -43,14 +43,22 @@ impl App {
     }
 
     pub(super) fn refresh_language_intelligence(&mut self) {
-        let choice = ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice);
-        let theme_name = if choice == ThemeChoice::Auto {
-            syntax_theme_for(ThemeChoice::Auto, self.chrome.last_system_theme)
-        } else {
-            syntax_theme_for(choice, None)
-        };
-        self.highlighting.service.set_theme(HighlightThemeConfig {
-            theme_name: theme_name.to_string(),
+        let config = self.syntax_theme_config();
+        self.highlighting.service.set_theme(config);
+        let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
+        self.highlighting
+            .service
+            .request_parse(self.buffer().text().to_string(), language);
+    }
+
+    /// The syntax theme the current config asks for.
+    fn syntax_theme_config(&self) -> HighlightThemeConfig {
+        // Before the first style pass the raw choice is all there is (`Auto` → dark).
+        let choice = self.chrome.runtime_theme.unwrap_or_else(|| {
+            ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice)
+        });
+        HighlightThemeConfig {
+            theme_name: syntax_theme_for(choice, None).to_string(),
             theme_path: self
                 .settings
                 .editor_config
@@ -58,11 +66,13 @@ impl App {
                 .theme
                 .theme_path
                 .clone(),
-        });
-        let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
-        self.highlighting
-            .service
-            .request_parse(self.buffer().text().to_string(), language);
+        }
+    }
+
+    /// Whether the applied syntax theme drifted from the configured one; keeps
+    /// chrome-only changes (fonts) from re-parsing the whole buffer.
+    pub(super) fn syntax_theme_changed(&self) -> bool {
+        *self.highlighting.service.theme() != self.syntax_theme_config()
     }
 
     pub(super) fn highlight_snapshot(&self) -> &HighlightSnapshot {

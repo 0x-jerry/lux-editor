@@ -95,6 +95,10 @@ impl HighlightingService {
         }
     }
 
+    pub fn theme(&self) -> &HighlightThemeConfig {
+        &self.theme
+    }
+
     pub fn set_theme(&mut self, theme: HighlightThemeConfig) {
         self.theme = theme;
     }

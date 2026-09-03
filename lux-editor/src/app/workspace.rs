@@ -62,7 +62,6 @@ impl App {
         self.restart_settings_watcher();
         if self.settings.editor_config.reload_settings() {
             self.chrome.needs_style_refresh = true;
-            self.refresh_language_intelligence();
         }
         self.chrome
             .shell

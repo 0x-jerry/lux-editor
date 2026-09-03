@@ -1,14 +1,13 @@
 use super::App;
 use crate::ui;
 use crate::ui::Component;
+use crate::ui::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
 
 impl EframeApp for App {
     /// Pre-UI pass: process events/input and mutate editor state before the
     /// frame is rendered. Painting is not allowed here.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
-        self.chrome.last_system_theme = ctx.system_theme();
-
         #[cfg(target_os = "macos")]
         if ctx.input(|input| input.viewport().close_requested()) {
             std::process::exit(0);
@@ -18,20 +17,6 @@ impl EframeApp for App {
         self.highlighting.service.update();
         self.handle_keyboard_input(ctx);
         self.flush_scheduled_language_refresh();
-
-        if self.chrome.applied_theme_dark.is_some()
-            && crate::ui::theme::ThemeChoice::from_value(
-                &self.settings.editor_config.settings.theme.choice,
-            ) == crate::ui::theme::ThemeChoice::Auto
-            && self
-                .chrome
-                .last_system_theme
-                .map(|theme| theme == egui::Theme::Dark)
-                != self.chrome.applied_theme_dark
-        {
-            self.chrome.needs_style_refresh = true;
-            self.refresh_language_intelligence();
-        }
 
         let toggle_sidebar = ctx.input_mut(|input| {
             input.consume_shortcut(&egui::KeyboardShortcut::new(
@@ -43,12 +28,23 @@ impl EframeApp for App {
             self.chrome.shell.toggle_sidebar();
         }
 
+        // Live `Auto` following: whatever the config plus the OS report resolve to
+        // is what has to be on screen. Probed after the handlers so a config
+        // change they applied lands in this same pass.
+        let resolved = theme::resolve(
+            ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice),
+            ctx.system_theme(),
+        );
+        self.chrome.needs_style_refresh |= self.chrome.runtime_theme != Some(resolved);
+
         if self.chrome.needs_style_refresh {
-            self.chrome.applied_theme_dark = Some(crate::ui::theme::apply_editor_settings(
-                ctx,
-                &self.settings.editor_config.settings,
-            ));
             self.chrome.needs_style_refresh = false;
+            self.apply_style(ctx, resolved);
+            // Probed after apply_style: it derives from the runtime_theme that
+            // call just stored. Font-only changes must not force a re-parse.
+            if self.syntax_theme_changed() {
+                self.refresh_language_intelligence();
+            }
         }
     }
 

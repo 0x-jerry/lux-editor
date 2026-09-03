@@ -1,8 +1,9 @@
-//! Chrome domain: shell navigation, command panel, about window and the
-//! theme-refresh flags.
+//! Chrome domain: shell navigation, command panel, about window, and the style
+//! (theme + fonts) the app pushes to egui.
 
 use super::App;
 use crate::app::input::EditorCommand;
+use crate::ui::theme::{self, ThemeChoice};
 use crate::ui::{AboutWindow, CommandPanel, Shell};
 use eframe::egui;
 
@@ -41,14 +42,21 @@ pub(crate) struct Chrome {
     pub(crate) shell: Shell,
     pub(crate) command_panel: CommandPanel,
     pub(crate) about_window: AboutWindow,
+    /// Style (chrome visuals + fonts) must be re-pushed to egui on this `logic`
+    /// pass; set by config reloads and by theme drift under `Auto`.
     pub(crate) needs_style_refresh: bool,
-    /// Whether the last applied chrome theme was dark; drives live `Auto` following.
-    pub(crate) applied_theme_dark: Option<bool>,
-    /// OS theme as reported last frame; feeds syntax-theme derivation in `Auto`.
-    pub(crate) last_system_theme: Option<egui::Theme>,
+    /// Last theme actually applied to the egui context, with `Auto` already
+    /// collapsed against the OS theme; `None` until the first frame.
+    pub(crate) runtime_theme: Option<ThemeChoice>,
 }
 
 impl App {
+    /// Push a resolved theme's chrome visuals + fonts to egui.
+    pub(super) fn apply_style(&mut self, ctx: &egui::Context, resolved: ThemeChoice) {
+        self.chrome.runtime_theme = Some(resolved);
+        theme::apply_editor_settings(ctx, resolved, &self.settings.editor_config.settings);
+    }
+
     pub(super) fn on_title_bar_menu(&mut self, menu: TitleBarMenu, ctx: &egui::Context) {
         match menu {
             TitleBarMenu::OpenFile => {

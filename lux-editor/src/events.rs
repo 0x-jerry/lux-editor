@@ -70,6 +70,9 @@ pub enum ShellEvent {
     SwitchToConfiguration,
     ToggleSidebar,
     ToggleCommandPanel,
+    /// The in-window title-bar menu; macOS renders those menus in the system
+    /// menubar instead (see `crate::native::menubar`).
+    #[cfg(not(target_os = "macos"))]
     TitleBarMenu(crate::app::TitleBarMenu),
 }
 

@@ -14,6 +14,16 @@ impl EframeApp for App {
         }
 
         self.process_pending_events(ctx);
+
+        // Native menubar/tray events flow through the same command pipeline as
+        // the rendered chrome.
+        self.chrome.native.install();
+        self.chrome.native.update_tray_label();
+        let native_commands = self.chrome.native.drain();
+        for command in native_commands {
+            self.on_title_bar_menu(command, ctx);
+        }
+
         self.highlighting.service.update();
         self.handle_keyboard_input(ctx);
         self.flush_scheduled_language_refresh();

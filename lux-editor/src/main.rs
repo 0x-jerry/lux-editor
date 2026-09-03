@@ -4,6 +4,7 @@ mod events;
 mod file_tree;
 mod file_watcher;
 mod language;
+mod native;
 mod ui;
 
 use app::App;

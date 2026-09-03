@@ -8,6 +8,7 @@
 //! - Other platforms: the OS decorations are removed and this module renders
 //!   minimize/maximize/close buttons plus a bottom-right resize handle.
 
+#[cfg(not(target_os = "macos"))]
 use crate::app::TitleBarMenu;
 use crate::ui::component::Component;
 use eframe::egui;
@@ -15,15 +16,20 @@ use eframe::egui;
 /// Messages emitted by the title bar toward the embedding app.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TitleBarMessage {
+    /// The in-window menu bar is macOS-only-replaced by the system menubar.
+    #[cfg(not(target_os = "macos"))]
     Menu(TitleBarMenu),
-    /// A shell navigation tab was clicked, by index.
+    /// macOS switches views from the system menubar instead of title-bar tabs.
+    #[cfg(not(target_os = "macos"))]
     Navigation(usize),
 }
 
 /// Content the title bar displays for the embedding app.
 pub struct TitleBarData<'a> {
     pub app_title: &'a str,
+    #[cfg(not(target_os = "macos"))]
     pub nav_tabs: &'a [&'a str],
+    #[cfg(not(target_os = "macos"))]
     pub active_nav: usize,
 }
 
@@ -35,7 +41,11 @@ impl Component for TitleBar {
     type Input<'a> = TitleBarData<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, data: Self::Input<'_>) -> Vec<Self::Message> {
+        #[cfg(not(target_os = "macos"))]
         let mut messages = Vec::new();
+        #[cfg(target_os = "macos")]
+        let messages = Vec::new();
+        #[cfg(not(target_os = "macos"))]
         let mut push = |message: TitleBarMessage| messages.push(message);
 
         egui::Panel::top("title_bar")
@@ -71,6 +81,10 @@ impl Component for TitleBar {
 
                     ui.label(egui::RichText::new(data.app_title).strong().size(14.0));
 
+                    // macOS switches views from the system menubar
+                    // (View > Editor / View > Configuration); non-macOS builds
+                    // keep the in-window tabs.
+                    #[cfg(not(target_os = "macos"))]
                     for (index, tab) in data.nav_tabs.iter().enumerate() {
                         if nav_tab(ui, tab, index == data.active_nav).clicked() {
                             push(TitleBarMessage::Navigation(index));
@@ -98,6 +112,9 @@ impl Component for TitleBar {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                             });
                         }
+                        // macOS renders File/Edit/View in the system menubar
+                        // (see crate::native::menubar), not in the title bar.
+                        #[cfg(not(target_os = "macos"))]
                         title_bar_menu_bar(ui, &mut push);
                     });
                 });
@@ -114,6 +131,7 @@ impl Component for TitleBar {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 /// A shell navigation tab: accented underline marks the active one.
 fn nav_tab(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
     let accent = ui.visuals().hyperlink_color;
@@ -132,6 +150,7 @@ fn nav_tab(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
     response
 }
 
+#[cfg(not(target_os = "macos"))]
 fn title_bar_menu_bar(ui: &mut egui::Ui, push: &mut impl FnMut(TitleBarMessage)) {
     egui::MenuBar::new().ui(ui, |ui| {
         ui.menu_button("File", |ui| {

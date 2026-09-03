@@ -3,6 +3,7 @@
 
 use super::App;
 use crate::app::input::EditorCommand;
+use crate::native::NativeChrome;
 use crate::ui::theme::{self, ThemeChoice};
 use crate::ui::{AboutWindow, CommandPanel, Shell};
 use eframe::egui;
@@ -33,6 +34,10 @@ pub enum TitleBarMenu {
     SwitchToEditor,
     SwitchToConfiguration,
     ToggleSidebar,
+    // Window (native menubar/tray only)
+    Hide,
+    Quit,
+    ToggleWindowVisibility,
     // Help
     About,
 }
@@ -42,6 +47,7 @@ pub(crate) struct Chrome {
     pub(crate) shell: Shell,
     pub(crate) command_panel: CommandPanel,
     pub(crate) about_window: AboutWindow,
+    pub(crate) native: NativeChrome,
     /// Style (chrome visuals + fonts) must be re-pushed to egui on this `logic`
     /// pass; set by config reloads and by theme drift under `Auto`.
     pub(crate) needs_style_refresh: bool,
@@ -96,6 +102,21 @@ impl App {
             TitleBarMenu::SwitchToEditor => self.chrome.shell.switch_to_editor(),
             TitleBarMenu::SwitchToConfiguration => self.chrome.shell.switch_to_configuration(),
             TitleBarMenu::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
+            TitleBarMenu::Hide => {
+                self.chrome.native.window_visible = false;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
+            TitleBarMenu::Quit => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            TitleBarMenu::ToggleWindowVisibility => {
+                let visible = !self.chrome.native.window_visible;
+                self.chrome.native.window_visible = visible;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
+                if visible {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+            }
             TitleBarMenu::About => self.chrome.about_window.open(),
         }
     }

@@ -70,6 +70,7 @@ impl App {
         }
 
         let event_tx = self.runtime.event_tx.clone();
+        let wake = self.runtime.ctx.clone();
         self.runtime.rt.spawn(async move {
             let buffer = Buffer::from_file(&path)
                 .await
@@ -78,6 +79,7 @@ impl App {
                 path,
                 buffer,
             }));
+            wake.request_repaint();
         });
     }
 
@@ -98,6 +100,7 @@ impl App {
         let formatter = self.settings.editor_config.settings.formatter.clone();
         let format_on_save = formatter.format_on_save && !formatter.command.trim().is_empty();
         let event_tx = self.runtime.event_tx.clone();
+        let wake = self.runtime.ctx.clone();
         self.runtime.rt.spawn_blocking(move || {
             let mut to_write = text.clone();
             let mut formatted_result: Option<Result<String, String>> = None;
@@ -124,6 +127,7 @@ impl App {
                     result,
                 }));
             }
+            wake.request_repaint();
         });
         true
     }

@@ -40,7 +40,7 @@ pub fn main() {
     if let Err(err) = eframe::run_native(
         "Lux Editor",
         native_options,
-        Box::new(|_cc| Ok(Box::new(App::new()))),
+        Box::new(|cc| Ok(Box::new(App::new(cc.egui_ctx.clone())))),
     ) {
         log::error!("failed to run Lux Editor: {err}");
     }

@@ -5,6 +5,7 @@
 use super::App;
 use crate::config::{Config, EditorSettings};
 use crate::events::{AppEvent, CustomEvent};
+use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -19,11 +20,13 @@ impl SettingsState {
     pub(crate) fn start_watcher(
         watch_roots: &[PathBuf],
         event_tx: Sender<CustomEvent>,
+        wake: egui::Context,
     ) -> Option<RecommendedWatcher> {
         let mut watcher = RecommendedWatcher::new(
             move |result: notify::Result<notify::Event>| {
                 if result.is_ok() {
                     event_tx.send(CustomEvent::App(AppEvent::ConfigChange)).ok();
+                    wake.request_repaint();
                 }
             },
             notify::Config::default(),
@@ -44,8 +47,11 @@ impl SettingsState {
 impl App {
     pub(super) fn restart_settings_watcher(&mut self) {
         let watch_roots = Config::settings_watch_roots();
-        self.settings.watcher =
-            SettingsState::start_watcher(&watch_roots, self.runtime.event_tx.clone());
+        self.settings.watcher = SettingsState::start_watcher(
+            &watch_roots,
+            self.runtime.event_tx.clone(),
+            self.runtime.ctx.clone(),
+        );
     }
 
     pub(super) fn apply_saved_configuration(&mut self, settings: EditorSettings) {

@@ -1,10 +1,11 @@
+use ropey::{Rope, RopeSlice};
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Style, Theme, ThemeSet};
 use syntect::parsing::SyntaxSet;
-use syntect::util::LinesWithEndings;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LanguageKind {
@@ -59,7 +60,9 @@ impl Default for HighlightThemeConfig {
 enum WorkerRequest {
     Parse {
         version: u64,
-        text: String,
+        /// Shared rope: cloning is O(1), so edits hand the worker the whole
+        /// text without copying it on the UI thread.
+        text: Rope,
         language: LanguageKind,
         theme: HighlightThemeConfig,
     },
@@ -103,7 +106,7 @@ impl HighlightingService {
         self.theme = theme;
     }
 
-    pub fn request_parse(&mut self, text: String, language: LanguageKind) {
+    pub fn request_parse(&mut self, text: Rope, language: LanguageKind) {
         self.next_version += 1;
         self.request_tx
             .send(WorkerRequest::Parse {
@@ -199,11 +202,11 @@ fn resolve_theme(theme_set: &ThemeSet, theme_config: &HighlightThemeConfig) -> T
 fn parse_snapshot(
     syntax_set: &SyntaxSet,
     theme: &Theme,
-    text: &str,
+    text: &Rope,
     language: LanguageKind,
     version: u64,
 ) -> HighlightSnapshot {
-    let line_count = text.lines().count().max(1);
+    let line_count = text.len_lines();
     let background = theme.settings.background.map(color_to_array);
     let foreground = theme.settings.foreground.map(color_to_array);
     let mut snapshot = HighlightSnapshot {
@@ -222,12 +225,10 @@ fn parse_snapshot(
     };
     let mut highlighter = HighlightLines::new(syntax, theme);
 
-    for (line_idx, line) in LinesWithEndings::from(text).enumerate() {
-        if line_idx >= snapshot.line_tokens.len() {
-            break;
-        }
+    for (line_idx, line) in text.lines().enumerate() {
+        let line_text = rope_line(&line);
         let ranges = highlighter
-            .highlight_line(line, syntax_set)
+            .highlight_line(&line_text, syntax_set)
             .unwrap_or_default();
         append_ranges(&mut snapshot.line_tokens[line_idx], ranges);
     }
@@ -235,12 +236,19 @@ fn parse_snapshot(
     snapshot
 }
 
-fn fill_black_fallback(snapshot: &mut HighlightSnapshot, text: &str) {
-    for (line_idx, line) in LinesWithEndings::from(text).enumerate() {
-        if line_idx >= snapshot.line_tokens.len() {
-            break;
-        }
-        let line_len = line.trim_end_matches(['\r', '\n']).len();
+/// Borrows a line as `&str` without copying when it is contiguous in one rope
+/// chunk; multi-chunk lines (pathologically long single lines) fall back to an
+/// owned copy.
+fn rope_line<'a>(line: &'a RopeSlice<'a>) -> Cow<'a, str> {
+    line.as_str()
+        .map(Cow::Borrowed)
+        .unwrap_or_else(|| Cow::Owned(line.to_string()))
+}
+
+fn fill_black_fallback(snapshot: &mut HighlightSnapshot, text: &Rope) {
+    for (line_idx, line) in text.lines().enumerate() {
+        let line_text = rope_line(&line);
+        let line_len = line_text.trim_end_matches(['\r', '\n']).len();
         if line_len == 0 {
             continue;
         }
@@ -304,7 +312,7 @@ mod tests {
         let snapshot = parse_snapshot(
             &SyntaxSet::load_defaults_newlines(),
             &Theme::default(),
-            "hello\nworld",
+            &Rope::from_str("hello\nworld"),
             LanguageKind::PlainText,
             1,
         );
@@ -317,7 +325,7 @@ mod tests {
         let snapshot = parse_snapshot(
             &SyntaxSet::load_defaults_newlines(),
             &Theme::default(),
-            "ab\n\ncd",
+            &Rope::from_str("ab\n\ncd"),
             LanguageKind::Extension("zzz".to_string()),
             1,
         );
@@ -332,10 +340,24 @@ mod tests {
         let snapshot = parse_snapshot(
             &SyntaxSet::load_defaults_newlines(),
             &Theme::default(),
-            "fn main() {}\n",
+            &Rope::from_str("fn main() {}\n"),
             LanguageKind::Extension("rs".to_string()),
             1,
         );
         assert!(!snapshot.line_tokens[0].is_empty());
+    }
+
+    #[test]
+    fn snapshot_lines_align_with_rope_lines() {
+        // A trailing newline adds an empty line in ropey's line counting; the
+        // editor indexes rows the same way, so the snapshot must match it.
+        let snapshot = parse_snapshot(
+            &SyntaxSet::load_defaults_newlines(),
+            &Theme::default(),
+            &Rope::from_str("a\nb\n"),
+            LanguageKind::Extension("rs".to_string()),
+            1,
+        );
+        assert_eq!(snapshot.line_tokens.len(), 3);
     }
 }

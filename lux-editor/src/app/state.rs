@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::events::CustomEvent;
+use eframe::egui;
 use lux_core::Buffer;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -12,10 +13,13 @@ use super::settings::SettingsState;
 use super::workspace::Workspace;
 
 /// Async runtime and the channel the app's background workers report through.
+/// `ctx` is the wake handle for the egui loop: producers request a repaint
+/// after sending so the idle app still renders the events they push.
 pub(crate) struct Runtime {
     pub(crate) rt: tokio::runtime::Runtime,
     pub(crate) event_tx: Sender<CustomEvent>,
     pub(crate) event_rx: Receiver<CustomEvent>,
+    pub(crate) ctx: egui::Context,
 }
 
 pub struct App {
@@ -28,7 +32,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
+    pub fn new(ctx: egui::Context) -> Self {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = mpsc::channel();
         let editor_config = Config::load();
@@ -37,6 +41,7 @@ impl App {
                 rt,
                 event_tx,
                 event_rx,
+                ctx,
             },
             documents: Documents::with_empty_document(),
             workspace: Workspace::default(),

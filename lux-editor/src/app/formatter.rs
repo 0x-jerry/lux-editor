@@ -18,6 +18,7 @@ impl App {
         let text = self.active_document().buffer.text().to_string();
         let generation = self.active_document().edit_generation;
         let event_tx = self.runtime.event_tx.clone();
+        let wake = self.runtime.ctx.clone();
         self.active_document_mut().document_status = Some("Formatting…".to_string());
 
         self.runtime.rt.spawn_blocking(move || {
@@ -27,6 +28,7 @@ impl App {
                 from_save: false,
                 result,
             }));
+            wake.request_repaint();
         });
     }
 

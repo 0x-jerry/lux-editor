@@ -6,6 +6,7 @@ use super::document::OpenDocument;
 use crate::events::{CustomEvent, WorkspaceEvent};
 use crate::file_tree::FileTree;
 use crate::file_watcher;
+use eframe::egui;
 use lux_core::Buffer;
 use notify::RecommendedWatcher;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ impl Workspace {
     pub(crate) fn start_watcher(
         workspace_path: &Path,
         event_tx: Sender<CustomEvent>,
+        wake: egui::Context,
     ) -> Option<RecommendedWatcher> {
         if let Ok((watcher, rx)) = file_watcher::watch(workspace_path) {
             std::thread::spawn(move || {
@@ -41,6 +43,7 @@ impl Workspace {
                     event_tx
                         .send(CustomEvent::Workspace(WorkspaceEvent::FileChange))
                         .ok();
+                    wake.request_repaint();
                 }
             });
             Some(watcher)
@@ -56,7 +59,11 @@ impl App {
         self.workspace.path = Some(path.clone());
         self.workspace.file_tree = Some(FileTree::new(&path));
         self.settings.editor_config.add_recent(path.clone(), true);
-        self.workspace.watcher = Workspace::start_watcher(&path, self.runtime.event_tx.clone());
+        self.workspace.watcher = Workspace::start_watcher(
+            &path,
+            self.runtime.event_tx.clone(),
+            self.runtime.ctx.clone(),
+        );
         self.documents.reset_editor_state();
         self.open_workspace_last_file(&path);
         self.restart_settings_watcher();
@@ -78,7 +85,11 @@ impl App {
             self.workspace.path = Some(path.clone());
             self.workspace.file_tree = Some(FileTree::new(&path));
             self.settings.editor_config.add_recent(path.clone(), true);
-            self.workspace.watcher = Workspace::start_watcher(&path, self.runtime.event_tx.clone());
+            self.workspace.watcher = Workspace::start_watcher(
+                &path,
+                self.runtime.event_tx.clone(),
+                self.runtime.ctx.clone(),
+            );
             self.open_workspace_last_file(&path);
             return;
         }

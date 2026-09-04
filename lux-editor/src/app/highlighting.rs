@@ -1,7 +1,7 @@
 //! Highlighting domain: the syntax service and its debounced refresh.
 
 use super::App;
-use crate::language::{HighlightSnapshot, HighlightThemeConfig, HighlightingService, LanguageKind};
+use crate::language::{HighlightThemeConfig, HighlightingService, LanguageKind};
 use crate::ui::theme::{ThemeChoice, syntax_theme_for};
 use std::time::{Duration, Instant};
 
@@ -46,9 +46,10 @@ impl App {
         let config = self.syntax_theme_config();
         self.highlighting.service.set_theme(config);
         let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
+        // Rope clone is O(1); the worker parses the shared text zero-copy.
         self.highlighting
             .service
-            .request_parse(self.buffer().text().to_string(), language);
+            .request_parse(self.buffer().text().clone(), language);
     }
 
     /// The syntax theme the current config asks for.
@@ -74,8 +75,23 @@ impl App {
     pub(super) fn syntax_theme_changed(&self) -> bool {
         *self.highlighting.service.theme() != self.syntax_theme_config()
     }
+}
 
-    pub(super) fn highlight_snapshot(&self) -> &HighlightSnapshot {
-        self.highlighting.service.snapshot()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ropey::Rope;
+
+    #[test]
+    fn service_round_trips_rope_snapshot() {
+        let mut service = HighlightingService::new();
+        service.request_parse(
+            Rope::from_str("fn main() {}\n"),
+            LanguageKind::Extension("rs".to_string()),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        service.update();
+        assert_eq!(service.snapshot().version, 1);
+        assert!(!service.snapshot().line_tokens[0].is_empty());
     }
 }

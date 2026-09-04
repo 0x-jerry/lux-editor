@@ -1,8 +1,9 @@
-use super::App;
+use super::{App, ShellView};
 use crate::ui;
 use crate::ui::Component;
 use crate::ui::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
+use std::time::Duration;
 
 impl EframeApp for App {
     /// Pre-UI pass: process events/input and mutate editor state before the
@@ -64,7 +65,7 @@ impl EframeApp for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
         let ctx = ui.ctx().clone();
 
-        let highlight_snapshot = self.highlight_snapshot().clone();
+        let highlight_snapshot = self.highlighting.service.snapshot();
         let (carets, active_caret_index, selection_ranges) = {
             let active_document = &self.documents.tabs[self.documents.active_document];
             let caret_state = &active_document.caret_state;
@@ -104,7 +105,7 @@ impl EframeApp for App {
                     buffer: &active_document.buffer,
                     document_tabs: &document_tabs,
                     active_document_index: self.documents.active_document,
-                    highlight_snapshot: &highlight_snapshot,
+                    highlight_snapshot,
                     editor_config: &self.settings.editor_config,
                     document_status: active_document.document_status.as_deref(),
                     carets,
@@ -119,6 +120,10 @@ impl EframeApp for App {
             self.handle_event(event, &ctx);
         }
 
-        ctx.request_repaint();
+        // Everything repaints on input; background events wake the loop via
+        // `Runtime::ctx`; only the caret blink needs a steady tick here.
+        if self.chrome.shell.shell_view() == ShellView::Editor {
+            ctx.request_repaint_after(Duration::from_millis(500));
+        }
     }
 }

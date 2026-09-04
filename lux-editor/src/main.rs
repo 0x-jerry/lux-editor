@@ -1,25 +1,25 @@
 mod app;
-mod config;
+mod component;
+mod documents;
 mod events;
-mod file_tree;
-mod file_watcher;
-mod language;
+mod workspace;
+mod highlighting;
 mod native;
-mod startup;
+mod settings;
 mod theme;
-mod ui;
+mod chrome;
 
 use app::App;
-use config::Config;
+use settings::Config;
 use eframe::egui;
 
 pub fn main() {
     env_logger::init();
-    startup::stage("process start");
+    app::startup::stage("process start");
 
     // Start resolving/reading the configured editor font before the window
     // machinery spins up; the app folds the bytes in when they land.
-    let font_loader = ui::theme::StartupFont::spawn(Config::load_settings().font.family);
+    let font_loader = theme::StartupFont::spawn(Config::load_settings().font.family);
 
     // Platform adapter for the app-rendered title bar:
     // - macOS keeps the native title bar transparent (traffic lights stay

@@ -1,7 +1,7 @@
 //! Cross-platform tray icon with a minimal menu (show/hide the window, quit).
 
 use super::{command_id, icon};
-use crate::app::TitleBarMenu;
+use crate::chrome::TitleBarMenu;
 use muda::{Menu, MenuItem, PredefinedMenuItem};
 
 /// Builds the tray icon and its menu. Returns the icon handle (must be kept

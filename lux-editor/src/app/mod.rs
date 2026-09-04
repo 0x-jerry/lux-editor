@@ -1,20 +1,13 @@
-//! Application logic: `App` state split into domain structs (`documents`,
-//! `workspace`, `settings`, `highlighting`, `chrome`) plus the eframe frame
-//! adapter. Renders nothing itself — the UI lives in `ui/` and talks to the
-//! app through `crate::events::CustomEvent`.
+//! Composition root: the `App` struct, the async runtime that feeds it and
+//! the eframe frame adapter. Domain state and logic live in the feature
+//! modules (`documents`, `workspace`, `settings`, `highlighting`, `chrome`);
+//! this module only wires them together and dispatches events. Renders
+//! nothing itself — the UI lives with each domain and talks to the app
+//! through `crate::events::CustomEvent`.
 
-mod chrome;
-mod document;
-mod documents;
 mod events;
-mod formatter;
-mod highlighting;
-mod input;
-mod settings;
 mod state;
+pub(crate) mod startup;
 mod update;
-mod workspace;
 
-pub use chrome::{ShellView, TitleBarMenu};
-pub use document::OpenDocument;
 pub use state::App;

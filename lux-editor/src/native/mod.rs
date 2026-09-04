@@ -9,7 +9,7 @@ mod tray;
 
 use std::sync::{Arc, Mutex};
 
-use crate::app::TitleBarMenu;
+use crate::chrome::TitleBarMenu;
 
 /// Native chrome owned by the app: the installed menubar/tray handles (kept
 /// alive or the OS objects are deallocated) plus the window-visibility state

@@ -1,5 +1,5 @@
 //! The app's event bus. UI components and background workers report their
-//! effects to the reducer (`app/events.rs`) through a single `CustomEvent`
+//! effects to the app reducers (`<domain>/reducer.rs`) through a single `CustomEvent`
 //! envelope — one variant per domain, so a new event has to pick a domain:
 //!
 //! - [`WorkspaceEvent`] — workspace-tree changes (create/delete/rename, refresh)
@@ -10,7 +10,7 @@
 //! - [`ConfigurationEvent`] — configuration-view autosave
 //! - [`EditingEvent`] — caret/pointer interaction in the text editor
 
-use crate::config::EditorSettings;
+use crate::settings::EditorSettings;
 use std::path::PathBuf;
 
 /// Workspace: changes to the open workspace tree — raw mutations from the

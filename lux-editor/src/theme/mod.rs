@@ -11,6 +11,8 @@ mod color;
 mod file;
 mod visuals;
 
+mod apply;
+pub use apply::{CustomFont, StartupFont, apply_editor_settings};
 pub use builtin::syntax_colors;
 pub use choice::{resolve, ThemeChoice};
 pub use file::SyntaxColors;

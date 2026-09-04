@@ -2,7 +2,7 @@
 //! menu, in standard macOS layout (app menu first, ⌘-shortcuts on items).
 //! macOS-only; other platforms keep the in-window menu bar.
 
-use crate::app::TitleBarMenu;
+use crate::chrome::TitleBarMenu;
 use muda::accelerator::{Accelerator, Code, Modifiers};
 use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 

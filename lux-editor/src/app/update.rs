@@ -1,7 +1,8 @@
-use super::{App, ShellView};
+use super::App;
+use crate::chrome::ShellView;
 use crate::theme::{self, ThemeChoice};
-use crate::ui;
-use crate::ui::Component;
+use crate::chrome;
+use crate::component::Component;
 use eframe::{App as EframeApp, Frame, egui};
 use std::time::{Duration, Instant};
 
@@ -80,11 +81,11 @@ impl EframeApp for App {
                 self.refresh_language_intelligence();
             }
         }
-        crate::startup::stage_once!("first logic pass");
+        crate::app::startup::stage_once!("first logic pass");
     }
 
     /// Render pass: snapshot the document state and hand the whole frame to
-    /// the [`crate::ui::components::app_view::AppView`] component. The events
+    /// the [`crate::chrome::ui::app_view::AppView`] component. The events
     /// it emits are dispatched to the app's reducer.
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut Frame) {
         let ctx = ui.ctx().clone();
@@ -110,17 +111,17 @@ impl EframeApp for App {
             .documents
             .tabs
             .iter()
-            .map(|document| ui::DocumentTab {
+            .map(|document| crate::documents::DocumentTab {
                 title: document.title(),
                 dirty: document.document_dirty,
             })
             .collect::<Vec<_>>();
         let active_document = &self.documents.tabs[self.documents.active_document];
         let events = {
-            let mut view = ui::AppView;
+            let mut view = chrome::AppView;
             view.render(
                 ui,
-                ui::AppViewInput {
+                chrome::AppViewInput {
                     shell: &mut self.chrome.shell,
                     command_panel: &mut self.chrome.command_panel,
                     about_window: &mut self.chrome.about_window,
@@ -144,7 +145,7 @@ impl EframeApp for App {
             self.handle_event(event, &ctx);
         }
 
-        crate::startup::stage_once!("first frame presented");
+        crate::app::startup::stage_once!("first frame presented");
 
         // Everything repaints on input; background events wake the loop via
         // `Runtime::ctx`; only the caret blink needs a steady tick here.

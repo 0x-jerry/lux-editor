@@ -25,18 +25,15 @@ fn default_theme_choice() -> String {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ThemeSettings {
     /// App chrome theme: "auto" | "dark" | "light". `Auto` follows the OS.
+    /// The built-in syntax palette is coupled to this choice.
     #[serde(default = "default_theme_choice")]
     pub choice: String,
-    pub syntax_theme: String,
-    pub theme_path: Option<PathBuf>,
 }
 
 impl Default for ThemeSettings {
     fn default() -> Self {
         Self {
-            choice: "auto".to_string(),
-            syntax_theme: "base16-ocean.dark".to_string(),
-            theme_path: None,
+            choice: default_theme_choice(),
         }
     }
 }
@@ -190,8 +187,6 @@ impl Config {
         ::config::Config::builder()
             .set_default("theme.choice", "auto")
             .unwrap()
-            .set_default("theme.syntax_theme", "base16-ocean.dark")
-            .unwrap()
             .set_default("font.family", "JetBrains Mono")
             .unwrap()
             .set_default("font.size", 14.0)
@@ -331,11 +326,10 @@ mod tests {
     }
 
     #[test]
-    fn legacy_theme_settings_without_choice_parse_as_auto() {
+    fn legacy_theme_settings_ignore_removed_fields() {
         let settings: ThemeSettings =
             serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#).unwrap();
         assert_eq!(settings.choice, "auto");
-        assert_eq!(settings.syntax_theme, "InspiredGitHub");
     }
 
     #[test]

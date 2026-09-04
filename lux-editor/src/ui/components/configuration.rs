@@ -118,12 +118,8 @@ impl Component for ConfigurationView {
                                     )
                                     .changed()
                                 {
-                                    // Coupled: the syntax theme follows the chrome
-                                    // theme so token/background contrast holds.
-                                    self.draft.theme.syntax_theme =
-                                        syntax_theme_for(choice, ui.ctx().system_theme())
-                                            .to_string();
-                                    self.draft.theme.theme_path = None;
+                                    // Coupled: the built-in syntax theme
+                                    // follows the chrome choice.
                                     changed = true;
                                 }
                             }
@@ -245,10 +241,6 @@ fn section(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
 }
 
 fn syntax_label(settings: &EditorSettings, system: Option<egui::Theme>) -> String {
-    if let Some(path) = &settings.theme.theme_path {
-        format!("Custom: {}", path.display())
-    } else {
-        let choice = ThemeChoice::from_value(&settings.theme.choice);
-        format!("Syntax: {}", syntax_theme_for(choice, system))
-    }
+    let choice = ThemeChoice::from_value(&settings.theme.choice);
+    format!("Syntax: {}", syntax_theme_for(choice, system).label())
 }

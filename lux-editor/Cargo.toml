@@ -15,9 +15,10 @@ ropey = "1.6.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
-tree-sitter = "0.27"
+# Pinned to 0.26: tree-sitter-md requires ^0.26 and the core crate `links`
+# tree-sitter, so a second major in the graph is a hard resolve conflict.
+tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
-syntect = "5"
 config = "0.15"
 font-kit = "0.14"
 eframe = "0.36"
@@ -25,6 +26,10 @@ ignore = "0.4"
 arboard = "3.6"
 muda = { version = "0.19", default-features = false, features = ["common-controls-v6", "gtk"] }
 tray-icon = { version = "0.24", default-features = false, features = ["common-controls-v6", "gtk"] }
+tree-sitter-javascript = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-md = { version = "0.5.3", features = ["parser"] }
+tree-sitter-highlight = "0.26"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

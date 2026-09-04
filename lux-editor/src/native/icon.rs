@@ -26,7 +26,10 @@ pub(crate) fn tray_icon() -> Option<tray_icon::Icon> {
 
 fn in_rounded_rect(x: f32, y: f32) -> bool {
     let edge = SIZE as f32 - 1.0;
-    let (cx, cy) = (x.clamp(RADIUS, edge - RADIUS), y.clamp(RADIUS, edge - RADIUS));
+    let (cx, cy) = (
+        x.clamp(RADIUS, edge - RADIUS),
+        y.clamp(RADIUS, edge - RADIUS),
+    );
     let (dx, dy) = (x - cx, y - cy);
     dx * dx + dy * dy <= RADIUS * RADIUS
 }

@@ -1,10 +1,12 @@
 //! App-level themes: chrome `Visuals` plus a coupled syntax theme.
 //!
 //! A theme answers two questions at once: how the chrome looks and which
-//! syntect theme colors the code, so token/background contrast is guaranteed.
-//! `Auto` follows the OS preference reported by [`egui::Context::system_theme`].
+//! built-in syntax palette colors the code, so token/background contrast is
+//! guaranteed. `Auto` follows the OS preference reported by
+//! [`egui::Context::system_theme`].
 
 use crate::config::EditorSettings;
+use crate::language::SyntaxTheme;
 use eframe::egui;
 use egui::{Color32, CornerRadius, Stroke, Visuals};
 use font_kit::family_name::FamilyName;
@@ -58,15 +60,11 @@ pub fn resolve(choice: ThemeChoice, system: Option<egui::Theme>) -> ThemeChoice 
     }
 }
 
-/// The coupled syntax theme for a choice, resolving `Auto` against the system.
-pub fn syntax_theme_for(choice: ThemeChoice, system: Option<egui::Theme>) -> &'static str {
-    match choice {
-        ThemeChoice::Dark => "base16-ocean.dark",
-        ThemeChoice::Light => "base16-ocean.light",
-        ThemeChoice::Auto => match system {
-            Some(egui::Theme::Light) => "base16-ocean.light",
-            _ => "base16-ocean.dark",
-        },
+/// The built-in syntax theme coupled to a chrome choice.
+pub fn syntax_theme_for(choice: ThemeChoice, system: Option<egui::Theme>) -> SyntaxTheme {
+    match resolve(choice, system) {
+        ThemeChoice::Light => SyntaxTheme::Light,
+        _ => SyntaxTheme::Dark,
     }
 }
 
@@ -288,23 +286,17 @@ mod tests {
     fn auto_resolves_against_system_theme() {
         assert_eq!(
             syntax_theme_for(ThemeChoice::Auto, Some(egui::Theme::Light)),
-            "base16-ocean.light"
+            SyntaxTheme::Light
         );
         assert_eq!(
             syntax_theme_for(ThemeChoice::Auto, Some(egui::Theme::Dark)),
-            "base16-ocean.dark"
+            SyntaxTheme::Dark
         );
-        assert_eq!(
-            syntax_theme_for(ThemeChoice::Auto, None),
-            "base16-ocean.dark"
-        );
-        assert_eq!(
-            syntax_theme_for(ThemeChoice::Dark, None),
-            "base16-ocean.dark"
-        );
+        assert_eq!(syntax_theme_for(ThemeChoice::Auto, None), SyntaxTheme::Dark);
+        assert_eq!(syntax_theme_for(ThemeChoice::Dark, None), SyntaxTheme::Dark);
         assert_eq!(
             syntax_theme_for(ThemeChoice::Light, None),
-            "base16-ocean.light"
+            SyntaxTheme::Light
         );
     }
 

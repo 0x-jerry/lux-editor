@@ -8,7 +8,12 @@ use muda::{Menu, MenuItem, PredefinedMenuItem};
 /// alive or the OS object is removed) and the toggle item (for label updates).
 pub(crate) fn build() -> (Option<tray_icon::TrayIcon>, Option<muda::MenuItem>) {
     let menu = Menu::new();
-    let toggle = MenuItem::with_id(command_id(TitleBarMenu::ToggleWindowVisibility), "Show/Hide Lux", true, None);
+    let toggle = MenuItem::with_id(
+        command_id(TitleBarMenu::ToggleWindowVisibility),
+        "Show/Hide Lux",
+        true,
+        None,
+    );
     let quit = MenuItem::with_id(command_id(TitleBarMenu::Quit), "Quit Lux", true, None);
     if menu.append(&toggle).is_ok()
         && menu.append(&PredefinedMenuItem::separator()).is_ok()

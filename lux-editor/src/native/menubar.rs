@@ -31,22 +31,35 @@ fn app_menu() -> Option<Submenu> {
     menu.append(&command_item(TitleBarMenu::About, "About Lux", None))
         .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::Hide, "Hide Lux", cmd(Code::KeyH)))
-        .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::Hide,
+        "Hide Lux",
+        cmd(Code::KeyH),
+    ))
+    .ok()?;
     // Hide Others / Show All target the app itself; the system handles them.
     menu.append(&PredefinedMenuItem::hide_others(Some("Hide Others")))
         .ok()?;
-    menu.append(&PredefinedMenuItem::show_all(Some("Show All"))).ok()?;
-    menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::Quit, "Quit Lux", cmd(Code::KeyQ)))
+    menu.append(&PredefinedMenuItem::show_all(Some("Show All")))
         .ok()?;
+    menu.append(&PredefinedMenuItem::separator()).ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::Quit,
+        "Quit Lux",
+        cmd(Code::KeyQ),
+    ))
+    .ok()?;
     Some(menu)
 }
 
 fn file_menu() -> Option<Submenu> {
     let menu = Submenu::new("File", true);
-    menu.append(&command_item(TitleBarMenu::OpenFile, "Open File…", cmd(Code::KeyO)))
-        .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::OpenFile,
+        "Open File…",
+        cmd(Code::KeyO),
+    ))
+    .ok()?;
     menu.append(&command_item(
         TitleBarMenu::OpenFolder,
         "Open Folder…",
@@ -54,25 +67,39 @@ fn file_menu() -> Option<Submenu> {
     ))
     .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::SaveFile, "Save", cmd(Code::KeyS)))
-        .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::SaveFile,
+        "Save",
+        cmd(Code::KeyS),
+    ))
+    .ok()?;
     Some(menu)
 }
 
 fn edit_menu() -> Option<Submenu> {
     let menu = Submenu::new("Edit", true);
-    menu.append(&command_item(TitleBarMenu::Undo, "Undo", cmd(Code::KeyZ))).ok()?;
-    menu.append(&command_item(TitleBarMenu::Redo, "Redo", cmd_shift(Code::KeyZ)))
+    menu.append(&command_item(TitleBarMenu::Undo, "Undo", cmd(Code::KeyZ)))
         .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::Redo,
+        "Redo",
+        cmd_shift(Code::KeyZ),
+    ))
+    .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::Cut, "Cut", cmd(Code::KeyX))).ok()?;
+    menu.append(&command_item(TitleBarMenu::Cut, "Cut", cmd(Code::KeyX)))
+        .ok()?;
     menu.append(&command_item(TitleBarMenu::Copy, "Copy", cmd(Code::KeyC)))
         .ok()?;
     menu.append(&command_item(TitleBarMenu::Paste, "Paste", cmd(Code::KeyV)))
         .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::SelectAll, "Select All", cmd(Code::KeyA)))
-        .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::SelectAll,
+        "Select All",
+        cmd(Code::KeyA),
+    ))
+    .ok()?;
     Some(menu)
 }
 
@@ -87,8 +114,12 @@ fn view_menu() -> Option<Submenu> {
     menu.append(&PredefinedMenuItem::separator()).ok()?;
     menu.append(&command_item(TitleBarMenu::SwitchToEditor, "Editor", None))
         .ok()?;
-    menu.append(&command_item(TitleBarMenu::SwitchToConfiguration, "Configuration", None))
-        .ok()?;
+    menu.append(&command_item(
+        TitleBarMenu::SwitchToConfiguration,
+        "Configuration",
+        None,
+    ))
+    .ok()?;
     menu.append(&command_item(
         TitleBarMenu::ToggleSidebar,
         "Toggle Sidebar",
@@ -98,11 +129,7 @@ fn view_menu() -> Option<Submenu> {
     Some(menu)
 }
 
-fn command_item(
-    command: TitleBarMenu,
-    text: &str,
-    accelerator: Option<Accelerator>,
-) -> MenuItem {
+fn command_item(command: TitleBarMenu, text: &str, accelerator: Option<Accelerator>) -> MenuItem {
     MenuItem::with_id(command_id(command), text, true, accelerator)
 }
 
@@ -111,5 +138,8 @@ fn cmd(code: Code) -> Option<Accelerator> {
 }
 
 fn cmd_shift(code: Code) -> Option<Accelerator> {
-    Some(Accelerator::new(Some(Modifiers::SUPER | Modifiers::SHIFT), code))
+    Some(Accelerator::new(
+        Some(Modifiers::SUPER | Modifiers::SHIFT),
+        code,
+    ))
 }

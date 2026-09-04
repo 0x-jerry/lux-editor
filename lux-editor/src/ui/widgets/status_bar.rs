@@ -55,50 +55,52 @@ impl Component for StatusBar {
                     }
                     ui.separator();
                     ui.label(egui::RichText::new(data.mode_label).strong().color(accent));
-                        ui.separator();
-                        match data.section {
-                            StatusBarSection::Editor {
-                                caret_line,
-                                caret_column,
-                                selection_len,
-                                document_dirty,
-                                document_status,
-                            } => {
-                                ui.label(format!(
-                                    "Ln {}, Col {}  Sel {}",
-                                    caret_line, caret_column, selection_len
-                                ));
-                                ui.separator();
-                                if document_dirty {
-                                    ui.label(egui::RichText::new(format!("{DOT} Modified")).color(accent));
-                                } else {
-                                    ui.label("Saved");
-                                }
-                                if let Some(status) = document_status {
-                                    ui.separator();
-                                    ui.label(
-                                        egui::RichText::new(status)
-                                            .color(ui.visuals().weak_text_color()),
-                                    );
-                                }
+                    ui.separator();
+                    match data.section {
+                        StatusBarSection::Editor {
+                            caret_line,
+                            caret_column,
+                            selection_len,
+                            document_dirty,
+                            document_status,
+                        } => {
+                            ui.label(format!(
+                                "Ln {}, Col {}  Sel {}",
+                                caret_line, caret_column, selection_len
+                            ));
+                            ui.separator();
+                            if document_dirty {
+                                ui.label(
+                                    egui::RichText::new(format!("{DOT} Modified")).color(accent),
+                                );
+                            } else {
+                                ui.label("Saved");
                             }
-                            StatusBarSection::Configuration { config_status } => {
-                                ui.label("Configuration View");
-                                if let Some(status) = config_status {
-                                    ui.separator();
-                                    ui.label(
-                                        egui::RichText::new(status)
-                                            .color(ui.visuals().weak_text_color()),
-                                    );
-                                }
+                            if let Some(status) = document_status {
+                                ui.separator();
+                                ui.label(
+                                    egui::RichText::new(status)
+                                        .color(ui.visuals().weak_text_color()),
+                                );
                             }
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                egui::RichText::new(data.right_label)
-                                    .color(ui.visuals().weak_text_color()),
-                            );
-                        });
+                        StatusBarSection::Configuration { config_status } => {
+                            ui.label("Configuration View");
+                            if let Some(status) = config_status {
+                                ui.separator();
+                                ui.label(
+                                    egui::RichText::new(status)
+                                        .color(ui.visuals().weak_text_color()),
+                                );
+                            }
+                        }
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(data.right_label)
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    });
                 });
             });
 

@@ -39,9 +39,7 @@ impl Component for FileTreePanel {
             .resizable(true)
             .default_size(220.0)
             .size_range(120.0..=480.0)
-            .frame(
-                egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::ZERO),
-            )
+            .frame(egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::ZERO))
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])

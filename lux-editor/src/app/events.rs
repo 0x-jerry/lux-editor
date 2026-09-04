@@ -121,8 +121,7 @@ impl App {
         &mut self,
         event: ShellEvent,
         // macOS only consumes `ctx` in the platform-gated menu arm below.
-        #[cfg_attr(target_os = "macos", allow(unused_variables))]
-        ctx: &egui::Context,
+        #[cfg_attr(target_os = "macos", allow(unused_variables))] ctx: &egui::Context,
     ) {
         match event {
             ShellEvent::SwitchToEditor => self.chrome.shell.switch_to_editor(),

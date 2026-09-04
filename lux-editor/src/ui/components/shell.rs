@@ -109,12 +109,7 @@ impl Component for Shell {
 
         let mut events = Vec::new();
 
-        self.title_bar.render(
-            ui,
-            TitleBarData {
-                app_title: "Lux",
-            },
-        );
+        self.title_bar.render(ui, TitleBarData { app_title: "Lux" });
 
         let selection_len: usize = selection_ranges
             .iter()

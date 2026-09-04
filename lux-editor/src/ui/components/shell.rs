@@ -8,8 +8,6 @@ use super::{
 use crate::app::ShellView;
 use crate::config::{Config, EditorSettings};
 use crate::events::CustomEvent;
-#[cfg(not(target_os = "macos"))]
-use crate::events::ShellEvent;
 use crate::file_tree::FileTree;
 use crate::language::HighlightSnapshot;
 use crate::ui::component::Component;
@@ -17,8 +15,6 @@ use crate::ui::highlight::snapshot_color;
 use crate::ui::widgets::{
     StatusBar, StatusBarData, StatusBarSection, TitleBar, TitleBarData, window_resize_handle,
 };
-#[cfg(not(target_os = "macos"))]
-use crate::ui::widgets::TitleBarMessage;
 use eframe::egui;
 use lux_core::Buffer;
 use std::ops::Range;
@@ -113,36 +109,12 @@ impl Component for Shell {
 
         let mut events = Vec::new();
 
-        #[cfg(not(target_os = "macos"))]
-        let active_nav = match self.shell_view {
-            ShellView::Editor => 0,
-            ShellView::Configuration => 1,
-        };
-        // macOS's title bar never emits messages (navigation lives in the
-        // system menubar), so only non-macOS builds dispatch them.
-        #[cfg_attr(target_os = "macos", allow(unused_variables))]
-        let title_messages = self.title_bar.render(
+        self.title_bar.render(
             ui,
             TitleBarData {
                 app_title: "Lux",
-                #[cfg(not(target_os = "macos"))]
-                nav_tabs: &["Editor", "Configuration"],
-                #[cfg(not(target_os = "macos"))]
-                active_nav,
             },
         );
-        #[cfg(not(target_os = "macos"))]
-        for message in title_messages {
-            match message {
-                TitleBarMessage::Menu(menu) => {
-                    events.push(CustomEvent::Shell(ShellEvent::TitleBarMenu(menu)));
-                }
-                TitleBarMessage::Navigation(index) => match index {
-                    0 => self.switch_to_editor(),
-                    _ => self.switch_to_configuration(),
-                },
-            }
-        }
 
         let selection_len: usize = selection_ranges
             .iter()

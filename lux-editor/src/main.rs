@@ -25,6 +25,7 @@ pub fn main() {
     {
         viewport = viewport
             .with_titlebar_shown(false)
+            .with_title_shown(false)
             .with_fullsize_content_view(true);
     }
     #[cfg(not(target_os = "macos"))]

@@ -1,5 +1,5 @@
-//! App-rendered title bar: window drag region, integrated navigation tabs and
-//! menu bar, plus platform-specific window controls.
+//! App-rendered title bar: window drag region and platform-specific window
+//! controls.
 //!
 //! Platform adapter rules:
 //! - macOS: the native title bar is kept transparent (`titlebar_transparent`)
@@ -8,53 +8,34 @@
 //! - Other platforms: the OS decorations are removed and this module renders
 //!   minimize/maximize/close buttons plus a bottom-right resize handle.
 
-#[cfg(not(target_os = "macos"))]
-use crate::app::TitleBarMenu;
 use crate::ui::component::Component;
 use eframe::egui;
-
-/// Messages emitted by the title bar toward the embedding app.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TitleBarMessage {
-    /// The in-window menu bar is macOS-only-replaced by the system menubar.
-    #[cfg(not(target_os = "macos"))]
-    Menu(TitleBarMenu),
-    /// macOS switches views from the system menubar instead of title-bar tabs.
-    #[cfg(not(target_os = "macos"))]
-    Navigation(usize),
-}
+use egui_phosphor::regular::{ARROWS_IN, ARROWS_OUT, MINUS, X};
 
 /// Content the title bar displays for the embedding app.
 pub struct TitleBarData<'a> {
     pub app_title: &'a str,
-    #[cfg(not(target_os = "macos"))]
-    pub nav_tabs: &'a [&'a str],
-    #[cfg(not(target_os = "macos"))]
-    pub active_nav: usize,
 }
 
-/// Top title bar: window drag region, navigation tabs and menu bar.
+/// Top title bar: window drag region and window controls.
 pub struct TitleBar;
 
 impl Component for TitleBar {
-    type Message = TitleBarMessage;
+    type Message = ();
     type Input<'a> = TitleBarData<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, data: Self::Input<'_>) -> Vec<Self::Message> {
-        #[cfg(not(target_os = "macos"))]
-        let mut messages = Vec::new();
-        #[cfg(target_os = "macos")]
-        let messages = Vec::new();
-        #[cfg(not(target_os = "macos"))]
-        let mut push = |message: TitleBarMessage| messages.push(message);
-
         egui::Panel::top("title_bar")
             .exact_size(32.0)
-            .frame(egui::Frame::default().fill(ui.style().visuals.panel_fill))
+            .frame(
+                egui::Frame::default()
+                    .fill(ui.style().visuals.panel_fill)
+                    .inner_margin(egui::Margin::symmetric(4, 0)),
+            )
             .show(ui, |ui| {
                 let ctx = ui.ctx().clone();
                 // The drag region covers the whole bar; interactive widgets drawn
-                // afterwards win hit-testing, so buttons and menus still work.
+                // afterwards win hit-testing, so buttons still work.
                 let drag_response = ui.interact(
                     ui.max_rect(),
                     ui.id().with("title_bar_drag"),
@@ -70,7 +51,7 @@ impl Component for TitleBar {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
                 }
 
-                ui.horizontal(|ui| {
+                ui.horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     if window_controls_enabled() {
                         ui.add_space(0.0);
@@ -81,19 +62,9 @@ impl Component for TitleBar {
 
                     ui.label(egui::RichText::new(data.app_title).strong().size(14.0));
 
-                    // macOS switches views from the system menubar
-                    // (View > Editor / View > Configuration); non-macOS builds
-                    // keep the in-window tabs.
-                    #[cfg(not(target_os = "macos"))]
-                    for (index, tab) in data.nav_tabs.iter().enumerate() {
-                        if nav_tab(ui, tab, index == data.active_nav).clicked() {
-                            push(TitleBarMessage::Navigation(index));
-                        }
-                    }
-
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if window_controls_enabled() {
-                            window_control_button(ui, "✕", |ctx| {
+                            window_control_button(ui, X, |ctx| {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                             });
                             let maximized = ctx
@@ -101,21 +72,17 @@ impl Component for TitleBar {
                                 .unwrap_or(false);
                             window_control_button(
                                 ui,
-                                if maximized { "❐" } else { "□" },
+                                if maximized { ARROWS_IN } else { ARROWS_OUT },
                                 |ctx| {
                                     ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(
                                         !maximized,
                                     ));
                                 },
                             );
-                            window_control_button(ui, "–", |ctx| {
+                            window_control_button(ui, MINUS, |ctx| {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                             });
                         }
-                        // macOS renders File/Edit/View in the system menubar
-                        // (see crate::native::menubar), not in the title bar.
-                        #[cfg(not(target_os = "macos"))]
-                        title_bar_menu_bar(ui, &mut push);
                     });
                 });
 
@@ -127,101 +94,8 @@ impl Component for TitleBar {
                 );
             });
 
-        messages
+        Vec::new()
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-/// A shell navigation tab: accented underline marks the active one.
-fn nav_tab(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
-    let accent = ui.visuals().hyperlink_color;
-    let response = ui.add(
-        egui::Button::new(egui::RichText::new(label).strong())
-            .selected(selected)
-            .corner_radius(egui::CornerRadius::same(4)),
-    );
-    if selected {
-        let rect = egui::Rect::from_min_max(
-            egui::pos2(response.rect.left() + 8.0, response.rect.bottom() - 2.0),
-            egui::pos2(response.rect.right() - 8.0, response.rect.bottom()),
-        );
-        ui.painter().rect_filled(rect, 0.0, accent);
-    }
-    response
-}
-
-#[cfg(not(target_os = "macos"))]
-fn title_bar_menu_bar(ui: &mut egui::Ui, push: &mut impl FnMut(TitleBarMessage)) {
-    egui::MenuBar::new().ui(ui, |ui| {
-        ui.menu_button("File", |ui| {
-            if ui.button("Open File…").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::OpenFile));
-                ui.close();
-            }
-            if ui.button("Open Folder…").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::OpenFolder));
-                ui.close();
-            }
-            ui.separator();
-            if ui.button("Save").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::SaveFile));
-                ui.close();
-            }
-        });
-        ui.menu_button("Edit", |ui| {
-            if ui.button("Undo").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::Undo));
-                ui.close();
-            }
-            if ui.button("Redo").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::Redo));
-                ui.close();
-            }
-            ui.separator();
-            if ui.button("Cut").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::Cut));
-                ui.close();
-            }
-            if ui.button("Copy").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::Copy));
-                ui.close();
-            }
-            if ui.button("Paste").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::Paste));
-                ui.close();
-            }
-            ui.separator();
-            if ui.button("Select All").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::SelectAll));
-                ui.close();
-            }
-        });
-        ui.menu_button("View", |ui| {
-            if ui.button("Command Palette").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::CommandPalette));
-                ui.close();
-            }
-            ui.separator();
-            if ui.button("Editor").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::SwitchToEditor));
-                ui.close();
-            }
-            if ui.button("Configuration").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::SwitchToConfiguration));
-                ui.close();
-            }
-            if ui.button("Toggle Sidebar").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::ToggleSidebar));
-                ui.close();
-            }
-        });
-        ui.menu_button("Help", |ui| {
-            if ui.button("About Lux").clicked() {
-                push(TitleBarMessage::Menu(TitleBarMenu::About));
-                ui.close();
-            }
-        });
-    });
 }
 
 fn window_control_button(ui: &mut egui::Ui, glyph: &str, action: impl FnOnce(&egui::Context)) {

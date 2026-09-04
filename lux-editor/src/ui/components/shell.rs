@@ -140,7 +140,7 @@ impl Component for Shell {
                 .unwrap_or_else(|| "Untitled".to_string()),
             ShellView::Configuration => Config::user_settings_path().display().to_string(),
         };
-        self.status_bar.render(
+        events.extend(self.status_bar.render(
             ui,
             StatusBarData {
                 mode_label: match self.shell_view {
@@ -150,7 +150,7 @@ impl Component for Shell {
                 section,
                 right_label: &right_label,
             },
-        );
+        ));
 
         if self.shell_view == ShellView::Editor
             && self.sidebar_visible
@@ -160,7 +160,6 @@ impl Component for Shell {
                 ui,
                 FileTreePanelInput {
                     tree,
-                    workspace_path: workspace_path.map(|path| path.as_path()),
                     active_file_path: buffer.path().map(|path| path.as_path()),
                 },
             ));

@@ -160,6 +160,7 @@ fn row(ui: &mut egui::Ui, icon: &str, label: &str) -> egui::Response {
         egui::vec2(ui.available_width(), row_height),
         egui::Sense::click(),
     );
+    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
     let painter = ui.painter();
     if response.hovered() {
         painter.rect_filled(

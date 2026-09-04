@@ -10,7 +10,7 @@
 
 use crate::ui::component::Component;
 use eframe::egui;
-use egui_phosphor::regular::{ARROWS_IN, ARROWS_OUT, MINUS, X};
+use egui_phosphor::regular::{ARROWS_IN, ARROWS_OUT, MINUS, NOTCHES, X};
 
 /// Content the title bar displays for the embedding app.
 pub struct TitleBarData<'a> {
@@ -99,7 +99,7 @@ impl Component for TitleBar {
 }
 
 fn window_control_button(ui: &mut egui::Ui, glyph: &str, action: impl FnOnce(&egui::Context)) {
-    if ui.add(egui::Button::new(glyph).frame(false)).clicked() {
+    if super::icon_button(ui, glyph).clicked() {
         action(ui.ctx());
     }
 }
@@ -115,6 +115,7 @@ pub fn window_controls_enabled() -> bool {
 pub fn window_resize_handle(ui: &mut egui::Ui) {
     if !window_controls_enabled() {
         let (rect, response) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::drag());
+        let response = response.on_hover_and_drag_cursor(egui::CursorIcon::ResizeNwSe);
         if response.dragged() {
             let delta = response.drag_delta();
             let current = ui
@@ -127,7 +128,7 @@ pub fn window_resize_handle(ui: &mut egui::Ui) {
         painter.text(
             egui::pos2(rect.right(), rect.bottom()),
             egui::Align2::RIGHT_BOTTOM,
-            "⌟",
+            NOTCHES,
             egui::FontId::proportional(12.0),
             ui.visuals().weak_text_color(),
         );

@@ -251,6 +251,10 @@ pub fn apply_editor_settings(ctx: &egui::Context, theme: ThemeChoice, settings: 
             egui::TextStyle::Button,
             egui::FontId::proportional(font_size),
         );
+        // Button-family widgets (buttons, selectable labels, checkboxes, combo
+        // boxes) are the only things that honor this in egui 0.36; raw Sense
+        // hit-areas set their cursor per-response instead.
+        style.visuals.interact_cursor = Some(egui::CursorIcon::PointingHand);
     });
 }
 

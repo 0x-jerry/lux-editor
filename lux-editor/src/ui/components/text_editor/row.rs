@@ -156,6 +156,7 @@ fn render_row(
         egui::vec2(row_width, metrics.row_height),
         egui::Sense::click_and_drag(),
     );
+    let response = response.on_hover_and_drag_cursor(egui::CursorIcon::Text);
     let text_origin = egui::pos2(rect.left() + metrics.gutter_total_width, rect.top());
 
     for range in selection_ranges {

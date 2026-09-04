@@ -1,9 +1,9 @@
-use crate::events::{AppEvent, CustomEvent, ShellEvent, WorkspaceEvent};
+use crate::events::{AppEvent, CustomEvent, WorkspaceEvent};
 use crate::file_tree::{Entry, FileTree};
 use crate::ui::component::Component;
 use eframe::egui;
 use eframe::egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
-use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN, SIDEBAR};
+use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
 use std::path::{Path, PathBuf};
 
 /// Left sidebar file tree; emits navigation and file-system events. Owns the
@@ -18,7 +18,6 @@ pub struct FileTreePanel {
 
 pub struct FileTreePanelInput<'a> {
     pub tree: &'a FileTree,
-    pub workspace_path: Option<&'a Path>,
     pub active_file_path: Option<&'a Path>,
 }
 
@@ -29,7 +28,6 @@ impl Component for FileTreePanel {
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<CustomEvent> {
         let FileTreePanelInput {
             tree,
-            workspace_path,
             active_file_path,
         } = input;
         let mut events = Vec::new();
@@ -41,15 +39,10 @@ impl Component for FileTreePanel {
             .resizable(true)
             .default_size(220.0)
             .size_range(120.0..=480.0)
+            .frame(
+                egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::ZERO),
+            )
             .show(ui, |ui| {
-                egui::Frame::default()
-                    .inner_margin(egui::Margin::symmetric(6, 6))
-                    .show(ui, |ui| {
-                        file_tree_header(ui, workspace_path, &mut events);
-                        ui.add_space(4.0);
-                        ui.separator();
-                        ui.add_space(4.0);
-                    });
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -66,33 +59,6 @@ impl Component for FileTreePanel {
 
         events
     }
-}
-
-fn file_tree_header(
-    ui: &mut egui::Ui,
-    workspace_path: Option<&Path>,
-    events: &mut Vec<CustomEvent>,
-) {
-    let accent = ui.visuals().hyperlink_color;
-    ui.horizontal(|ui| {
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(SIDEBAR).color(ui.visuals().weak_text_color()),
-                )
-                .frame(false),
-            )
-            .on_hover_text("Toggle sidebar")
-            .clicked()
-        {
-            events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
-        }
-        let name = workspace_path
-            .and_then(|path| path.file_name())
-            .and_then(|name| name.to_str())
-            .unwrap_or("Explorer");
-        ui.label(egui::RichText::new(name).strong().color(accent));
-    });
 }
 
 impl FileTreePanel {

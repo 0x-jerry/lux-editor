@@ -14,6 +14,7 @@ mod about;
 mod app_view;
 mod command_panel;
 mod configuration;
+mod document_tabs;
 mod editor;
 mod file_tree;
 mod shell;

@@ -3,16 +3,17 @@ use ropey::Rope;
 use super::engine::{Engines, RawSpan};
 use super::snapshot::{HighlightSnapshot, HighlightSpan};
 use super::style::ThemeColors;
-use crate::language::{LanguageKind, SyntaxTheme};
+use crate::language::LanguageKind;
+use crate::theme::SyntaxColors;
 
 pub(super) fn parse_snapshot(
     engines: &mut Engines,
-    theme: SyntaxTheme,
+    syntax: &SyntaxColors,
     text: &Rope,
     language: LanguageKind,
     version: u64,
 ) -> HighlightSnapshot {
-    let colors = ThemeColors::new(theme);
+    let colors = ThemeColors::new(syntax);
     let line_count = text.len_lines();
     let mut snapshot = HighlightSnapshot {
         version,
@@ -87,12 +88,13 @@ fn split_by_lines(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::{self, ThemeChoice};
 
     fn snapshot_for(source: &str, language: LanguageKind) -> HighlightSnapshot {
         let mut engines = Engines::new();
         parse_snapshot(
             &mut engines,
-            SyntaxTheme::Dark,
+            &theme::syntax_colors(ThemeChoice::Dark),
             &Rope::from_str(source),
             language,
             1,

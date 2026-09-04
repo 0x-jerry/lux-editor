@@ -5,6 +5,7 @@ mod file_tree;
 mod file_watcher;
 mod language;
 mod native;
+mod theme;
 mod ui;
 
 use app::App;

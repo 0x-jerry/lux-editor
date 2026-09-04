@@ -1,19 +1,4 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SyntaxTheme {
-    Dark,
-    Light,
-}
-
-impl SyntaxTheme {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Dark => "Dark",
-            Self::Light => "Light",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HighlightSpan {
     pub start_col: usize,
     pub end_col: usize,

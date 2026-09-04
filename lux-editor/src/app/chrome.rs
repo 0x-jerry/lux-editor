@@ -4,7 +4,8 @@
 use super::App;
 use crate::app::input::EditorCommand;
 use crate::native::NativeChrome;
-use crate::ui::theme::{self, ThemeChoice};
+use crate::theme::ThemeChoice;
+use crate::ui::theme;
 use crate::ui::{AboutWindow, CommandPanel, Shell};
 use eframe::egui;
 

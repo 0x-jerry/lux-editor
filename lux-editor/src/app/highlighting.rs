@@ -1,8 +1,10 @@
 //! Highlighting domain: the syntax service and its debounced refresh.
 
 use super::App;
-use crate::language::{HighlightingService, LanguageKind, SyntaxTheme};
-use crate::ui::theme::{ThemeChoice, syntax_theme_for};
+use crate::language::HighlightingService;
+use crate::language::LanguageKind;
+use crate::theme::{self, SyntaxColors, ThemeChoice};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub(crate) struct Highlighting {
@@ -43,8 +45,7 @@ impl App {
     }
 
     pub(super) fn refresh_language_intelligence(&mut self) {
-        let config = self.syntax_theme_config();
-        self.highlighting.service.set_theme(config);
+        self.highlighting.service.set_syntax(self.syntax_colors());
         let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
         // Rope clone is O(1); the worker parses the shared text zero-copy.
         self.highlighting
@@ -52,19 +53,19 @@ impl App {
             .request_parse(self.buffer().text().clone(), language);
     }
 
-    /// The syntax theme the current config asks for.
-    fn syntax_theme_config(&self) -> SyntaxTheme {
+    /// The syntax palette the current config asks for.
+    fn syntax_colors(&self) -> Arc<SyntaxColors> {
         // Before the first style pass the raw choice is all there is (`Auto` → dark).
         let choice = self.chrome.runtime_theme.unwrap_or_else(|| {
             ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice)
         });
-        syntax_theme_for(choice, None)
+        theme::syntax_colors(choice)
     }
 
-    /// Whether the applied syntax theme drifted from the configured one; keeps
+    /// Whether the applied syntax palette drifted from the configured one; keeps
     /// chrome-only changes (fonts) from re-parsing the whole buffer.
-    pub(super) fn syntax_theme_changed(&self) -> bool {
-        self.highlighting.service.theme() != self.syntax_theme_config()
+    pub(super) fn syntax_colors_changed(&self) -> bool {
+        !Arc::ptr_eq(self.highlighting.service.syntax(), &self.syntax_colors())
     }
 }
 

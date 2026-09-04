@@ -17,7 +17,7 @@ pub(super) fn worker_loop(
                 mut version,
                 mut text,
                 mut language,
-                mut theme,
+                mut syntax,
             } => {
                 // Coalesce queued requests: only the newest state is worth parsing.
                 while let Ok(next_request) = request_rx.try_recv() {
@@ -27,17 +27,17 @@ pub(super) fn worker_loop(
                             version: next_version,
                             text: next_text,
                             language: next_language,
-                            theme: next_theme,
+                            syntax: next_syntax,
                         } => {
                             version = next_version;
                             text = next_text;
                             language = next_language;
-                            theme = next_theme;
+                            syntax = next_syntax;
                         }
                     }
                 }
 
-                let snapshot = parse_snapshot(&mut engines, theme, &text, language, version);
+                let snapshot = parse_snapshot(&mut engines, &syntax, &text, language, version);
                 response_tx.send(WorkerResponse { version, snapshot }).ok();
             }
         }

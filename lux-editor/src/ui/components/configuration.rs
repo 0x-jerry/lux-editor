@@ -1,7 +1,7 @@
 use crate::config::{Config, EditorSettings};
 use crate::events::ConfigurationEvent;
+use crate::theme::ThemeChoice;
 use crate::ui::component::Component;
-use crate::ui::theme::{ThemeChoice, syntax_theme_for};
 use eframe::egui;
 use lux_core::Buffer;
 use std::path::PathBuf;
@@ -118,16 +118,10 @@ impl Component for ConfigurationView {
                                     )
                                     .changed()
                                 {
-                                    // Coupled: the built-in syntax theme
-                                    // follows the chrome choice.
                                     changed = true;
                                 }
                             }
                         });
-                    ui.end_row();
-
-                    ui.label("Syntax theme");
-                    ui.label(syntax_label(&self.draft, ui.ctx().system_theme()));
                     ui.end_row();
 
                     ui.label("Font family");
@@ -238,9 +232,4 @@ fn section(ui: &mut egui::Ui, title: &str, body: impl FnOnce(&mut egui::Ui)) {
             body(ui);
         });
     ui.add_space(10.0);
-}
-
-fn syntax_label(settings: &EditorSettings, system: Option<egui::Theme>) -> String {
-    let choice = ThemeChoice::from_value(&settings.theme.choice);
-    format!("Syntax: {}", syntax_theme_for(choice, system).label())
 }

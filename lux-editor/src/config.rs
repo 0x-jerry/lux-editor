@@ -24,8 +24,9 @@ fn default_theme_choice() -> String {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct ThemeSettings {
-    /// App chrome theme: "auto" | "dark" | "light". `Auto` follows the OS.
-    /// The built-in syntax palette is coupled to this choice.
+    /// App theme: "auto" | "dark" | "light". `Auto` follows the OS.
+    /// Chrome and syntax colors both come from the matching theme file
+    /// (`assets/themes/*.json`, embedded at compile time).
     #[serde(default = "default_theme_choice")]
     pub choice: String,
 }

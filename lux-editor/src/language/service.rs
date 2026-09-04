@@ -4,7 +4,9 @@ use std::thread::{self, JoinHandle};
 
 use super::snapshot::HighlightSnapshot;
 use super::worker::worker_loop;
-use crate::language::{LanguageKind, SyntaxTheme};
+use crate::language::LanguageKind;
+use crate::theme::SyntaxColors;
+use std::sync::Arc;
 
 pub(super) enum WorkerRequest {
     Parse {
@@ -13,7 +15,7 @@ pub(super) enum WorkerRequest {
         /// text without copying it on the UI thread.
         text: Rope,
         language: LanguageKind,
-        theme: SyntaxTheme,
+        syntax: Arc<SyntaxColors>,
     },
     Shutdown,
 }
@@ -29,7 +31,7 @@ pub struct HighlightingService {
     worker: Option<JoinHandle<()>>,
     latest: HighlightSnapshot,
     next_version: u64,
-    theme: SyntaxTheme,
+    syntax: Arc<SyntaxColors>,
 }
 
 impl HighlightingService {
@@ -43,16 +45,19 @@ impl HighlightingService {
             worker: Some(worker),
             latest: HighlightSnapshot::default(),
             next_version: 0,
-            theme: SyntaxTheme::Dark,
+            syntax: crate::theme::syntax_colors(crate::theme::ThemeChoice::Dark),
         }
     }
 
-    pub fn theme(&self) -> SyntaxTheme {
-        self.theme
+    /// Handle of the palette the last parse used; `Arc::ptr_eq` against a
+    /// fresh [`crate::theme::syntax_colors`] tells whether re-highlighting
+    /// is needed without comparing palette contents.
+    pub fn syntax(&self) -> &Arc<SyntaxColors> {
+        &self.syntax
     }
 
-    pub fn set_theme(&mut self, theme: SyntaxTheme) {
-        self.theme = theme;
+    pub fn set_syntax(&mut self, syntax: Arc<SyntaxColors>) {
+        self.syntax = syntax;
     }
 
     pub fn request_parse(&mut self, text: Rope, language: LanguageKind) {
@@ -62,7 +67,7 @@ impl HighlightingService {
                 version: self.next_version,
                 text,
                 language,
-                theme: self.theme,
+                syntax: Arc::clone(&self.syntax),
             })
             .ok();
     }

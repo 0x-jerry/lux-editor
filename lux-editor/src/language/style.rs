@@ -1,4 +1,4 @@
-use crate::language::SyntaxTheme;
+use crate::theme::SyntaxColors;
 
 /// Highlight names recognized by every `HighlightConfiguration`; the index a
 /// `Highlight` carries refers to this list. Superset of the capture names in
@@ -51,26 +51,21 @@ pub(super) struct ThemeColors {
 }
 
 impl ThemeColors {
-    pub(super) fn new(theme: SyntaxTheme) -> Self {
-        let dark = theme == SyntaxTheme::Dark;
-        let foreground = if dark {
-            [192, 197, 206, 255]
-        } else {
-            [79, 91, 102, 255]
-        };
-        let background = if dark {
-            [43, 48, 59, 255]
-        } else {
-            [239, 241, 245, 255]
-        };
+    pub(super) fn new(syntax: &SyntaxColors) -> Self {
         let by_index = RECOGNIZED_NAMES
             .iter()
-            .map(|name| color_for(name, dark, foreground))
+            .map(|name| {
+                syntax
+                    .tokens
+                    .get(*name)
+                    .copied()
+                    .unwrap_or(syntax.foreground)
+            })
             .collect();
         Self {
             by_index,
-            foreground,
-            background,
+            foreground: syntax.foreground,
+            background: syntax.background,
         }
     }
 
@@ -79,49 +74,29 @@ impl ThemeColors {
     }
 }
 
-/// Hue families follow the Base16 Ocean palette
-/// (the historical default), so dark/light token contrast holds.
-fn color_for(name: &str, dark: bool, foreground: [u8; 4]) -> [u8; 4] {
-    let (comment, keyword, string, number, function, type_, variable, property, embedded, title) =
-        if dark {
-            (
-                [101, 115, 126, 255],
-                [180, 142, 173, 255],
-                [163, 190, 140, 255],
-                [208, 135, 112, 255],
-                [143, 161, 179, 255],
-                [235, 203, 139, 255],
-                [191, 97, 106, 255],
-                [150, 181, 180, 255],
-                [208, 135, 112, 255],
-                [143, 161, 179, 255],
-            )
-        } else {
-            (
-                [167, 173, 186, 255],
-                [171, 73, 115, 255],
-                [80, 130, 70, 255],
-                [170, 90, 50, 255],
-                [60, 90, 130, 255],
-                [140, 110, 30, 255],
-                [159, 59, 59, 255],
-                [60, 110, 110, 255],
-                [170, 90, 50, 255],
-                [60, 90, 130, 255],
-            )
-        };
-    match name {
-        "comment" | "comment.documentation" => comment,
-        "keyword" => keyword,
-        "string" | "text.literal" => string,
-        "string.escape" | "escape" | "punctuation.special" => embedded,
-        "number" | "constant" | "constant.builtin" | "label" | "text.strong" => number,
-        "function" | "function.builtin" | "function.macro" | "function.method" | "constructor"
-        | "text.uri" => function,
-        "type" | "type.builtin" | "attribute" => type_,
-        "variable" | "variable.builtin" | "variable.parameter" | "tag" => variable,
-        "property" | "embedded" | "operator" | "text.emphasis" | "text.reference" => property,
-        "text.title" => title,
-        _ => foreground,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{self, ThemeChoice};
+
+    #[test]
+    fn builtin_token_names_are_recognized() {
+        // A typo in the theme JSON would silently fall back to foreground.
+        for choice in [ThemeChoice::Dark, ThemeChoice::Light] {
+            for name in theme::syntax_colors(choice).tokens.keys() {
+                assert!(
+                    RECOGNIZED_NAMES.contains(&name.as_str()),
+                    "{name} is not a recognized highlight name"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unlisted_tokens_fall_back_to_foreground() {
+        let colors = ThemeColors::new(&theme::syntax_colors(ThemeChoice::Dark));
+        let none_index = RECOGNIZED_NAMES.iter().position(|n| *n == "none").unwrap();
+        assert_eq!(colors.color(none_index), colors.foreground);
+        assert_eq!(colors.color(9999), colors.foreground);
     }
 }

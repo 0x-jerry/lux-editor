@@ -6,7 +6,7 @@ mod style;
 mod worker;
 
 pub use service::HighlightingService;
-pub use snapshot::{HighlightSnapshot, HighlightSpan, SyntaxTheme};
+pub use snapshot::{HighlightSnapshot, HighlightSpan};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LanguageKind {

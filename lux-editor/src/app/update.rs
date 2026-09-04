@@ -1,7 +1,7 @@
 use super::{App, ShellView};
+use crate::theme::{self, ThemeChoice};
 use crate::ui;
 use crate::ui::Component;
-use crate::ui::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
 use std::time::Duration;
 
@@ -53,7 +53,7 @@ impl EframeApp for App {
             self.apply_style(ctx, resolved);
             // Probed after apply_style: it derives from the runtime_theme that
             // call just stored. Font-only changes must not force a re-parse.
-            if self.syntax_theme_changed() {
+            if self.syntax_colors_changed() {
                 self.refresh_language_intelligence();
             }
         }

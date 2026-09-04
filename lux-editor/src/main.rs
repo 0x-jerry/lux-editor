@@ -5,14 +5,21 @@ mod file_tree;
 mod file_watcher;
 mod language;
 mod native;
+mod startup;
 mod theme;
 mod ui;
 
 use app::App;
+use config::Config;
 use eframe::egui;
 
 pub fn main() {
     env_logger::init();
+    startup::stage("process start");
+
+    // Start resolving/reading the configured editor font before the window
+    // machinery spins up; the app folds the bytes in when they land.
+    let font_loader = ui::theme::StartupFont::spawn(Config::load_settings().font.family);
 
     // Platform adapter for the app-rendered title bar:
     // - macOS keeps the native title bar transparent (traffic lights stay
@@ -41,7 +48,9 @@ pub fn main() {
     if let Err(err) = eframe::run_native(
         "Lux Editor",
         native_options,
-        Box::new(|cc| Ok(Box::new(App::new(cc.egui_ctx.clone())))),
+        Box::new(move |cc| {
+            Ok(Box::new(App::new(cc.egui_ctx.clone(), font_loader)))
+        }),
     ) {
         log::error!("failed to run Lux Editor: {err}");
     }

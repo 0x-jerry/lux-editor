@@ -56,6 +56,7 @@ impl App {
         match event {
             DocumentEvent::FileLoaded { path, buffer } => match buffer {
                 Ok(buffer) => {
+                    crate::startup::stage_once!("first document loaded");
                     let next_doc = OpenDocument::from_buffer(buffer);
                     if self.should_reuse_active_document_slot() {
                         self.documents.tabs[self.documents.active_document] = next_doc;
@@ -111,7 +112,7 @@ impl App {
         match event {
             AppEvent::ConfigChange => self.on_config_change(),
             AppEvent::OpenFile(path) => self.open_file(path, ctx),
-            AppEvent::OpenFolder(path) => self.open_folder(path),
+            AppEvent::OpenFolder(path) => self.open_folder(path, ctx),
             AppEvent::ClearRecentItems => self.settings.editor_config.clear_recent_items(),
         }
     }

@@ -17,7 +17,7 @@ pub struct FileTreePanel {
 }
 
 pub struct FileTreePanelInput<'a> {
-    pub tree: &'a FileTree,
+    pub tree: &'a mut FileTree,
     pub active_file_path: Option<&'a Path>,
 }
 
@@ -35,6 +35,7 @@ impl Component for FileTreePanel {
         if reveal_active_in_tree {
             self.last_active_path = active_file_path.map(Path::to_path_buf);
         }
+        let root_entry = Entry::Directory(tree.root().to_path_buf());
         egui::Panel::left("file_tree")
             .resizable(true)
             .default_size(220.0)
@@ -46,7 +47,8 @@ impl Component for FileTreePanel {
                     .show(ui, |ui| {
                         if let Some(event) = self.render_entry(
                             ui,
-                            tree.entry(),
+                            tree,
+                            &root_entry,
                             active_file_path,
                             reveal_active_in_tree,
                         ) {
@@ -60,11 +62,13 @@ impl Component for FileTreePanel {
 }
 
 impl FileTreePanel {
-    /// Renders the tree recursively. While a row is being renamed the rename
-    /// `TextEdit` replaces it and no row action is emitted.
+    /// Renders one row, loading directory children from the tree on demand.
+    /// While a row is being renamed the rename `TextEdit` replaces it and no
+    /// row action is emitted.
     fn render_entry(
         &mut self,
         ui: &mut Ui,
+        tree: &mut FileTree,
         entry: &Entry,
         active_file_path: Option<&Path>,
         reveal_active_file: bool,
@@ -112,7 +116,7 @@ impl FileTreePanel {
 
                 event
             }
-            Entry::Directory(path, entries) => {
+            Entry::Directory(path) => {
                 if let Some(event) =
                     self.render_rename(ui, path, |path, new_name| path.with_file_name(new_name))
                 {
@@ -188,9 +192,10 @@ impl FileTreePanel {
                         });
                     })
                     .body(|ui| {
-                        for entry in entries {
+                        let children = tree.children(path);
+                        for entry in children.iter() {
                             if let Some(child_event) =
-                                self.render_entry(ui, entry, active_file_path, reveal_active_file)
+                                self.render_entry(ui, tree, entry, active_file_path, reveal_active_file)
                             {
                                 event = Some(child_event);
                             }

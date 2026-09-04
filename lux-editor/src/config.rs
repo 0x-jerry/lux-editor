@@ -104,6 +104,9 @@ pub struct Config {
     pub recent_items: Vec<RecentItem>,
     workspace_file_states: Vec<WorkspaceFileState>,
     pub settings: EditorSettings,
+    /// Recent changes wait for the app's debounced flush instead of writing
+    /// synchronously (including during startup).
+    pub recent_dirty: bool,
 }
 
 impl Config {
@@ -113,6 +116,18 @@ impl Config {
             recent_items: recent_config.recent_items,
             workspace_file_states: recent_config.workspace_file_states,
             settings: Self::load_settings(),
+            recent_dirty: false,
+        }
+    }
+
+    /// Write pending recent-items changes; safe to call every frame. On a
+    /// failed write the flag stays set so the app's loop retries.
+    pub fn flush_recent(&mut self) {
+        if !self.recent_dirty {
+            return;
+        }
+        if self.save_recent_config() {
+            self.recent_dirty = false;
         }
     }
 
@@ -137,13 +152,13 @@ impl Config {
         let item = RecentItem { path, is_dir };
         insert_recent(&mut self.recent_items, item, 10);
         self.prune_workspace_file_states_to_recent_dirs();
-        self.save_recent_config();
+        self.recent_dirty = true;
     }
 
     pub fn clear_recent_items(&mut self) {
         self.recent_items.clear();
         self.workspace_file_states.clear();
-        self.save_recent_config();
+        self.recent_dirty = true;
     }
 
     pub fn set_workspace_last_file(&mut self, workspace_path: &Path, file_path: &Path) {
@@ -156,7 +171,7 @@ impl Config {
             50,
         );
         self.prune_workspace_file_states_to_recent_dirs();
-        self.save_recent_config();
+        self.recent_dirty = true;
     }
 
     pub fn workspace_last_file(&self, workspace_path: &Path) -> Option<PathBuf> {
@@ -183,7 +198,7 @@ impl Config {
         Ok(path)
     }
 
-    fn load_settings() -> EditorSettings {
+    pub(crate) fn load_settings() -> EditorSettings {
         let user_settings = Self::user_settings_path();
         ::config::Config::builder()
             .set_default("theme.choice", "auto")
@@ -215,7 +230,7 @@ impl Config {
         }
     }
 
-    fn save_recent_config(&self) {
+    fn save_recent_config(&self) -> bool {
         let path = Self::recent_items_path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).ok();
@@ -224,8 +239,9 @@ impl Config {
             recent_items: self.recent_items.clone(),
             workspace_file_states: self.workspace_file_states.clone(),
         };
-        if let Ok(data) = serde_json::to_string(&data) {
-            std::fs::write(path, data).ok();
+        match serde_json::to_string(&data) {
+            Ok(data) => std::fs::write(path, data).is_ok(),
+            Err(_) => false,
         }
     }
 
@@ -317,6 +333,7 @@ mod tests {
                 },
             ],
             settings: Default::default(),
+            recent_dirty: false,
         };
         config.prune_workspace_file_states_to_recent_dirs();
         assert_eq!(config.workspace_file_states.len(), 1);
@@ -347,6 +364,7 @@ mod tests {
                 file_path: PathBuf::from("/ws/a.rs"),
             }],
             settings: Default::default(),
+            recent_dirty: false,
         };
         assert_eq!(
             config.workspace_last_file(Path::new("/ws")),

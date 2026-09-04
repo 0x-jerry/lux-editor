@@ -5,6 +5,7 @@ use tree_sitter_highlight::{
 
 use super::style::{RECOGNIZED_NAMES, ThemeColors};
 use crate::language::LanguageKind;
+use std::sync::LazyLock;
 
 #[derive(Clone, Copy)]
 pub(super) struct RawSpan {
@@ -19,9 +20,31 @@ const TSX_QUERY: &str = concat!(
     "\n",
     include_str!("../../assets/highlights/typescript-tsx.scm")
 );
+static JS_QUERY: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}\n{}",
+        tree_sitter_javascript::HIGHLIGHT_QUERY,
+        tree_sitter_javascript::JSX_HIGHLIGHT_QUERY
+    )
+});
+// The bundled query omits `injection.include-children` for (inline), so the
+// crate subtracts the emphasis delimiters from the reparsed range and the
+// inline pass matches nothing.
+static MD_INJECTION_QUERY: LazyLock<String> = LazyLock::new(|| {
+    tree_sitter_md::INJECTION_QUERY_BLOCK.replace(
+        "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\"))",
+        "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\")\n  (#set! injection.include-children))",
+    )
+});
 
+/// One `HighlightConfiguration` per language, compiled on the first request
+/// for that language only — thread startup costs nothing at launch.
+#[derive(Default)]
 pub(super) struct Engines {
     highlighter: Highlighter,
+    /// Bit per tried language: a `configure` failure must not make every
+    /// subsequent parse retry the compile (and re-log the error).
+    tried: u8,
     rust: Option<HighlightConfiguration>,
     javascript: Option<HighlightConfiguration>,
     typescript: Option<HighlightConfiguration>,
@@ -53,61 +76,76 @@ fn configure(
 
 impl Engines {
     pub(super) fn new() -> Self {
-        let js_query = format!(
-            "{}\n{}",
-            tree_sitter_javascript::HIGHLIGHT_QUERY,
-            tree_sitter_javascript::JSX_HIGHLIGHT_QUERY
-        );
-        Self {
-            highlighter: Highlighter::new(),
-            rust: configure(
-                tree_sitter_rust::LANGUAGE.into(),
-                "rust",
-                tree_sitter_rust::HIGHLIGHTS_QUERY,
-                "",
-                "",
-            ),
-            javascript: configure(
-                tree_sitter_javascript::LANGUAGE.into(),
-                "javascript",
-                &js_query,
-                "",
-                tree_sitter_javascript::LOCALS_QUERY,
-            ),
-            typescript: configure(
-                tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-                "typescript",
-                TYPESCRIPT_QUERY,
-                "",
-                "",
-            ),
-            tsx: configure(
-                tree_sitter_typescript::LANGUAGE_TSX.into(),
-                "tsx",
-                TSX_QUERY,
-                "",
-                "",
-            ),
-            markdown: configure(
-                tree_sitter_md::LANGUAGE.into(),
-                "markdown",
-                tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
-                // The bundled query omits `injection.include-children` for
-                // (inline), so the crate subtracts the emphasis delimiters from
-                // the reparsed range and the inline pass matches nothing.
-                &tree_sitter_md::INJECTION_QUERY_BLOCK.replace(
-                    "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\"))",
-                    "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\")\n  (#set! injection.include-children))",
-                ),
-                "",
-            )
-            .zip(configure(
-                tree_sitter_md::INLINE_LANGUAGE.into(),
-                "markdown_inline",
-                tree_sitter_md::HIGHLIGHT_QUERY_INLINE,
-                tree_sitter_md::INJECTION_QUERY_INLINE,
-                "",
-            )),
+        Self::default()
+    }
+
+    fn ensure(&mut self, kind: LanguageKind) {
+        let bit = match kind {
+            LanguageKind::Rust => 1 << 0,
+            LanguageKind::JavaScript => 1 << 1,
+            LanguageKind::TypeScript => 1 << 2,
+            LanguageKind::Tsx => 1 << 3,
+            LanguageKind::Markdown => 1 << 4,
+            LanguageKind::PlainText => return,
+        };
+        if self.tried & bit != 0 {
+            return;
+        }
+        self.tried |= bit;
+        match kind {
+            LanguageKind::Rust if self.rust.is_none() => {
+                self.rust = configure(
+                    tree_sitter_rust::LANGUAGE.into(),
+                    "rust",
+                    tree_sitter_rust::HIGHLIGHTS_QUERY,
+                    "",
+                    "",
+                );
+            }
+            LanguageKind::JavaScript if self.javascript.is_none() => {
+                self.javascript = configure(
+                    tree_sitter_javascript::LANGUAGE.into(),
+                    "javascript",
+                    &JS_QUERY,
+                    "",
+                    tree_sitter_javascript::LOCALS_QUERY,
+                );
+            }
+            LanguageKind::TypeScript if self.typescript.is_none() => {
+                self.typescript = configure(
+                    tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+                    "typescript",
+                    TYPESCRIPT_QUERY,
+                    "",
+                    "",
+                );
+            }
+            LanguageKind::Tsx if self.tsx.is_none() => {
+                self.tsx = configure(
+                    tree_sitter_typescript::LANGUAGE_TSX.into(),
+                    "tsx",
+                    TSX_QUERY,
+                    "",
+                    "",
+                );
+            }
+            LanguageKind::Markdown if self.markdown.is_none() => {
+                self.markdown = configure(
+                    tree_sitter_md::LANGUAGE.into(),
+                    "markdown",
+                    tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
+                    &MD_INJECTION_QUERY,
+                    "",
+                )
+                .zip(configure(
+                    tree_sitter_md::INLINE_LANGUAGE.into(),
+                    "markdown_inline",
+                    tree_sitter_md::HIGHLIGHT_QUERY_INLINE,
+                    tree_sitter_md::INJECTION_QUERY_INLINE,
+                    "",
+                ));
+            }
+            _ => {}
         }
     }
 
@@ -117,6 +155,7 @@ impl Engines {
         document: &str,
         colors: &ThemeColors,
     ) -> Option<Vec<RawSpan>> {
+        self.ensure(language);
         let Self {
             highlighter,
             rust,
@@ -124,6 +163,7 @@ impl Engines {
             typescript,
             tsx,
             markdown,
+            ..
         } = self;
         let events: Box<dyn Iterator<Item = Result<HighlightEvent, HighlightError>>> =
             match language {
@@ -195,7 +235,16 @@ mod tests {
 
     #[test]
     fn every_engine_compiles() {
-        let engines = Engines::new();
+        let mut engines = Engines::new();
+        for kind in [
+            LanguageKind::Rust,
+            LanguageKind::JavaScript,
+            LanguageKind::TypeScript,
+            LanguageKind::Tsx,
+            LanguageKind::Markdown,
+        ] {
+            engines.ensure(kind);
+        }
         assert!(engines.rust.is_some());
         assert!(engines.javascript.is_some());
         assert!(engines.typescript.is_some());
@@ -205,7 +254,8 @@ mod tests {
 
     #[test]
     fn markdown_inline_injection_is_configured() {
-        let engines = Engines::new();
+        let mut engines = Engines::new();
+        engines.ensure(LanguageKind::Markdown);
         let (block, _) = engines.markdown.as_ref().unwrap();
         assert!(
             block.query.capture_names().contains(&"injection.content"),

@@ -21,7 +21,7 @@ pub struct AppViewInput<'a> {
     pub shell: &'a mut Shell,
     pub command_panel: &'a mut CommandPanel,
     pub about_window: &'a mut AboutWindow,
-    pub file_tree: Option<&'a FileTree>,
+    pub file_tree: Option<&'a mut FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a Buffer,
     pub document_tabs: &'a [DocumentTab],

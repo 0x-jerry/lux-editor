@@ -21,7 +21,15 @@ tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
 config = "0.15"
 font-kit = "0.14"
-eframe = "0.36"
+# glow-only: wgpu adapter discovery/shader prep dominates window bring-up.
+eframe = { version = "0.36", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "glow",
+    "links",
+    "wayland",
+    "x11",
+] }
 ignore = "0.4"
 arboard = "3.6"
 muda = { version = "0.19", default-features = false, features = ["common-controls-v6", "gtk"] }

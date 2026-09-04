@@ -5,9 +5,10 @@ use super::App;
 use crate::app::input::EditorCommand;
 use crate::native::NativeChrome;
 use crate::theme::ThemeChoice;
-use crate::ui::theme;
+use crate::ui::theme::{self, CustomFont, StartupFont};
 use crate::ui::{AboutWindow, CommandPanel, Shell};
 use eframe::egui;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShellView {
@@ -49,6 +50,9 @@ pub(crate) struct Chrome {
     pub(crate) command_panel: CommandPanel,
     pub(crate) about_window: AboutWindow,
     pub(crate) native: NativeChrome,
+    /// Background font loader started before the window existed; taken once
+    /// the startup family resolves (or a different family is configured).
+    pub(crate) startup_font: Option<StartupFont>,
     /// Style (chrome visuals + fonts) must be re-pushed to egui on this `logic`
     /// pass; set by config reloads and by theme drift under `Auto`.
     pub(crate) needs_style_refresh: bool,
@@ -61,7 +65,39 @@ impl App {
     /// Push a resolved theme's chrome visuals + fonts to egui.
     pub(super) fn apply_style(&mut self, ctx: &egui::Context, resolved: ThemeChoice) {
         self.chrome.runtime_theme = Some(resolved);
-        theme::apply_editor_settings(ctx, resolved, &self.settings.editor_config.settings);
+        // The preloaded bytes only apply to the family they were spawned for;
+        // any other family falls back to the sync lookup. While the loader is
+        // still in flight the chrome renders with system fallbacks and the
+        // refresh stays armed, so the fold-in happens on a later pass.
+        let settings = &self.settings.editor_config.settings;
+        let mut font = CustomFont::Sync;
+        let loader_matches = self
+            .chrome
+            .startup_font
+            .as_ref()
+            .is_some_and(|loader| loader.family == settings.font.family);
+        if loader_matches {
+            let polled = self
+                .chrome
+                .startup_font
+                .as_mut()
+                .and_then(StartupFont::poll);
+            match polled {
+                Some(bytes) => {
+                    font = CustomFont::Preloaded(bytes);
+                    self.chrome.startup_font = None;
+                }
+                None => {
+                    font = CustomFont::Pending;
+                    self.chrome.needs_style_refresh = true;
+                    ctx.request_repaint_after(Duration::from_millis(30));
+                }
+            }
+        } else {
+            self.chrome.startup_font = None;
+        }
+        theme::apply_editor_settings(ctx, resolved, settings, font);
+        crate::startup::stage_once!("first style applied");
     }
 
     pub(super) fn on_title_bar_menu(&mut self, menu: TitleBarMenu, ctx: &egui::Context) {
@@ -73,7 +109,7 @@ impl App {
             }
             TitleBarMenu::OpenFolder => {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.open_folder(path);
+                    self.open_folder(path, ctx);
                 }
             }
             TitleBarMenu::SaveFile => {

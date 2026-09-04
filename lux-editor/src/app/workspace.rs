@@ -2,12 +2,10 @@
 //! refreshes them.
 
 use super::App;
-use super::document::OpenDocument;
 use crate::events::{CustomEvent, WorkspaceEvent};
 use crate::file_tree::FileTree;
 use crate::file_watcher;
 use eframe::egui;
-use lux_core::Buffer;
 use notify::RecommendedWatcher;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -54,7 +52,7 @@ impl Workspace {
 }
 
 impl App {
-    pub(super) fn open_folder(&mut self, path: PathBuf) {
+    pub(super) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
         let path = path.canonicalize().unwrap_or(path);
         self.workspace.path = Some(path.clone());
         self.workspace.file_tree = Some(FileTree::new(&path));
@@ -65,7 +63,7 @@ impl App {
             self.runtime.ctx.clone(),
         );
         self.documents.reset_editor_state();
-        self.open_workspace_last_file(&path);
+        self.open_workspace_last_file(&path, ctx);
         self.restart_settings_watcher();
         if self.settings.editor_config.reload_settings() {
             self.chrome.needs_style_refresh = true;
@@ -75,7 +73,7 @@ impl App {
             .sync_config_draft(&self.settings.editor_config.settings);
     }
 
-    pub(super) fn initialize_from_path(&mut self, initial_path: Option<PathBuf>) {
+    pub(super) fn initialize_from_path(&mut self, initial_path: Option<PathBuf>, ctx: &egui::Context) {
         let Some(path) = initial_path else {
             return;
         };
@@ -90,16 +88,12 @@ impl App {
                 self.runtime.event_tx.clone(),
                 self.runtime.ctx.clone(),
             );
-            self.open_workspace_last_file(&path);
+            self.open_workspace_last_file(&path, ctx);
             return;
         }
 
-        if path.is_file()
-            && let Ok(buffer) = self.runtime.rt.block_on(Buffer::from_file(&path))
-        {
-            self.documents.tabs = vec![OpenDocument::from_buffer(buffer)];
-            self.documents.active_document = 0;
-            self.settings.editor_config.add_recent(path, false);
+        if path.is_file() {
+            self.open_file(path, ctx);
         }
     }
 
@@ -120,7 +114,7 @@ impl App {
             .add_recent(path.to_path_buf(), false);
     }
 
-    fn open_workspace_last_file(&mut self, workspace_path: &Path) {
+    fn open_workspace_last_file(&mut self, workspace_path: &Path, ctx: &egui::Context) {
         let Some(path) = self
             .settings
             .editor_config
@@ -128,18 +122,14 @@ impl App {
         else {
             return;
         };
-        if path.is_file()
-            && let Ok(buffer) = self.runtime.rt.block_on(Buffer::from_file(&path))
-        {
-            self.documents.tabs = vec![OpenDocument::from_buffer(buffer)];
-            self.documents.active_document = 0;
-            self.refresh_language_intelligence();
+        if path.is_file() {
+            self.open_file(path, ctx);
         }
     }
 
     pub(super) fn on_file_change(&mut self) {
-        if let Some(path) = &self.workspace.path {
-            self.workspace.file_tree = Some(crate::file_tree::FileTree::new(path));
+        if let Some(tree) = &mut self.workspace.file_tree {
+            tree.refresh();
         }
     }
 }

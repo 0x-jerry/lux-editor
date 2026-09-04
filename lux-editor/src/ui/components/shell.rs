@@ -22,7 +22,7 @@ use std::path::PathBuf;
 
 /// The document-model snapshot the shell renders from each frame.
 pub struct ShellInput<'a> {
-    pub file_tree: Option<&'a FileTree>,
+    pub file_tree: Option<&'a mut FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a Buffer,
     pub document_tabs: &'a [crate::ui::types::DocumentTab],

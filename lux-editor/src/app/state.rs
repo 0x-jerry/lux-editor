@@ -1,9 +1,11 @@
 use crate::config::Config;
 use crate::events::CustomEvent;
+use crate::ui::theme::StartupFont;
 use eframe::egui;
 use lux_core::Buffer;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::Instant;
 
 use super::OpenDocument;
 use super::chrome::Chrome;
@@ -29,13 +31,20 @@ pub struct App {
     pub(crate) settings: SettingsState,
     pub(crate) highlighting: Highlighting,
     pub(crate) chrome: Chrome,
+    /// CLI path (folder or file) opened after the first frame paints, so
+    /// window bring-up never waits on disk work.
+    pub(super) pending_init: Option<PathBuf>,
+    pub(super) deferred_init_done: bool,
+    pub(super) recent_flush_deadline: Option<Instant>,
 }
 
 impl App {
-    pub fn new(ctx: egui::Context) -> Self {
+    pub fn new(ctx: egui::Context, font_loader: StartupFont) -> Self {
+        crate::startup::stage("window backend ready, app ctor");
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = mpsc::channel();
         let editor_config = Config::load();
+        crate::startup::stage("config loaded");
         let mut app = Self {
             runtime: Runtime {
                 rt,
@@ -52,17 +61,17 @@ impl App {
             highlighting: Highlighting::default(),
             chrome: Chrome {
                 needs_style_refresh: true,
+                startup_font: Some(font_loader),
                 ..Default::default()
             },
+            pending_init: std::env::args().nth(1).map(PathBuf::from),
+            deferred_init_done: false,
+            recent_flush_deadline: None,
         };
-        let initial_path = std::env::args().nth(1).map(PathBuf::from);
-        app.initialize_from_path(initial_path);
-        app.settings.editor_config.reload_settings();
         app.chrome
             .shell
             .sync_config_draft(&app.settings.editor_config.settings);
-        app.restart_settings_watcher();
-        app.refresh_language_intelligence();
+        crate::startup::stage("app constructed");
         app
     }
 
@@ -80,5 +89,11 @@ impl App {
 
     pub(in crate::app) fn buffer_mut(&mut self) -> &mut Buffer {
         &mut self.active_document_mut().buffer
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.settings.editor_config.flush_recent();
     }
 }

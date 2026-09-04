@@ -3,7 +3,7 @@ use crate::theme::{self, ThemeChoice};
 use crate::ui;
 use crate::ui::Component;
 use eframe::{App as EframeApp, Frame, egui};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 impl EframeApp for App {
     /// Pre-UI pass: process events/input and mutate editor state before the
@@ -11,10 +11,33 @@ impl EframeApp for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         #[cfg(target_os = "macos")]
         if ctx.input(|input| input.viewport().close_requested()) {
+            self.settings.editor_config.flush_recent();
             std::process::exit(0);
         }
 
+        // Workspace/document setup waits for a painted window: everything
+        // below touches the disk and must not delay first-frame presentation.
+        // `runtime_theme` is set by the first `apply_style`, so this fires on
+        // the second logic pass — after the first frame has been presented.
+        // Runs before event processing so a first-frame open (synthetic or
+        // otherwise) is not clobbered by the CLI path.
+        if !self.deferred_init_done {
+            if self.chrome.runtime_theme.is_some() {
+                self.deferred_init_done = true;
+                self.restart_settings_watcher();
+                if self.workspace.path.is_none() {
+                    let initial_path = self.pending_init.take();
+                    self.initialize_from_path(initial_path, ctx);
+                }
+            } else {
+                // Occluded/minimized windows never run `ui`, so drive the
+                // second logic pass from here.
+                ctx.request_repaint();
+            }
+        }
+
         self.process_pending_events(ctx);
+        self.flush_recent_config(ctx);
 
         // Native menubar/tray events flow through the same command pipeline as
         // the rendered chrome.
@@ -57,6 +80,7 @@ impl EframeApp for App {
                 self.refresh_language_intelligence();
             }
         }
+        crate::startup::stage_once!("first logic pass");
     }
 
     /// Render pass: snapshot the document state and hand the whole frame to
@@ -100,7 +124,7 @@ impl EframeApp for App {
                     shell: &mut self.chrome.shell,
                     command_panel: &mut self.chrome.command_panel,
                     about_window: &mut self.chrome.about_window,
-                    file_tree: self.workspace.file_tree.as_ref(),
+                    file_tree: self.workspace.file_tree.as_mut(),
                     workspace_path: self.workspace.path.as_ref(),
                     buffer: &active_document.buffer,
                     document_tabs: &document_tabs,
@@ -120,10 +144,33 @@ impl EframeApp for App {
             self.handle_event(event, &ctx);
         }
 
+        crate::startup::stage_once!("first frame presented");
+
         // Everything repaints on input; background events wake the loop via
         // `Runtime::ctx`; only the caret blink needs a steady tick here.
         if self.chrome.shell.shell_view() == ShellView::Editor {
             ctx.request_repaint_after(Duration::from_millis(500));
+        }
+    }
+}
+
+impl App {
+    /// Debounced recent-config flush: changes land at most one save per
+    /// 500 ms window instead of a synchronous disk write per mutation.
+    fn flush_recent_config(&mut self, ctx: &egui::Context) {
+        if !self.settings.editor_config.recent_dirty {
+            self.recent_flush_deadline = None;
+            return;
+        }
+        let now = Instant::now();
+        let deadline = *self
+            .recent_flush_deadline
+            .get_or_insert_with(|| now + Duration::from_millis(500));
+        if now >= deadline {
+            self.recent_flush_deadline = None;
+            self.settings.editor_config.flush_recent();
+        } else {
+            ctx.request_repaint_after(deadline.saturating_duration_since(now));
         }
     }
 }

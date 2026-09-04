@@ -4,26 +4,30 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.53.1", features = ["full"] }
-log = "0.4.34"
-env_logger = "0.11.11"
-egui-phosphor = "0.13.0"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.11"
+egui-phosphor = "0.13"
 lux-core = { path = "../lux-core" }
-notify = "8.2.0"
-rfd = "0.17.2"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-dirs = "6.0.0"
-tree-sitter = "0.27.0"
-tree-sitter-rust = "0.24.2"
-syntect = "5.3.0"
-config = "0.15.25"
-font-kit = "0.14.3"
-eframe = "0.36.1"
-ignore = "0.4.33"
-arboard = "3.6.1"
+notify = "8"
+rfd = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+tree-sitter = "0.27"
+tree-sitter-rust = "0.24"
+syntect = "5"
+config = "0.15"
+font-kit = "0.14"
+eframe = "0.36"
+ignore = "0.4"
+arboard = "3.6"
 muda = { version = "0.19", default-features = false, features = ["common-controls-v6", "gtk"] }
 tray-icon = { version = "0.24", default-features = false, features = ["common-controls-v6", "gtk"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = "0.3"
+
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile = "3"

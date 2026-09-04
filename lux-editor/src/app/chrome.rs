@@ -114,6 +114,10 @@ impl App {
                 self.chrome.native.window_visible = visible;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
                 if visible {
+                    // macOS: an inactive app cannot restore an orderOut'd
+                    // window; activate before the viewport commands run.
+                    #[cfg(target_os = "macos")]
+                    crate::native::activate_app();
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
             }

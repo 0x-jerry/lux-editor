@@ -17,7 +17,7 @@ impl EframeApp for App {
 
         // Native menubar/tray events flow through the same command pipeline as
         // the rendered chrome.
-        self.chrome.native.install();
+        self.chrome.native.install(ctx);
         self.chrome.native.update_tray_label();
         let native_commands = self.chrome.native.drain();
         for command in native_commands {

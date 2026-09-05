@@ -73,7 +73,7 @@ pub enum ShellEvent {
     /// The in-window title-bar menu; macOS renders those menus in the system
     /// menubar instead (see `crate::native::menubar`).
     #[cfg(not(target_os = "macos"))]
-    TitleBarMenu(crate::app::TitleBarMenu),
+    TitleBarMenu(crate::chrome::TitleBarMenu),
 }
 
 /// Configuration: the configuration view autosaving its draft.

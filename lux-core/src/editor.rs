@@ -902,6 +902,17 @@ mod tests {
     }
 
     #[test]
+    fn drag_select_anchors_at_press_point_not_stale_caret() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "abcdefgh");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(7, &buffer, false); // stale caret from a previous interaction
+        caret.set_caret_char(2, &buffer, false); // drag start re-homes the caret at the press point
+        caret.set_caret_char(5, &buffer, true); // first drag move latches the anchor there
+        assert_eq!(caret.selection_range(), Some(2..5));
+    }
+
+    #[test]
     fn add_cursor_dedupes_and_activates() {
         let mut buffer = Buffer::new();
         insert(&mut buffer, "abcd");

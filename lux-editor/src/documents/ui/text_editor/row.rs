@@ -180,6 +180,9 @@ fn render_row(
         .galley(text_origin, galley.clone(), ui.visuals().text_color());
     push_pointer_events(
         ui,
+        buffer,
+        highlight_snapshot,
+        editor_config,
         line_index,
         &galley,
         text_origin,
@@ -287,6 +290,9 @@ fn paint_caret(
 #[allow(clippy::too_many_arguments)]
 fn push_pointer_events(
     ui: &egui::Ui,
+    buffer: &Buffer,
+    highlight_snapshot: &HighlightSnapshot,
+    editor_config: &Config,
     line_index: usize,
     galley: &egui::text::Galley,
     text_origin: egui::Pos2,
@@ -326,23 +332,71 @@ fn push_pointer_events(
         });
     }
 
-    if response.dragged_by(egui::PointerButton::Primary)
-        && let Some(pointer) = response.interact_pointer_pos()
-    {
-        // Drags keep targeting the row where the press started, so project the
-        // pointer onto the row it is over and let the app clamp to real lines.
+    // Drags keep targeting the row where the press started, so project the
+    // pointer onto the row it is over and let the app clamp to real lines.
+    let line_column_from = |pointer: egui::Pos2| {
         let row_delta = ((pointer.y - rect.top()) / metrics.row_height).floor() as isize;
         let pointed_line = (line_index as isize + row_delta).max(0) as usize;
         let pointed_top = rect.top() + row_delta as f32 * metrics.row_height;
-        let column = galley
-            .cursor_from_pos(egui::vec2(
-                pointer.x - text_origin.x,
-                pointer.y - pointed_top,
-            ))
-            .index;
+        // The pressed row's galley only maps x within its own text, so over a
+        // different line its end clamps the cursor to the pressed line's width.
+        // Lay the pointed line out the same way to track the caret it paints.
+        let cursor_offset = egui::vec2(pointer.x - text_origin.x, pointer.y - pointed_top);
+        let column = if pointed_line == line_index {
+            galley.cursor_from_pos(cursor_offset).index.0
+        } else {
+            let line_text_owned = buffer
+                .line(pointed_line)
+                .and_then(|mut lines| lines.next())
+                .map(|line| line.to_string())
+                .unwrap_or_default();
+            if line_text_owned.is_empty() {
+                galley.cursor_from_pos(cursor_offset).index.0
+            } else {
+                let tokens = highlight_snapshot.line_tokens.get(pointed_line);
+                let default_color = crate::highlighting::snapshot_color(
+                    highlight_snapshot.foreground,
+                    ui.visuals().text_color(),
+                );
+                let job = build_highlighted_line_job(
+                    display_line_text(&line_text_owned),
+                    tokens.map(Vec::as_slice).unwrap_or(&[]),
+                    editor_config.settings.font.size,
+                    default_color,
+                );
+                ui.ctx()
+                    .fonts_mut(|fonts| fonts.layout_job(job))
+                    .cursor_from_pos(cursor_offset)
+                    .index
+                    .0
+            }
+        };
+        (pointed_line, column)
+    };
+
+    if response.drag_started_by(egui::PointerButton::Primary)
+        && let Some(origin) = ui.input(|input| input.pointer.press_origin())
+    {
+        // Clicked only reports on release-without-drag, so when a drag is
+        // decided the caret still sits where the last interaction left it.
+        // Re-home it at the press point first; the drag events below then
+        // anchor the selection there instead of on the stale caret.
+        let (line, column) = line_column_from(origin);
         events.push(EditingEvent::SetCaretFromPointer {
-            line_index: pointed_line,
-            column: column.0,
+            line_index: line,
+            column,
+            selecting: false,
+            add_cursor: false,
+        });
+    }
+
+    if response.dragged_by(egui::PointerButton::Primary)
+        && let Some(pointer) = response.interact_pointer_pos()
+    {
+        let (line, column) = line_column_from(pointer);
+        events.push(EditingEvent::SetCaretFromPointer {
+            line_index: line,
+            column,
             selecting: true,
             add_cursor: false,
         });

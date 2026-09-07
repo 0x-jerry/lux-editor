@@ -1,7 +1,8 @@
 //! Document reducer: IO round-trips, tab lifecycle and pointer-caret edits.
 
 use crate::app::App;
-use crate::events::{DocumentEvent, EditingEvent};
+use crate::documents::state::tab_with_path;
+use crate::events::{DocumentEvent, EditingEvent, LoadResult};
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -27,18 +28,35 @@ impl App {
                 generation,
                 ok,
             } => {
-                let active_document = self.active_document_mut();
-                if ok {
-                    if active_document.edit_generation == generation {
-                        active_document.document_dirty = false;
+                // The tab the save was started from, not whoever is active now:
+                // the user may have switched while the write was in flight.
+                if let Some(index) = tab_with_path(&self.documents.tabs, &path) {
+                    let document = &mut self.documents.tabs[index];
+                    if ok {
+                        if document.edit_generation == generation {
+                            document.document_dirty = false;
+                        }
+                        // Baseline against the bytes the save just wrote so the
+                        // watcher's own-save event skips the byte compare, and
+                        // re-anchor the dirty reference at the saved content.
+                        document.record_disk_stat();
+                        document.saved_text = document.buffer.text().clone();
+                        document.document_status = Some(format!("Saved {}", path.display()));
+                    } else {
+                        document.document_status = Some("Failed to save file".to_string());
                     }
-                    active_document.document_status = Some(format!("Saved {}", path.display()));
-                } else {
-                    active_document.document_status = Some("Failed to save file".to_string());
                 }
                 self.update_window_title(ctx);
                 self.track_file_open(&path);
                 self.on_file_change();
+            }
+            DocumentEvent::FilesReconciled { results } => {
+                let reload = self.documents.apply_reconcile_results(results);
+                self.update_window_title(ctx);
+                if !reload.is_empty() {
+                    // External rewrite of a clean tab: replace it in place.
+                    self.load_files(reload, None);
+                }
             }
             DocumentEvent::FormattingFinished {
                 generation,
@@ -71,7 +89,7 @@ impl App {
 
     fn on_files_loaded(
         &mut self,
-        entries: Vec<(PathBuf, Result<lux_core::Buffer, String>)>,
+        entries: Vec<(PathBuf, LoadResult)>,
         activate: Option<PathBuf>,
         ctx: &egui::Context,
     ) {

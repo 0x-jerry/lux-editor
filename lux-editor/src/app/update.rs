@@ -120,6 +120,7 @@ impl EframeApp for App {
                 title: document.title(),
                 dirty: document.document_dirty,
                 missing: document.missing,
+                binary: document.binary,
             })
             .collect::<Vec<_>>();
         let active_document = &self.documents.tabs[self.documents.active_document];

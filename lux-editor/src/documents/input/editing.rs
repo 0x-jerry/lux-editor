@@ -417,9 +417,15 @@ impl App {
 
     pub(crate) fn mark_document_dirty(&mut self, ctx: &egui::Context) {
         let active_document = self.active_document_mut();
-        active_document.document_dirty = true;
         active_document.edit_generation += 1;
-        active_document.document_status = Some("Modified".to_string());
+        // Dirty reflects the buffer against the saved content, not "an edit
+        // happened": an edit undone back to that content is clean again.
+        let dirty = active_document.recompute_dirty();
+        active_document.document_status = if dirty {
+            Some("Modified".to_string())
+        } else {
+            None
+        };
         self.update_window_title(ctx);
     }
 }

@@ -12,6 +12,7 @@
 
 use crate::settings::EditorSettings;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 /// Workspace: changes to the open workspace tree — raw mutations from the
 /// file-tree actions plus the refresh triggered by the file watcher.
@@ -25,13 +26,33 @@ pub enum WorkspaceEvent {
     NewFolder(PathBuf),
 }
 
+/// Outcome of reading one file into a tab: a loaded text buffer, a missing
+/// file, or a binary file the editor refuses to load as text.
+#[derive(Debug)]
+pub enum LoadResult {
+    Loaded(lux_core::Buffer),
+    Missing(String),
+    Binary,
+}
+
+/// One tab compared against its file's bytes after a watcher event.
+/// `stat` is the size+mtime the comparison observed, so the tab can baseline
+/// against it and skip a re-read until the file moves again.
+#[derive(Debug)]
+pub struct ReconcileResult {
+    pub path: PathBuf,
+    pub stat: (u64, SystemTime),
+    /// The file's bytes differ from the buffer's text.
+    pub differs: bool,
+}
+
 /// Document lifecycle & content pipeline: IO round-trips, tabs and the
 /// save/format commands that act on the current document.
 #[derive(Debug)]
 pub enum DocumentEvent {
     /// Loads finished, in the order they were requested.
     FilesLoaded {
-        entries: Vec<(PathBuf, Result<lux_core::Buffer, String>)>,
+        entries: Vec<(PathBuf, LoadResult)>,
         /// Tab to focus once the batch lands.
         activate: Option<PathBuf>,
         /// Workspace the batch was requested for; a stale batch is dropped.
@@ -48,6 +69,11 @@ pub enum DocumentEvent {
         generation: u64,
         from_save: bool,
         result: Result<String, String>,
+    },
+    /// Open files compared against their bytes on disk after a watcher event;
+    /// the reducer reacts per tab (clear stale dirty / flag or reload).
+    FilesReconciled {
+        results: Vec<ReconcileResult>,
     },
     SwitchDocument(usize),
     CloseDocument(usize),

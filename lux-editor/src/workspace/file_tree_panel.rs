@@ -25,6 +25,14 @@ pub struct FileTreePanelInput<'a> {
     pub active_file_path: Option<&'a Path>,
 }
 
+/// View state stable across the recursive row walk: one context instead of
+/// three values threaded through every call.
+struct RowContext<'a> {
+    active_file_path: Option<&'a Path>,
+    reveal_active_file: bool,
+    viewport_width: f32,
+}
+
 impl Component for FileTreePanel {
     type Message = CustomEvent;
     type Input<'a> = FileTreePanelInput<'a>;
@@ -54,15 +62,12 @@ impl Component for FileTreePanel {
                         // not `max_rect`, so `available_width()` only holds
                         // here — capture it once before any row is placed.
                         let viewport_width = ui.available_width();
-                        if let Some(event) = self.render_entry(
-                            ui,
-                            tree,
-                            &root_entry,
+                        let context = RowContext {
                             active_file_path,
-                            reveal_active_in_tree,
-                            0,
+                            reveal_active_file: reveal_active_in_tree,
                             viewport_width,
-                        ) {
+                        };
+                        if let Some(event) = self.render_entry(ui, tree, &context, &root_entry, 0) {
                             events.push(event);
                         }
                     });
@@ -97,11 +102,9 @@ impl FileTreePanel {
         &mut self,
         ui: &mut Ui,
         tree: &mut FileTree,
+        context: &RowContext<'_>,
         entry: &Entry,
-        active_file_path: Option<&Path>,
-        reveal_active_file: bool,
         depth: usize,
-        viewport_width: f32,
     ) -> Option<CustomEvent> {
         match entry {
             Entry::File(path) => {
@@ -119,12 +122,12 @@ impl FileTreePanel {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
-                let is_active = active_file_path == Some(path.as_path());
+                let is_active = context.active_file_path == Some(path.as_path());
                 let (icon, icon_color) = file_icon(ui.visuals().dark_mode, path);
                 // Widen deep rows by their indentation so nesting can overflow and scroll horizontally.
                 let (rect, response) = ui.allocate_exact_size(
                     egui::vec2(
-                        viewport_width + depth as f32 * ui.spacing().indent,
+                        context.viewport_width + depth as f32 * ui.spacing().indent,
                         row_height,
                     ),
                     egui::Sense::click(),
@@ -133,7 +136,7 @@ impl FileTreePanel {
 
                 // Reveal the active row on a tab switch only when it is scrolled
                 // out of the vertical viewport; never move it horizontally.
-                if reveal_active_file && is_active {
+                if context.reveal_active_file && is_active {
                     let clip = ui.clip_rect();
                     let vertically_visible =
                         rect.top() >= clip.top() && rect.bottom() <= clip.bottom();
@@ -212,8 +215,10 @@ impl FileTreePanel {
 
                 let mut event = None;
 
-                let should_reveal = reveal_active_file
-                    && active_file_path.is_some_and(|active_path| active_path.starts_with(path));
+                let should_reveal = context.reveal_active_file
+                    && context
+                        .active_file_path
+                        .is_some_and(|active_path| active_path.starts_with(path));
                 if should_reveal {
                     self.set_expanded_for(path, true);
                 }
@@ -226,7 +231,7 @@ impl FileTreePanel {
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 let (rect, response) = ui.allocate_exact_size(
                     egui::vec2(
-                        viewport_width + depth as f32 * ui.spacing().indent,
+                        context.viewport_width + depth as f32 * ui.spacing().indent,
                         row_height,
                     ),
                     egui::Sense::click(),
@@ -293,15 +298,9 @@ impl FileTreePanel {
                 if is_open {
                     let children = tree.children(path);
                     for entry in children.iter() {
-                        if let Some(child_event) = self.render_entry(
-                            ui,
-                            tree,
-                            entry,
-                            active_file_path,
-                            reveal_active_file,
-                            depth + 1,
-                            viewport_width,
-                        ) {
+                        if let Some(child_event) =
+                            self.render_entry(ui, tree, context, entry, depth + 1)
+                        {
                             event = Some(child_event);
                         }
                     }

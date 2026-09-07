@@ -2,7 +2,7 @@
 //! refreshes them.
 
 use crate::app::App;
-use crate::events::{CustomEvent, WorkspaceEvent};
+use crate::events::{CustomEvent, DocumentEvent, ReconcileResult, WorkspaceEvent};
 use crate::settings::WorkspaceSession;
 use crate::workspace::FileTree;
 use crate::workspace::watch;
@@ -191,13 +191,35 @@ impl App {
             tree.refresh();
         }
         self.sync_missing_documents();
+        self.reconcile_dirty_from_disk();
     }
 
     /// Flag tabs whose file vanished, and re-read the ones whose file came back
-    /// so the missing page cannot outlive the gap it describes.
+    /// so the missing page cannot outlive the gap it describes. Binary tabs get
+    /// the same re-read when their file is rewritten: a file that becomes valid
+    /// UTF-8 again comes back as a normal tab (the loaded batch replaces the tab
+    /// in place), and one that is still binary stays on the guide page.
     fn sync_missing_documents(&mut self) {
         let mut revived = Vec::new();
         for document in self.documents.tabs.iter_mut() {
+            if document.binary {
+                let Some(path) = document.buffer.path().cloned() else {
+                    continue;
+                };
+                let Some(metadata) = std::fs::metadata(&path).ok() else {
+                    continue;
+                };
+                let stat = (
+                    metadata.len(),
+                    metadata
+                        .modified()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                );
+                if document.last_disk_stat != Some(stat) {
+                    revived.push(path);
+                }
+                continue;
+            }
             let exists = document.buffer.path().is_some_and(|path| path.exists());
             if document.observe_file_exists(exists)
                 && let Some(path) = document.buffer.path()
@@ -208,5 +230,56 @@ impl App {
         if !revived.is_empty() {
             self.load_files(revived, None);
         }
+    }
+
+    /// Compare every open tab's file against the buffer's bytes. The stat
+    /// short-circuit runs here, on the UI thread, so a swoop of unrelated
+    /// events costs only metadata calls; only files that actually moved are
+    /// read, and those reads plus the byte compare run on a blocking thread.
+    fn reconcile_dirty_from_disk(&mut self) {
+        let mut checks = Vec::new();
+        for document in self.documents.tabs.iter() {
+            if document.binary || document.missing {
+                continue;
+            }
+            let Some(path) = document.buffer.path() else {
+                continue;
+            };
+            let Some(metadata) = std::fs::metadata(path).ok() else {
+                continue;
+            };
+            let stat = (
+                metadata.len(),
+                metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            );
+            if document.last_disk_stat == Some(stat) {
+                continue;
+            }
+            checks.push((path.clone(), stat, document.buffer.text().to_string()));
+        }
+        if checks.is_empty() {
+            return;
+        }
+        let event_tx = self.runtime.event_tx.clone();
+        let wake = self.runtime.ctx.clone();
+        self.runtime.rt.spawn_blocking(move || {
+            let results = checks
+                .into_iter()
+                .map(|(path, stat, text)| {
+                    let differs = std::fs::read(&path).is_ok_and(|bytes| bytes != text.as_bytes());
+                    ReconcileResult {
+                        path,
+                        stat,
+                        differs,
+                    }
+                })
+                .collect();
+            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FilesReconciled {
+                results,
+            }));
+            wake.request_repaint();
+        });
     }
 }

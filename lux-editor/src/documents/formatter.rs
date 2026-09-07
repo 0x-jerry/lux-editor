@@ -8,6 +8,13 @@ impl App {
     /// formatter. The result is applied only if the buffer generation still
     /// matches (i.e. the user has not typed since the request was launched).
     pub(crate) fn format_active_document(&mut self, _ctx: &egui::Context) {
+        // The command palette reaches this bypassing the keyboard gate; without
+        // the guard a formatter on the empty buffer of a missing/binary tab
+        // would mark it dirty — a tab that can then neither close nor save.
+        if self.active_document().missing || self.active_document().binary {
+            self.active_document_mut().document_status = Some("Nothing to format here".to_string());
+            return;
+        }
         let formatter = self.settings.editor_config.settings.formatter.clone();
         if formatter.command.trim().is_empty() {
             self.active_document_mut().document_status =
@@ -71,6 +78,7 @@ impl App {
                         // The save task already wrote this text to disk, so the
                         // buffer is in the saved state, not dirty.
                         active_document.document_dirty = false;
+                        active_document.saved_text = active_document.buffer.text().clone();
                         active_document.document_status = Some("Formatted".to_string());
                     } else {
                         active_document.document_status = Some("Formatted".to_string());

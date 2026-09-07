@@ -7,6 +7,8 @@ pub struct DocumentTab {
     pub dirty: bool,
     /// The file behind the tab is gone; the strip strikes the title through.
     pub missing: bool,
+    /// The file behind the tab is binary; the editor shows a guide page for it.
+    pub binary: bool,
 }
 
 use eframe::egui;
@@ -119,8 +121,10 @@ impl Component for TabView {
         let tab_width = TAB_WIDTH;
         let title_max_width = tab_width - 8.0 - close_size - 8.0;
         let title = {
-            let mut job = egui::text::LayoutJob::default();
-            job.wrap = egui::text::TextWrapping::truncate_at_width(title_max_width);
+            let mut job = egui::text::LayoutJob {
+                wrap: egui::text::TextWrapping::truncate_at_width(title_max_width),
+                ..Default::default()
+            };
             job.append(
                 &tab.title,
                 0.0,

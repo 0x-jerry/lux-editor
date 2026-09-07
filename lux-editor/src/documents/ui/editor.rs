@@ -1,7 +1,8 @@
 use super::text_editor::{TextEditor, TextEditorState};
 use crate::chrome::ui::welcome::WelcomeView;
 use crate::chrome::ui::{
-    FileMissingInput, FileMissingView, WorkspaceStartInput, WorkspaceStartView,
+    FileBinaryInput, FileBinaryView, FileMissingInput, FileMissingView, WorkspaceStartInput,
+    WorkspaceStartView,
 };
 use crate::component::Component;
 use crate::documents::DocumentTab;
@@ -113,6 +114,19 @@ impl Component for EditorView {
                         loader_error: document_status,
                     },
                 );
+            }
+            return events;
+        }
+
+        // A binary file is not editable, so a guide page replaces the text
+        // area; the tab is a real file though, never struck through.
+        let binary = document_tabs
+            .get(active_document_index)
+            .is_some_and(|tab| tab.binary);
+        if binary {
+            if let Some(path) = buffer.path() {
+                let mut binary_view = FileBinaryView;
+                binary_view.render(ui, FileBinaryInput { path });
             }
             return events;
         }

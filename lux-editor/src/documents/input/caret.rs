@@ -74,6 +74,7 @@ impl App {
         self.chrome.command_panel.open()
             || self.chrome.shell.shell_view() != ShellView::Editor
             || self.active_document().missing
+            || self.active_document().binary
             || !self.active_document().edit_area_focused
             || ctx.egui_wants_keyboard_input()
     }
@@ -88,6 +89,7 @@ impl App {
             && !self.chrome.command_panel.open()
             && self.chrome.shell.shell_view() == ShellView::Editor
             && !self.active_document().missing
+            && !self.active_document().binary
             && !ctx.egui_wants_keyboard_input()
     }
 }

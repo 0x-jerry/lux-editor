@@ -90,6 +90,7 @@ impl Component for EditorView {
                     DocumentTabsInput {
                         tabs: document_tabs,
                         active_index: active_document_index,
+                        active_path: buffer.path().map(|path| path.as_path()),
                         background: editor_bg,
                     },
                 )

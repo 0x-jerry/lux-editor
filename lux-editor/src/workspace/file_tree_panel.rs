@@ -46,9 +46,14 @@ impl Component for FileTreePanel {
             .size_range(120.0..=480.0)
             .frame(egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::ZERO))
             .show(ui, |ui| {
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        // Stable viewport width: oversized rows grow the
+                        // content's `min_rect` (which feeds the scrollbars),
+                        // not `max_rect`, so `available_width()` only holds
+                        // here — capture it once before any row is placed.
+                        let viewport_width = ui.available_width();
                         if let Some(event) = self.render_entry(
                             ui,
                             tree,
@@ -56,6 +61,7 @@ impl Component for FileTreePanel {
                             active_file_path,
                             reveal_active_in_tree,
                             0,
+                            viewport_width,
                         ) {
                             events.push(event);
                         }
@@ -95,6 +101,7 @@ impl FileTreePanel {
         active_file_path: Option<&Path>,
         reveal_active_file: bool,
         depth: usize,
+        viewport_width: f32,
     ) -> Option<CustomEvent> {
         match entry {
             Entry::File(path) => {
@@ -114,11 +121,32 @@ impl FileTreePanel {
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 let is_active = active_file_path == Some(path.as_path());
                 let (icon, icon_color) = file_icon(ui.visuals().dark_mode, path);
+                // Widen deep rows by their indentation so nesting can overflow and scroll horizontally.
                 let (rect, response) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), row_height),
+                    egui::vec2(
+                        viewport_width + depth as f32 * ui.spacing().indent,
+                        row_height,
+                    ),
                     egui::Sense::click(),
                 );
                 let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                // Reveal the active row on a tab switch only when it is scrolled
+                // out of the vertical viewport; never move it horizontally.
+                if reveal_active_file && is_active {
+                    let clip = ui.clip_rect();
+                    let vertically_visible =
+                        rect.top() >= clip.top() && rect.bottom() <= clip.bottom();
+                    if !vertically_visible {
+                        ui.scroll_to_rect(
+                            egui::Rect::from_min_max(
+                                egui::pos2(clip.left(), rect.top()),
+                                egui::pos2(clip.right(), rect.bottom()),
+                            ),
+                            None,
+                        );
+                    }
+                }
 
                 if is_active || response.hovered() {
                     let bg = if is_active {
@@ -126,7 +154,7 @@ impl FileTreePanel {
                     } else {
                         ui.visuals().widgets.hovered.bg_fill
                     };
-                    ui.painter().rect_filled(rect, 0.0, bg);
+                    ui.painter().rect_filled(row_fill_rect(ui, rect), 0.0, bg);
                 }
                 let font = egui::TextStyle::Button.resolve(ui.style());
                 let left = rect.left() + depth as f32 * ui.spacing().indent;
@@ -197,14 +225,20 @@ impl FileTreePanel {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 let (rect, response) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), row_height),
+                    egui::vec2(
+                        viewport_width + depth as f32 * ui.spacing().indent,
+                        row_height,
+                    ),
                     egui::Sense::click(),
                 );
                 let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
 
                 if response.hovered() {
-                    ui.painter()
-                        .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.bg_fill);
+                    ui.painter().rect_filled(
+                        row_fill_rect(ui, rect),
+                        0.0,
+                        ui.visuals().widgets.hovered.bg_fill,
+                    );
                 }
                 let left = rect.left() + depth as f32 * ui.spacing().indent;
                 let font = egui::TextStyle::Button.resolve(ui.style());
@@ -266,6 +300,7 @@ impl FileTreePanel {
                             active_file_path,
                             reveal_active_file,
                             depth + 1,
+                            viewport_width,
                         ) {
                             event = Some(child_event);
                         }
@@ -292,6 +327,10 @@ impl FileTreePanel {
         ui.add_space(depth as f32 * ui.spacing().indent);
         let (_, new_name) = self.renaming.as_mut().expect("renaming checked above");
         let response = ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
+        // When the tree is horizontally scrolled the field can start off
+        // screen; nudge the viewport to keep it (partially) visible. No-op
+        // while the field is already fully in view.
+        response.scroll_to_me(None);
         if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let event = CustomEvent::Workspace(WorkspaceEvent::Rename(
                 path.to_path_buf(),
@@ -318,6 +357,15 @@ impl FileTreePanel {
             path.file_name().unwrap().to_string_lossy().to_string(),
         ));
     }
+}
+
+/// Background span for a row: cover the visible viewport even when a shallow
+/// row is narrower than the horizontal scroll range.
+fn row_fill_rect(ui: &Ui, rect: egui::Rect) -> egui::Rect {
+    egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.top()),
+        egui::pos2(rect.right().max(ui.clip_rect().right()), rect.bottom()),
+    )
 }
 
 /// Root file glyph for types the devicons table does not name.

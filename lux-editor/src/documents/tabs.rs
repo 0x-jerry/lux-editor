@@ -1,5 +1,6 @@
 use crate::component::Component;
 use crate::events::DocumentEvent;
+use std::path::{Path, PathBuf};
 /// Tab metadata for the editor tab strip.
 pub struct DocumentTab {
     pub title: String,
@@ -17,6 +18,9 @@ pub(crate) struct DocumentTabsView;
 pub struct DocumentTabsInput<'a> {
     pub tabs: &'a [DocumentTab],
     pub active_index: usize,
+    /// Path of the active document; `None` for an untitled buffer. Identifies
+    /// a switch without relying on the tab index (which shifts on close).
+    pub active_path: Option<&'a Path>,
     pub background: egui::Color32,
 }
 
@@ -26,6 +30,16 @@ impl Component for DocumentTabsView {
 
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<DocumentEvent> {
         let mut events = Vec::new();
+        // Reveal the active tab only when the active document changes, so
+        // switching scrolls it into view without re-yanking it back if the
+        // user scrolls away. Keyed by the active document's path (not its
+        // index — closing earlier tabs shifts indices but is not a switch)
+        // and salted with this strip's ui id.
+        let active_state_id = ui.id().with("document_tabs_active_state");
+        let active_identity = input.active_path.map(Path::to_path_buf);
+        let previous_identity = ui.data(|data| data.get_temp::<Option<PathBuf>>(active_state_id));
+        let reveal_active = previous_identity.as_ref() != Some(&active_identity);
+        ui.data_mut(|data| data.insert_temp(active_state_id, active_identity));
         egui::Frame::new()
             .fill(input.background)
             .inner_margin(egui::Margin::same(0))
@@ -44,6 +58,7 @@ impl Component for DocumentTabsView {
                                         tab,
                                         index,
                                         selected: index == input.active_index,
+                                        reveal_active: index == input.active_index && reveal_active,
                                     },
                                 ));
                             }
@@ -61,6 +76,10 @@ impl Component for DocumentTabsView {
 /// Every tab is fixed-width; long titles elide to it.
 const TAB_WIDTH: f32 = 120.0;
 
+/// Minimum tab row height. Tabs stay at least this tall for comfortable hit
+/// targets, and grow with the global interact size (theme) if that is larger.
+const TAB_HEIGHT_MIN: f32 = 32.0;
+
 struct TabView;
 
 struct TabInput<'a> {
@@ -69,6 +88,8 @@ struct TabInput<'a> {
     /// back in the emitted event.
     index: usize,
     selected: bool,
+    /// True only for the active tab on the frame it just became active.
+    reveal_active: bool,
 }
 
 impl Component for TabView {
@@ -80,9 +101,10 @@ impl Component for TabView {
             tab,
             index,
             selected,
+            reveal_active,
         } = input;
         let mut events = Vec::new();
-        let row_height = ui.spacing().interact_size.y;
+        let row_height = ui.spacing().interact_size.y.max(TAB_HEIGHT_MIN);
         let font = egui::TextStyle::Button.resolve(ui.style());
         let text_color = if tab.missing {
             ui.visuals().warn_fg_color
@@ -118,6 +140,11 @@ impl Component for TabView {
         let (rect, response) =
             ui.allocate_exact_size(egui::vec2(tab_width, row_height), egui::Sense::click());
         let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+        // Reveal the active tab on switch only when it is scrolled out of view.
+        if selected && reveal_active {
+            response.scroll_to_me(None);
+        }
 
         let close_center = egui::pos2(rect.right() - close_size / 2.0 - 4.0, rect.center().y);
         let close_rect =

@@ -11,6 +11,7 @@ impl App {
         selecting: bool,
         add_cursor: bool,
     ) {
+        self.documents.focus_edit_area();
         let Some(next) = self.pointer_to_char(line_index, column) else {
             let active_document = self.active_document_mut();
             active_document
@@ -35,6 +36,7 @@ impl App {
     }
 
     pub(crate) fn select_word_from_pointer(&mut self, line_index: usize, column: usize) {
+        self.documents.focus_edit_area();
         let Some(char_index) = self.pointer_to_char(line_index, column) else {
             return;
         };
@@ -72,6 +74,20 @@ impl App {
         self.chrome.command_panel.open()
             || self.chrome.shell.shell_view() != ShellView::Editor
             || self.active_document().missing
+            || !self.active_document().edit_area_focused
             || ctx.egui_wants_keyboard_input()
+    }
+
+    /// Whether the edit area has focus: the window is focused, we are on the
+    /// editor view, and nothing else (command palette, file-tree rename, config
+    /// field) is stealing keyboard input. If the window isn't focused, the edit
+    /// area isn't either.
+    pub(crate) fn editor_focused(&self, ctx: &eframe::egui::Context) -> bool {
+        self.active_document().edit_area_focused
+            && ctx.input(|i| i.focused)
+            && !self.chrome.command_panel.open()
+            && self.chrome.shell.shell_view() == ShellView::Editor
+            && !self.active_document().missing
+            && !ctx.egui_wants_keyboard_input()
     }
 }

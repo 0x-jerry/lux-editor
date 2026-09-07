@@ -14,6 +14,9 @@ pub struct OpenDocument {
     pub(crate) document_status: Option<String>,
     /// The file behind `buffer.path()` is gone; the editor shows an error page.
     pub(crate) missing: bool,
+    /// Becomes true once the user clicks into this document's edit area; until
+    /// then the caret stays hidden and editing is blocked. Per-document.
+    pub(crate) edit_area_focused: bool,
 }
 
 impl OpenDocument {
@@ -26,6 +29,7 @@ impl OpenDocument {
             edit_generation: 0,
             document_status: None,
             missing: false,
+            edit_area_focused: false,
         }
     }
 
@@ -46,6 +50,7 @@ impl OpenDocument {
             edit_generation: 0,
             document_status: None,
             missing: false,
+            edit_area_focused: false,
         };
         // Keep the caret at the top of the file: a freshly opened document
         // shows its first lines (the editor reveals the caret on open).

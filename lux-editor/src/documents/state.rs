@@ -121,6 +121,10 @@ impl Documents {
     pub(crate) fn touch_caret_blink(&mut self) {
         self.caret_blink_anchor = std::time::Instant::now();
     }
+
+    pub(crate) fn focus_edit_area(&mut self) {
+        self.active_document_mut().edit_area_focused = true;
+    }
 }
 
 impl App {

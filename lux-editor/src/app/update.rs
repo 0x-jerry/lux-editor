@@ -1,6 +1,5 @@
 use super::App;
 use crate::chrome;
-use crate::chrome::ShellView;
 use crate::component::Component;
 use crate::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
@@ -107,7 +106,12 @@ impl EframeApp for App {
             let selection_ranges = caret_state.selection_ranges();
             (carets, active_caret_index, selection_ranges)
         };
-        let caret_visible = self.documents.caret_blink_visible();
+        let editor_focused = self.editor_focused(&ctx);
+        let caret_visible = if editor_focused {
+            self.documents.caret_blink_visible()
+        } else {
+            false // hide the caret entirely while the editor isn't focused
+        };
         let document_tabs = self
             .documents
             .tabs
@@ -151,8 +155,9 @@ impl EframeApp for App {
         crate::app::startup::stage_once!("first frame presented");
 
         // Everything repaints on input; background events wake the loop via
-        // `Runtime::ctx`; only the caret blink needs a steady tick here.
-        if self.chrome.shell.shell_view() == ShellView::Editor {
+        // `Runtime::ctx`; only the caret blink needs a steady tick here, and
+        // only while the editor is focused.
+        if editor_focused {
             ctx.request_repaint_after(Duration::from_millis(500));
         }
     }

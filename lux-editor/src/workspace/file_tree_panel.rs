@@ -2,7 +2,7 @@ use crate::component::Component;
 use crate::events::{AppEvent, CustomEvent, WorkspaceEvent};
 use crate::workspace::{Entry, FileTree};
 use eframe::egui;
-use eframe::egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
+use eframe::egui::{TextEdit, Ui};
 use egui_phosphor::regular::{FOLDER, FOLDER_OPEN};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct FileTreePanel {
     last_active_path: Option<PathBuf>,
-    /// Open directories; egui's own collapsing state does not outlive the run.
+    /// Open directories; the app persists this per workspace.
     expanded: HashSet<PathBuf>,
     /// Path currently being renamed in place, with the new-name draft.
     renaming: Option<(PathBuf, String)>,
@@ -55,6 +55,7 @@ impl Component for FileTreePanel {
                             &root_entry,
                             active_file_path,
                             reveal_active_in_tree,
+                            0,
                         ) {
                             events.push(event);
                         }
@@ -83,9 +84,9 @@ impl FileTreePanel {
         }
     }
 
-    /// Renders one row, loading directory children from the tree on demand.
-    /// While a row is being renamed the rename `TextEdit` replaces it and no
-    /// row action is emitted.
+    /// Renders one row at tree depth `depth`, loading directory children
+    /// from the tree on demand. While a row is being renamed the rename
+    /// `TextEdit` replaces it and no row action is emitted.
     fn render_entry(
         &mut self,
         ui: &mut Ui,
@@ -93,12 +94,13 @@ impl FileTreePanel {
         entry: &Entry,
         active_file_path: Option<&Path>,
         reveal_active_file: bool,
+        depth: usize,
     ) -> Option<CustomEvent> {
         match entry {
             Entry::File(path) => {
-                if let Some(event) =
-                    self.render_rename(ui, path, |path, new_name| path.with_file_name(new_name))
-                {
+                if let Some(event) = self.render_rename(ui, path, depth, |path, new_name| {
+                    path.with_file_name(new_name)
+                }) {
                     return Some(event);
                 }
                 if self.is_renaming(path) {
@@ -127,8 +129,9 @@ impl FileTreePanel {
                     ui.painter().rect_filled(rect, 0.0, bg);
                 }
                 let font = egui::TextStyle::Button.resolve(ui.style());
+                let left = rect.left() + depth as f32 * ui.spacing().indent;
                 let icon_rect = egui::Rect::from_min_size(
-                    egui::pos2(rect.left() + 10.0, rect.top()),
+                    egui::pos2(left + 10.0, rect.top()),
                     egui::vec2(20.0, row_height),
                 );
                 ui.painter().text(
@@ -170,16 +173,15 @@ impl FileTreePanel {
                 event
             }
             Entry::Directory(path) => {
-                if let Some(event) =
-                    self.render_rename(ui, path, |path, new_name| path.with_file_name(new_name))
-                {
+                if let Some(event) = self.render_rename(ui, path, depth, |path, new_name| {
+                    path.with_file_name(new_name)
+                }) {
                     return Some(event);
                 }
                 if self.is_renaming(path) {
                     return None;
                 }
 
-                let id = Id::new(path);
                 let mut event = None;
 
                 let should_reveal = reveal_active_file
@@ -188,81 +190,86 @@ impl FileTreePanel {
                     self.set_expanded_for(path, true);
                 }
                 let is_open = self.expanded.contains(path);
-                // The disclosure triangle toggles egui's own copy of this state;
-                // folding it back below keeps the set the only thing serialized.
-                let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, is_open);
-                if state.is_open() != is_open {
-                    state.set_open(is_open);
-                    state.store(ui.ctx());
+
+                let row_height = ui.spacing().interact_size.y;
+                let folder_name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), row_height),
+                    egui::Sense::click(),
+                );
+                let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                if response.hovered() {
+                    ui.painter()
+                        .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.bg_fill);
                 }
-                let mut toggled = false;
-                let (collapser, _, _) = state
-                    .show_header(ui, |ui| {
-                        let row_height = ui.spacing().interact_size.y;
-                        let folder_name = path
-                            .file_name()
-                            .map(|name| name.to_string_lossy().into_owned())
-                            .unwrap_or_else(|| path.to_string_lossy().into_owned());
-                        let icon = if is_open { FOLDER_OPEN } else { FOLDER };
-                        let response = ui
-                            .allocate_ui_with_layout(
-                                egui::vec2(ui.available_width(), row_height),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.selectable_label(false, format!("{} {}", icon, folder_name))
-                                },
-                            )
-                            .inner;
+                let left = rect.left() + depth as f32 * ui.spacing().indent;
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let icon = if is_open { FOLDER_OPEN } else { FOLDER };
+                let icon_rect = egui::Rect::from_min_size(
+                    egui::pos2(left + 10.0, rect.top()),
+                    egui::vec2(20.0, row_height),
+                );
+                let text_color = ui.style().interact(&response).text_color();
+                ui.painter().text(
+                    icon_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    icon,
+                    font.clone(),
+                    text_color,
+                );
+                ui.painter().text(
+                    egui::pos2(icon_rect.right() + 4.0, rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    folder_name,
+                    font,
+                    text_color,
+                );
 
-                        if response.clicked() {
-                            toggled = true;
-                        }
-
-                        response.context_menu(|ui| {
-                            if ui.button("New File").clicked() {
-                                event = Some(CustomEvent::Workspace(WorkspaceEvent::NewFile(
-                                    path.clone(),
-                                )));
-                                ui.close();
-                            }
-                            if ui.button("New Folder").clicked() {
-                                event = Some(CustomEvent::Workspace(WorkspaceEvent::NewFolder(
-                                    path.clone(),
-                                )));
-                                ui.close();
-                            }
-                            if ui.button("Rename").clicked() {
-                                self.start_renaming(path);
-                                ui.close();
-                            }
-                            if ui.button("Delete").clicked() {
-                                event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(
-                                    path.clone(),
-                                )));
-                                ui.close();
-                            }
-                        });
-                    })
-                    .body(|ui| {
-                        let children = tree.children(path);
-                        for entry in children.iter() {
-                            if let Some(child_event) = self.render_entry(
-                                ui,
-                                tree,
-                                entry,
-                                active_file_path,
-                                reveal_active_file,
-                            ) {
-                                event = Some(child_event);
-                            }
-                        }
-                    });
-
-                if collapser.clicked() {
-                    toggled = true;
-                }
-                if toggled {
+                if response.clicked() {
                     self.set_expanded_for(path, !is_open);
+                }
+
+                response.context_menu(|ui| {
+                    if ui.button("New File").clicked() {
+                        event = Some(CustomEvent::Workspace(WorkspaceEvent::NewFile(
+                            path.clone(),
+                        )));
+                        ui.close();
+                    }
+                    if ui.button("New Folder").clicked() {
+                        event = Some(CustomEvent::Workspace(WorkspaceEvent::NewFolder(
+                            path.clone(),
+                        )));
+                        ui.close();
+                    }
+                    if ui.button("Rename").clicked() {
+                        self.start_renaming(path);
+                        ui.close();
+                    }
+                    if ui.button("Delete").clicked() {
+                        event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(path.clone())));
+                        ui.close();
+                    }
+                });
+
+                if is_open {
+                    let children = tree.children(path);
+                    for entry in children.iter() {
+                        if let Some(child_event) = self.render_entry(
+                            ui,
+                            tree,
+                            entry,
+                            active_file_path,
+                            reveal_active_file,
+                            depth + 1,
+                        ) {
+                            event = Some(child_event);
+                        }
+                    }
                 }
 
                 event
@@ -276,11 +283,13 @@ impl FileTreePanel {
         &mut self,
         ui: &mut Ui,
         path: &Path,
+        depth: usize,
         build_new_path: impl FnOnce(&Path, &str) -> PathBuf,
     ) -> Option<CustomEvent> {
         if !self.is_renaming(path) {
             return None;
         }
+        ui.add_space(depth as f32 * ui.spacing().indent);
         let (_, new_name) = self.renaming.as_mut().expect("renaming checked above");
         let response = ui.add(TextEdit::singleline(new_name).hint_text("New name..."));
         if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {

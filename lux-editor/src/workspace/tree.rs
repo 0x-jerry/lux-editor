@@ -1,7 +1,7 @@
 //! Workspace file-tree model: a gitignore-aware, lazily loaded snapshot of
 //! the directory tree. Only directories the UI has asked for (root at open,
 //! expanded folders after that) are read from disk. Pure data only —
-//! rendering lives in the `FileTreePanel` component (`workspace::ui`).
+//! rendering lives in the `FileTreePanel` component (`workspace::file_tree_panel`).
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::collections::HashMap;

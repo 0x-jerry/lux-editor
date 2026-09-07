@@ -47,7 +47,13 @@ pub fn render_rows(
     let mut visible_rows = Vec::new();
 
     let (active_line, _) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
-    let reveal_id = egui::Id::new("editor_text_editor_reveal");
+    // Scroll and reveal state are keyed per document: a first-time open starts
+    // at the top, and switching tabs restores each file's own position.
+    let document_salt = buffer
+        .path()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "untitled".to_owned());
+    let reveal_id = egui::Id::new(("editor_text_editor_reveal", document_salt.clone()));
     let mut reveal: RevealState = ui.data_mut(|data| data.get_temp(reveal_id).unwrap_or_default());
 
     // Don't fight the user dragging the scrollbar: only reveal on caret moves.
@@ -78,7 +84,7 @@ pub fn render_rows(
     }
 
     let mut scroll_area = egui::ScrollArea::both()
-        .id_salt("editor_text_editor_scroll")
+        .id_salt(("editor_text_editor_scroll", document_salt))
         .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
         .auto_shrink([false, false]);
     if let Some(target) = reveal.target_offset {

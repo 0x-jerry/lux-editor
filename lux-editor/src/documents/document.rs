@@ -38,7 +38,7 @@ impl OpenDocument {
     }
 
     pub fn from_buffer(buffer: Buffer) -> Self {
-        let mut doc = Self {
+        let doc = Self {
             buffer,
             caret_state: Default::default(),
             edit_history: Default::default(),
@@ -47,7 +47,8 @@ impl OpenDocument {
             document_status: None,
             missing: false,
         };
-        doc.caret_state.reset_to_buffer_end(&doc.buffer);
+        // Keep the caret at the top of the file: a freshly opened document
+        // shows its first lines (the editor reveals the caret on open).
         doc
     }
 

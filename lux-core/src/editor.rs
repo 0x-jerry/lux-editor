@@ -491,7 +491,8 @@ fn current_line_index(buffer: &Buffer, caret_char: usize) -> usize {
     if total_chars == 0 {
         return 0;
     }
-    let clamped = caret_char.min(total_chars.saturating_sub(1));
+    // char_to_line accepts the end position, which is the trailing empty line when the text ends in '\n'.
+    let clamped = caret_char.min(total_chars);
     buffer.text().char_to_line(clamped)
 }
 
@@ -831,6 +832,35 @@ mod tests {
         assert_eq!(caret.caret_char_at(0), 0);
         caret.move_end(&buffer, false);
         assert_eq!(caret.caret_char_at(0), 7); // end of "  hello", before the newline
+    }
+
+    #[test]
+    fn line_column_at_buffer_end_handles_trailing_newline() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "a\nb\n");
+        // The final newline leaves an empty line; the buffer end is its start.
+        assert_eq!(line_column(&buffer, 4), (3, 1));
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "a\nb");
+        // Without a trailing newline the end sits on the last content line.
+        assert_eq!(line_column(&buffer, 3), (2, 2));
+    }
+
+    #[test]
+    fn caret_at_buffer_end_moves_on_the_trailing_empty_line() {
+        let mut buffer = Buffer::new();
+        insert(&mut buffer, "ab\ncd\n");
+        let mut caret = CaretState::default();
+        caret.set_caret_char(4, &buffer, false); // 'd' on line 2
+        caret.move_down(&buffer, false);
+        assert_eq!(caret.caret_char_at(0), 6); // start of the trailing empty line
+        assert_eq!(line_column(&buffer, caret.caret_char_at(0)), (3, 1));
+        caret.move_end(&buffer, false);
+        assert_eq!(caret.caret_char_at(0), 6);
+        caret.move_home(&buffer, false);
+        assert_eq!(caret.caret_char_at(0), 6);
+        caret.move_up(&buffer, false);
+        assert_eq!(caret.caret_char_at(0), 3); // start of line 2
     }
 
     #[test]

@@ -16,8 +16,7 @@ pub(crate) fn stage(name: &str) {
 /// Logs a milestone at most once; the "once" flag lives at each call site.
 macro_rules! stage_once {
     ($name:literal) => {{
-        static DONE: ::std::sync::atomic::AtomicBool =
-            ::std::sync::atomic::AtomicBool::new(false);
+        static DONE: ::std::sync::atomic::AtomicBool = ::std::sync::atomic::AtomicBool::new(false);
         if !DONE.swap(true, ::std::sync::atomic::Ordering::Relaxed) {
             $crate::app::startup::stage($name);
         }

@@ -3,8 +3,8 @@
 //! decides *when* to re-apply it.
 
 use crate::app::App;
-use crate::settings::{Config, EditorSettings};
 use crate::events::{AppEvent, CustomEvent};
+use crate::settings::{Config, EditorSettings};
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;

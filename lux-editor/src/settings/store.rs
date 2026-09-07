@@ -168,7 +168,10 @@ impl Config {
             }
             Err(err) => {
                 // The next flush would replace the file; keep the bytes readable.
-                log::warn!("unreadable {}, keeping a copy beside it: {err}", path.display());
+                log::warn!(
+                    "unreadable {}, keeping a copy beside it: {err}",
+                    path.display()
+                );
                 std::fs::rename(&path, path.with_extension("json.bak")).ok();
                 RecentConfigFile::default()
             }
@@ -239,7 +242,6 @@ mod tests {
 
     #[test]
     fn set_workspace_session_upserts_and_detects_no_change() {
-
         let mut config = Config {
             recent_items: vec![recent("/ws", true)],
             ..Default::default()
@@ -265,7 +267,11 @@ mod tests {
         let refs = many.iter().map(String::as_str).collect::<Vec<_>>();
         config.set_workspace_session(session("/ws", &refs, &[]));
         assert_eq!(
-            config.workspace_session(Path::new("/ws")).unwrap().open_files.len(),
+            config
+                .workspace_session(Path::new("/ws"))
+                .unwrap()
+                .open_files
+                .len(),
             MAX_SESSION_FILES
         );
     }

@@ -1,8 +1,8 @@
 use std::sync::mpsc::{Receiver, Sender};
 
+use super::client::{WorkerRequest, WorkerResponse};
 use super::engine::Engines;
 use super::parse::parse_snapshot;
-use super::client::{WorkerRequest, WorkerResponse};
 
 pub(super) fn worker_loop(
     request_rx: Receiver<WorkerRequest>,

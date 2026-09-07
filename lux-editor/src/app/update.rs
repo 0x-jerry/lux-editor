@@ -1,8 +1,8 @@
 use super::App;
-use crate::chrome::ShellView;
-use crate::theme::{self, ThemeChoice};
 use crate::chrome;
+use crate::chrome::ShellView;
 use crate::component::Component;
+use crate::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
 use std::time::{Duration, Instant};
 

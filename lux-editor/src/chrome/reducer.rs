@@ -21,5 +21,4 @@ impl App {
             ShellEvent::TitleBarMenu(menu) => self.on_title_bar_menu(menu, ctx),
         }
     }
-
 }

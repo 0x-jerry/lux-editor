@@ -1,5 +1,5 @@
-use crate::events::DocumentEvent;
 use crate::component::Component;
+use crate::events::DocumentEvent;
 /// Tab metadata for the editor tab strip.
 pub struct DocumentTab {
     pub title: String,
@@ -9,7 +9,7 @@ pub struct DocumentTab {
 }
 
 use eframe::egui;
-use egui_phosphor::regular::{FILE_X, X};
+use egui_phosphor::regular::X;
 
 /// The editor document tab strip.
 pub(crate) struct DocumentTabsView;
@@ -76,7 +76,11 @@ impl Component for TabView {
     type Input<'a> = TabInput<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<DocumentEvent> {
-        let TabInput { tab, index, selected } = input;
+        let TabInput {
+            tab,
+            index,
+            selected,
+        } = input;
         let mut events = Vec::new();
         let row_height = ui.spacing().interact_size.y;
         let font = egui::TextStyle::Button.resolve(ui.style());
@@ -90,9 +94,8 @@ impl Component for TabView {
         // Strikethrough needs a laid-out galley; elision to the fixed width
         // does too, so the job is built with a truncation wrap.
         let close_size = 16.0;
-        let missing_width = if tab.missing { 14.0 } else { 0.0 };
         let tab_width = TAB_WIDTH;
-        let title_max_width = tab_width - 8.0 - missing_width - close_size - 8.0;
+        let title_max_width = tab_width - 8.0 - close_size - 8.0;
         let title = {
             let mut job = egui::text::LayoutJob::default();
             job.wrap = egui::text::TextWrapping::truncate_at_width(title_max_width);
@@ -117,7 +120,8 @@ impl Component for TabView {
         let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
 
         let close_center = egui::pos2(rect.right() - close_size / 2.0 - 4.0, rect.center().y);
-        let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(close_size, close_size));
+        let close_rect =
+            egui::Rect::from_center_size(close_center, egui::vec2(close_size, close_size));
         // Allocated after the tab so the button stays on top of it, but that also
         // means the tab loses hover whenever the pointer is over the button —
         // combine both hover states so the button never flickers or disappears,
@@ -142,26 +146,17 @@ impl Component for TabView {
         }
         if selected {
             painter.rect_filled(
-                egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.right(), rect.top() + 2.0)),
+                egui::Rect::from_min_max(
+                    rect.left_top(),
+                    egui::pos2(rect.right(), rect.top() + 2.0),
+                ),
                 0.0,
                 ui.visuals().hyperlink_color,
             );
         }
 
-        if tab.missing {
-            painter.text(
-                egui::pos2(rect.left() + 6.0, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                FILE_X,
-                egui::FontId::proportional(11.0),
-                ui.visuals().warn_fg_color,
-            );
-        }
         painter.galley(
-            egui::pos2(
-                rect.left() + 8.0 + missing_width,
-                rect.center().y - title.size().y / 2.0,
-            ),
+            egui::pos2(rect.left() + 8.0, rect.center().y - title.size().y / 2.0),
             title,
             text_color,
         );

@@ -6,8 +6,8 @@
 //! through `crate::events::CustomEvent`.
 
 mod events;
-mod state;
 pub(crate) mod startup;
+mod state;
 mod update;
 
 pub use state::App;

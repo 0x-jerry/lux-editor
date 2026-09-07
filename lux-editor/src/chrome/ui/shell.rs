@@ -1,19 +1,19 @@
 //! The app shell component: chrome (title/status bars), sidebar and the
 //! active view. Owns the shell navigation state and its child components.
 
-use crate::chrome::ShellView;
-use crate::documents::{EditorView, EditorViewState};
-use crate::settings::ui::{ConfigurationView, ConfigurationViewInput};
-use crate::workspace::ui::{FileTreePanel, FileTreePanelInput};
-use crate::settings::{Config, EditorSettings};
-use crate::events::CustomEvent;
-use crate::workspace::FileTree;
-use crate::highlighting::HighlightSnapshot;
-use crate::component::Component;
-use crate::highlighting::snapshot_color;
 use super::widgets::{
     StatusBar, StatusBarData, StatusBarSection, TitleBar, TitleBarData, window_resize_handle,
 };
+use crate::chrome::ShellView;
+use crate::component::Component;
+use crate::documents::{EditorView, EditorViewState};
+use crate::events::CustomEvent;
+use crate::highlighting::HighlightSnapshot;
+use crate::highlighting::snapshot_color;
+use crate::settings::ui::{ConfigurationView, ConfigurationViewInput};
+use crate::settings::{Config, EditorSettings};
+use crate::workspace::FileTree;
+use crate::workspace::ui::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
 use lux_core::Buffer;
 use std::collections::HashSet;

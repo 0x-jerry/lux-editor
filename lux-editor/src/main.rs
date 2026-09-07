@@ -1,17 +1,17 @@
 mod app;
+mod chrome;
 mod component;
 mod documents;
 mod events;
-mod workspace;
 mod highlighting;
 mod native;
 mod settings;
 mod theme;
-mod chrome;
+mod workspace;
 
 use app::App;
-use settings::Config;
 use eframe::egui;
+use settings::Config;
 
 pub fn main() {
     env_logger::init();
@@ -48,9 +48,7 @@ pub fn main() {
     if let Err(err) = eframe::run_native(
         "Lux Editor",
         native_options,
-        Box::new(move |cc| {
-            Ok(Box::new(App::new(cc.egui_ctx.clone(), font_loader)))
-        }),
+        Box::new(move |cc| Ok(Box::new(App::new(cc.egui_ctx.clone(), font_loader)))),
     ) {
         log::error!("failed to run Lux Editor: {err}");
     }

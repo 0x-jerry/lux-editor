@@ -1,7 +1,7 @@
 use eframe::egui::Color32;
 
 /// `#rgb`, `#rrggbb` or `#rrggbbaa`.
-pub(super) fn parse_color(value: &str) -> Result<Color32, String> {
+pub(crate) fn parse_color(value: &str) -> Result<Color32, String> {
     let [r, g, b, a] = parse_rgba(value)?;
     Ok(Color32::from_rgba_unmultiplied(r, g, b, a))
 }
@@ -23,7 +23,9 @@ pub(super) fn parse_rgba(value: &str) -> Result<[u8; 4], String> {
         match hex.len() {
             3 => digit(index / 2),
             6 | 8 => byte(index),
-            len => Err(format!("'{value}' has {len} hex digits, expected 3, 6 or 8")),
+            len => Err(format!(
+                "'{value}' has {len} hex digits, expected 3, 6 or 8"
+            )),
         }
     };
     Ok([

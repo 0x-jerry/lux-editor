@@ -19,5 +19,4 @@ impl App {
             CustomEvent::Editing(event) => self.handle_editing_event(event),
         }
     }
-
 }

@@ -2,9 +2,9 @@ use ropey::Rope;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 
+use super::LanguageKind;
 use super::snapshot::HighlightSnapshot;
 use super::worker::worker_loop;
-use super::LanguageKind;
 use crate::theme::SyntaxColors;
 use std::sync::Arc;
 

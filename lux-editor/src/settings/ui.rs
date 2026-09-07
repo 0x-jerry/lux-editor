@@ -1,7 +1,7 @@
-use crate::settings::{Config, EditorSettings};
-use crate::events::ConfigurationEvent;
-use crate::theme::ThemeChoice;
 use crate::component::Component;
+use crate::events::ConfigurationEvent;
+use crate::settings::{Config, EditorSettings};
+use crate::theme::ThemeChoice;
 use eframe::egui;
 use lux_core::Buffer;
 use std::path::PathBuf;

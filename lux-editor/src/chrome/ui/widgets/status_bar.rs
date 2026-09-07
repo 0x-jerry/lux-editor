@@ -1,7 +1,7 @@
 //! Shell chrome: the bottom status bar. Top navigation lives in the title bar.
 
-use crate::events::{CustomEvent, ShellEvent};
 use crate::component::Component;
+use crate::events::{CustomEvent, ShellEvent};
 use eframe::egui;
 use egui_phosphor::regular::{DOT, SIDEBAR};
 

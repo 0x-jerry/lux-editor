@@ -1,15 +1,15 @@
 //! Root view component: renders the shell plus the overlay windows (command
 //! palette, about dialog) and reports every effect they requested as events.
 
-use crate::settings::Config;
-use crate::events::CustomEvent;
-use crate::workspace::FileTree;
-use crate::highlighting::HighlightSnapshot;
-use crate::component::Component;
 use super::about::AboutWindow;
 use super::command_panel::CommandPanel;
 use super::shell::{Shell, ShellInput};
+use crate::component::Component;
 use crate::documents::DocumentTab;
+use crate::events::CustomEvent;
+use crate::highlighting::HighlightSnapshot;
+use crate::settings::Config;
+use crate::workspace::FileTree;
 use eframe::egui;
 use lux_core::Buffer;
 use std::ops::Range;

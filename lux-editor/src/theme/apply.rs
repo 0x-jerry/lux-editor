@@ -87,21 +87,31 @@ pub fn apply_editor_settings(
     if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
         family.insert(1, "phosphor".into());
     }
+    // Devicons glyph font (file-type icons in the sidebar tree); a dedicated
+    // family so its PUA codepoints never shadow phosphor's in shared fallback.
+    fonts.font_data.insert(
+        "devicons".into(),
+        egui::FontData::from_static(include_bytes!(
+            "../../assets/fonts/SymbolsNerdFontMono-Regular.ttf"
+        ))
+        .into(),
+    );
+    fonts.families.insert(
+        egui::FontFamily::Name("devicons".into()),
+        vec!["devicons".into()],
+    );
     let custom_font = match font {
         CustomFont::Pending => None,
         CustomFont::Preloaded(bytes) => {
             crate::app::startup::stage_once!("startup font folded in");
             bytes.map(egui::FontData::from_owned)
         }
-        CustomFont::Sync => {
-            load_custom_font(&settings.font.family).map(egui::FontData::from_owned)
-        }
+        CustomFont::Sync => load_custom_font(&settings.font.family).map(egui::FontData::from_owned),
     };
     if let Some(custom_font) = custom_font {
-        fonts.font_data.insert(
-            "custom-editor-font".to_string(),
-            custom_font.into(),
-        );
+        fonts
+            .font_data
+            .insert("custom-editor-font".to_string(), custom_font.into());
         if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
             family.insert(0, "custom-editor-font".to_string());
         }

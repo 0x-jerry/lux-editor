@@ -1,9 +1,9 @@
+use crate::component::Component;
 use crate::events::{AppEvent, CustomEvent, WorkspaceEvent};
 use crate::workspace::{Entry, FileTree};
-use crate::component::Component;
 use eframe::egui;
 use eframe::egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
-use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
+use egui_phosphor::regular::{FOLDER, FOLDER_OPEN};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -111,13 +111,45 @@ impl FileTreePanel {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 let is_active = active_file_path == Some(path.as_path());
-                let response = ui
-                    .allocate_ui_with_layout(
-                        egui::vec2(ui.available_width(), row_height),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| ui.selectable_label(is_active, format!("{} {}", FILE_CODE, file_name)),
-                    )
-                    .inner;
+                let (icon, icon_color) = file_icon(ui.visuals().dark_mode, path);
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), row_height),
+                    egui::Sense::click(),
+                );
+                let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                if is_active || response.hovered() {
+                    let bg = if is_active {
+                        ui.visuals().selection.bg_fill
+                    } else {
+                        ui.visuals().widgets.hovered.bg_fill
+                    };
+                    ui.painter().rect_filled(rect, 0.0, bg);
+                }
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let icon_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.left() + 10.0, rect.top()),
+                    egui::vec2(20.0, row_height),
+                );
+                ui.painter().text(
+                    icon_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    icon,
+                    egui::FontId::new(font.size, egui::FontFamily::Name("devicons".into())),
+                    icon_color,
+                );
+                let text_color = if is_active {
+                    ui.visuals().strong_text_color()
+                } else {
+                    ui.style().interact(&response).text_color()
+                };
+                ui.painter().text(
+                    egui::pos2(icon_rect.right() + 4.0, rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    file_name,
+                    font,
+                    text_color,
+                );
 
                 let mut event = None;
                 if response.clicked() {
@@ -214,9 +246,13 @@ impl FileTreePanel {
                     .body(|ui| {
                         let children = tree.children(path);
                         for entry in children.iter() {
-                            if let Some(child_event) =
-                                self.render_entry(ui, tree, entry, active_file_path, reveal_active_file)
-                            {
+                            if let Some(child_event) = self.render_entry(
+                                ui,
+                                tree,
+                                entry,
+                                active_file_path,
+                                reveal_active_file,
+                            ) {
                                 event = Some(child_event);
                             }
                         }
@@ -273,4 +309,27 @@ impl FileTreePanel {
             path.file_name().unwrap().to_string_lossy().to_string(),
         ));
     }
+}
+
+/// Root file glyph for types the devicons table does not name.
+const GENERIC_FILE_GLYPH: char = '\u{e7b8}';
+
+/// Devicons glyph and brand color for a file row; unknown extensions get
+/// [`GENERIC_FILE_GLYPH`] — the crate's own fallback is a literal `'*'`,
+/// which the embedded symbols font does not contain.
+fn file_icon(dark_mode: bool, path: &Path) -> (char, egui::Color32) {
+    let theme = if dark_mode {
+        devicons::Theme::Dark
+    } else {
+        devicons::Theme::Light
+    };
+    let icon = devicons::icon_for_file(path, &Some(theme));
+    let glyph = if icon.icon == '*' {
+        GENERIC_FILE_GLYPH
+    } else {
+        icon.icon
+    };
+    let color = crate::theme::color::parse_color(icon.color)
+        .unwrap_or_else(|_| egui::Color32::from_rgb(0x7e, 0x8e, 0xa8));
+    (glyph, color)
 }

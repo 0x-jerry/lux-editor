@@ -3,8 +3,8 @@ use tree_sitter_highlight::{
     Error as HighlightError, HighlightConfiguration, HighlightEvent, Highlighter,
 };
 
-use super::style::{RECOGNIZED_NAMES, ThemeColors};
 use super::LanguageKind;
+use super::style::{RECOGNIZED_NAMES, ThemeColors};
 use std::sync::LazyLock;
 
 #[derive(Clone, Copy)]

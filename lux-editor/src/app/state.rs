@@ -1,5 +1,5 @@
-use crate::settings::Config;
 use crate::events::CustomEvent;
+use crate::settings::Config;
 use crate::theme::StartupFont;
 use eframe::egui;
 use lux_core::Buffer;
@@ -7,9 +7,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Instant;
 
-use crate::documents::OpenDocument;
 use crate::chrome::Chrome;
 use crate::documents::Documents;
+use crate::documents::OpenDocument;
 use crate::highlighting::Highlighting;
 use crate::settings::SettingsState;
 use crate::workspace::Workspace;

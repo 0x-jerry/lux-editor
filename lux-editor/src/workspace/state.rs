@@ -90,15 +90,14 @@ impl App {
             .workspace_session(workspace_path)
             .cloned()
         else {
-            self.chrome.shell.set_file_tree_expanded([root.to_path_buf()]);
+            self.chrome
+                .shell
+                .set_file_tree_expanded([root.to_path_buf()]);
             return;
         };
-        self.chrome.shell.set_file_tree_expanded(
-            session
-                .expanded_dirs
-                .into_iter()
-                .filter(|dir| dir.is_dir()),
-        );
+        self.chrome
+            .shell
+            .set_file_tree_expanded(session.expanded_dirs.into_iter().filter(|dir| dir.is_dir()));
         self.open_files(session.open_files, session.active_file, ctx);
     }
 
@@ -156,7 +155,11 @@ impl App {
             });
     }
 
-    pub(crate) fn initialize_from_path(&mut self, initial_path: Option<PathBuf>, ctx: &egui::Context) {
+    pub(crate) fn initialize_from_path(
+        &mut self,
+        initial_path: Option<PathBuf>,
+        ctx: &egui::Context,
+    ) {
         let Some(path) = initial_path else {
             return;
         };

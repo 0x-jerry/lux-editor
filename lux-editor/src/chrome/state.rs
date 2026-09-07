@@ -2,11 +2,11 @@
 //! (theme + fonts) the app pushes to egui.
 
 use crate::app::App;
+use crate::chrome::ui::{AboutWindow, CommandPanel, Shell};
 use crate::documents::EditorCommand;
 use crate::native::NativeChrome;
 use crate::theme::ThemeChoice;
 use crate::theme::{self, CustomFont, StartupFont};
-use crate::chrome::ui::{AboutWindow, CommandPanel, Shell};
 use eframe::egui;
 use std::time::Duration;
 

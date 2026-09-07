@@ -15,6 +15,7 @@ ropey = "1.6.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
+devicons = "0.6"
 # Pinned to 0.26: tree-sitter-md requires ^0.26 and the core crate `links`
 # tree-sitter, so a second major in the graph is a hard resolve conflict.
 tree-sitter = "0.26"

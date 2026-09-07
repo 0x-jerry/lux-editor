@@ -1,13 +1,15 @@
-use crate::documents::tabs::{DocumentTabsInput, DocumentTabsView};
 use super::text_editor::{TextEditor, TextEditorState};
 use crate::chrome::ui::welcome::WelcomeView;
-use crate::chrome::ui::{FileMissingInput, FileMissingView, WorkspaceStartInput, WorkspaceStartView};
-use crate::settings::Config;
+use crate::chrome::ui::{
+    FileMissingInput, FileMissingView, WorkspaceStartInput, WorkspaceStartView,
+};
+use crate::component::Component;
+use crate::documents::DocumentTab;
+use crate::documents::tabs::{DocumentTabsInput, DocumentTabsView};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
-use crate::component::Component;
 use crate::highlighting::snapshot_color;
-use crate::documents::DocumentTab;
+use crate::settings::Config;
 use eframe::egui;
 use lux_core::Buffer;
 use std::ops::Range;

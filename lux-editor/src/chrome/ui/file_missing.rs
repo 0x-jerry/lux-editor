@@ -18,10 +18,7 @@ impl Component for FileMissingView {
     type Input<'a> = FileMissingInput<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<()> {
-        let FileMissingInput {
-            path,
-            loader_error,
-        } = input;
+        let FileMissingInput { path, loader_error } = input;
 
         ui.vertical_centered(|ui| {
             ui.add_space(56.0);

@@ -2,10 +2,10 @@ mod gutter;
 mod metrics;
 mod row;
 
-use crate::settings::Config;
+use crate::component::Component;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
-use crate::component::Component;
+use crate::settings::Config;
 use eframe::egui;
 use lux_core::Buffer;
 use std::ops::Range;

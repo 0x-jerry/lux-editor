@@ -1,9 +1,9 @@
 use ropey::Rope;
 
+use super::LanguageKind;
 use super::engine::{Engines, RawSpan};
 use super::snapshot::{HighlightSnapshot, HighlightSpan};
 use super::style::ThemeColors;
-use super::LanguageKind;
 use crate::theme::SyntaxColors;
 
 pub(super) fn parse_snapshot(

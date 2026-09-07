@@ -1,6 +1,6 @@
-use crate::settings::Config;
-use crate::events::{AppEvent, CustomEvent, ShellEvent};
 use crate::component::Component;
+use crate::events::{AppEvent, CustomEvent, ShellEvent};
+use crate::settings::Config;
 use eframe::egui;
 use egui_phosphor::regular::{CODE, COMMAND, FILE_CODE, FOLDER, FOLDER_OPEN};
 

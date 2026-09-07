@@ -1,8 +1,8 @@
 use super::metrics::TextEditorMetrics;
-use crate::settings::Config;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::build_highlighted_line_job;
+use crate::settings::Config;
 use eframe::egui;
 use lux_core::Buffer;
 use std::ops::Range;

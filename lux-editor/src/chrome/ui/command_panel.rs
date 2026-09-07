@@ -1,9 +1,9 @@
 //! Command palette overlay. The only stateful component in the shell; the app
 //! owns the instance so its query/selection survive between frames.
 
-use crate::settings::Config;
-use crate::events::{AppEvent, CustomEvent, DocumentEvent, ShellEvent};
 use crate::component::Component;
+use crate::events::{AppEvent, CustomEvent, DocumentEvent, ShellEvent};
+use crate::settings::Config;
 use eframe::egui;
 use std::path::PathBuf;
 

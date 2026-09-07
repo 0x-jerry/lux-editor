@@ -41,7 +41,11 @@ impl Component for WorkspaceStartView {
             );
             ui.add_space(20.0);
             if !input.sidebar_visible {
-                let shortcut = if cfg!(target_os = "macos") { "⌘B" } else { "Ctrl+B" };
+                let shortcut = if cfg!(target_os = "macos") {
+                    "⌘B"
+                } else {
+                    "Ctrl+B"
+                };
                 if ui.button(format!("Show file tree ({shortcut})")).clicked() {
                     events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
                 }

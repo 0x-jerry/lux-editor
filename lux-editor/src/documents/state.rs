@@ -342,7 +342,10 @@ mod tests {
             tab_with_path(&documents.tabs, Path::new("/ws/gone.rs")),
             Some(1)
         );
-        assert_eq!(openable_tab(&documents.tabs, Path::new("/ws/gone.rs")), None);
+        assert_eq!(
+            openable_tab(&documents.tabs, Path::new("/ws/gone.rs")),
+            None
+        );
         documents.apply_loaded(
             vec![(PathBuf::from("/ws/gone.rs"), Ok(buffer("/ws/gone.rs")))],
             Some(PathBuf::from("/ws/gone.rs")),

@@ -78,10 +78,7 @@ impl FileTree {
         let mut entries = vec![];
         for entry in read.flatten() {
             let path = entry.path();
-            let is_dir = entry
-                .file_type()
-                .map(|kind| kind.is_dir())
-                .unwrap_or(false);
+            let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
             if Self::ignored(&chain, &path, is_dir) {
                 continue;
             }
@@ -191,7 +188,11 @@ mod tests {
         std::fs::write(root_path.join("a.rs"), "").unwrap();
         std::fs::write(root_path.join("notes.txt"), "").unwrap();
         std::fs::create_dir(root_path.join("sub")).unwrap();
-        std::fs::write(root_path.join("sub/.gitignore"), "secret.txt\n!visible.txt\n").unwrap();
+        std::fs::write(
+            root_path.join("sub/.gitignore"),
+            "secret.txt\n!visible.txt\n",
+        )
+        .unwrap();
         std::fs::write(root_path.join("sub/secret.txt"), "").unwrap();
         std::fs::write(root_path.join("sub/visible.txt"), "").unwrap();
 

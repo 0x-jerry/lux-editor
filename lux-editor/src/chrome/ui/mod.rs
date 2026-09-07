@@ -15,6 +15,6 @@ mod workspace_start;
 pub use about::AboutWindow;
 pub use app_view::{AppView, AppViewInput};
 pub use command_panel::CommandPanel;
-pub use file_missing::{FileMissingView, FileMissingInput};
+pub use file_missing::{FileMissingInput, FileMissingView};
 pub use shell::Shell;
 pub use workspace_start::{WorkspaceStartInput, WorkspaceStartView};

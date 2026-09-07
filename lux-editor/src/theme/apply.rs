@@ -124,6 +124,8 @@ pub fn apply_editor_settings(
     // egui 0.36 keeps separate dark/light styles; keep the font sizes in sync for both.
     let font_size = settings.font.size;
     ctx.all_styles_mut(|style| {
+        // Pin the floating scrollbar to its thin width so it always stays thin and never expands on hover.
+        style.spacing.scroll.bar_width = style.spacing.scroll.floating_width;
         style.text_styles.insert(
             egui::TextStyle::Monospace,
             egui::FontId::monospace(font_size),

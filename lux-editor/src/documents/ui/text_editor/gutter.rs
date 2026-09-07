@@ -22,8 +22,9 @@ impl Component for Gutter {
     type Input<'a> = GutterInput<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<Self::Message> {
+        let visuals = ui.visuals();
         let painter = ui.painter().with_clip_rect(input.rect);
-        painter.rect_filled(input.rect, 0.0, input.metrics.gutter_bg);
+        painter.rect_filled(input.rect, 0.0, visuals.code_bg_color);
 
         for row in input.visible_rows {
             let row_rect = egui::Rect::from_min_max(
@@ -34,14 +35,18 @@ impl Component for Gutter {
                 continue;
             }
             if row.index + 1 == input.active_line {
-                painter.rect_filled(row_rect, 0.0, input.metrics.gutter_active_bg);
+                painter.rect_filled(
+                    row_rect,
+                    0.0,
+                    visuals.selection.bg_fill.gamma_multiply(0.2),
+                );
             }
             painter.text(
                 egui::pos2(row_rect.right() - input.metrics.char_width, row_rect.center().y),
                 egui::Align2::RIGHT_CENTER,
                 (row.index + 1).to_string(),
-                input.metrics.gutter_font_id.clone(),
-                input.metrics.gutter_text_color,
+                egui::TextStyle::Monospace.resolve(ui.style()),
+                visuals.weak_text_color(),
             );
         }
 

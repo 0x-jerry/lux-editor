@@ -36,15 +36,16 @@ impl Component for DocumentTabsView {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
+                            let mut tab_view = TabView;
                             for (index, tab) in input.tabs.iter().enumerate() {
-                                let (clicked, close_clicked) =
-                                    document_tab(ui, tab, index == input.active_index, index);
-                                if clicked {
-                                    events.push(DocumentEvent::SwitchDocument(index));
-                                }
-                                if close_clicked {
-                                    events.push(DocumentEvent::CloseDocument(index));
-                                }
+                                events.extend(tab_view.render(
+                                    ui,
+                                    TabInput {
+                                        tab,
+                                        index,
+                                        selected: index == input.active_index,
+                                    },
+                                ));
                             }
                         });
                     });
@@ -53,115 +54,140 @@ impl Component for DocumentTabsView {
     }
 }
 
-/// A document tab: filled when active with an accent top bar; the close button
-/// appears on hover, an accent dot marks unsaved changes otherwise, and a
-/// deleted file is struck through.
-fn document_tab(
-    ui: &mut egui::Ui,
-    tab: &DocumentTab,
-    selected: bool,
+/// A single document tab: filled when active with an accent top bar; the close
+/// button appears on hover, an accent dot marks unsaved changes otherwise, and
+/// a deleted file is struck through.
+///
+/// Every tab is fixed-width; long titles elide to it.
+const TAB_WIDTH: f32 = 120.0;
+
+struct TabView;
+
+struct TabInput<'a> {
+    tab: &'a DocumentTab,
+    /// Position in the strip; identifies this tab's close-handle and is echoed
+    /// back in the emitted event.
     index: usize,
-) -> (bool, bool) {
-    let row_height = ui.spacing().interact_size.y;
-    let font = egui::TextStyle::Button.resolve(ui.style());
-    let text_color = if tab.missing {
-        ui.visuals().warn_fg_color
-    } else if selected {
-        ui.visuals().strong_text_color()
-    } else {
-        ui.visuals().weak_text_color()
-    };
-    // Strikethrough needs a laid-out job, which also measures the tab exactly.
-    let title = {
-        let mut job = egui::text::LayoutJob::default();
-        job.append(
-            &tab.title,
-            0.0,
-            egui::text::TextFormat {
-                font_id: font.clone(),
-                color: text_color,
-                strikethrough: if tab.missing {
-                    egui::Stroke::new(1.0, text_color)
-                } else {
-                    egui::Stroke::NONE
-                },
-                ..Default::default()
-            },
-        );
-        ui.fonts_mut(|fonts| fonts.layout_job(job))
-    };
-    let close_size = 16.0;
-    let missing_width = if tab.missing { 14.0 } else { 0.0 };
-    let tab_width = title.size().x + 12.0 + close_size + 8.0 + missing_width;
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(tab_width, row_height), egui::Sense::click());
-    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+    selected: bool,
+}
 
-    let close_center = egui::pos2(rect.right() - close_size / 2.0 - 4.0, rect.center().y);
-    let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(close_size, close_size));
-    // Allocated after the tab so the button stays on top of it, but that also
-    // means the tab loses hover whenever the pointer is over the button —
-    // combine both hover states so the button never flickers or disappears,
-    // and only one of the two receives the click.
-    let close_response = ui
-        .interact(
-            close_rect,
-            ui.id().with(("tab_close", index)),
-            egui::Sense::click(),
-        )
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
+impl Component for TabView {
+    type Message = DocumentEvent;
+    type Input<'a> = TabInput<'a>;
 
-    let hovered = response.hovered() || close_response.hovered();
-    let painter = ui.painter();
-    if selected || hovered {
-        let bg = if selected {
-            ui.visuals().widgets.inactive.bg_fill
+    fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<DocumentEvent> {
+        let TabInput { tab, index, selected } = input;
+        let mut events = Vec::new();
+        let row_height = ui.spacing().interact_size.y;
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let text_color = if tab.missing {
+            ui.visuals().warn_fg_color
+        } else if selected {
+            ui.visuals().strong_text_color()
         } else {
-            ui.visuals().widgets.hovered.bg_fill
+            ui.visuals().weak_text_color()
         };
-        painter.rect_filled(rect, 0.0, bg);
-    }
-    if selected {
-        painter.rect_filled(
-            egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.right(), rect.top() + 2.0)),
-            0.0,
-            ui.visuals().hyperlink_color,
-        );
-    }
+        // Strikethrough needs a laid-out galley; elision to the fixed width
+        // does too, so the job is built with a truncation wrap.
+        let close_size = 16.0;
+        let missing_width = if tab.missing { 14.0 } else { 0.0 };
+        let tab_width = TAB_WIDTH;
+        let title_max_width = tab_width - 8.0 - missing_width - close_size - 8.0;
+        let title = {
+            let mut job = egui::text::LayoutJob::default();
+            job.wrap = egui::text::TextWrapping::truncate_at_width(title_max_width);
+            job.append(
+                &tab.title,
+                0.0,
+                egui::text::TextFormat {
+                    font_id: font.clone(),
+                    color: text_color,
+                    strikethrough: if tab.missing {
+                        egui::Stroke::new(1.0, text_color)
+                    } else {
+                        egui::Stroke::NONE
+                    },
+                    ..Default::default()
+                },
+            );
+            ui.fonts_mut(|fonts| fonts.layout_job(job))
+        };
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(tab_width, row_height), egui::Sense::click());
+        let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
 
-    if tab.missing {
-        painter.text(
-            egui::pos2(rect.left() + 6.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            FILE_X,
-            egui::FontId::proportional(11.0),
-            ui.visuals().warn_fg_color,
-        );
-    }
-    painter.galley(
-        egui::pos2(
-            rect.left() + 8.0 + missing_width,
-            rect.center().y - title.size().y / 2.0,
-        ),
-        title,
-        text_color,
-    );
+        let close_center = egui::pos2(rect.right() - close_size / 2.0 - 4.0, rect.center().y);
+        let close_rect = egui::Rect::from_center_size(close_center, egui::vec2(close_size, close_size));
+        // Allocated after the tab so the button stays on top of it, but that also
+        // means the tab loses hover whenever the pointer is over the button —
+        // combine both hover states so the button never flickers or disappears,
+        // and only one of the two receives the click.
+        let close_response = ui
+            .interact(
+                close_rect,
+                ui.id().with(("tab_close", index)),
+                egui::Sense::click(),
+            )
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
 
-    if hovered {
-        painter.text(
-            close_center,
-            egui::Align2::CENTER_CENTER,
-            X,
-            egui::FontId::proportional(11.0),
-            crate::chrome::ui::widgets::icon_text_color(ui, close_response.hovered()),
-        );
-    } else if tab.dirty {
-        painter.circle_filled(
-            egui::pos2(rect.right() - close_size / 2.0 - 5.0, rect.center().y),
-            3.0,
-            ui.visuals().hyperlink_color,
-        );
-    }
+        let hovered = response.hovered() || close_response.hovered();
+        let painter = ui.painter();
+        if selected || hovered {
+            let bg = if selected {
+                ui.visuals().widgets.inactive.bg_fill
+            } else {
+                ui.visuals().widgets.hovered.bg_fill
+            };
+            painter.rect_filled(rect, 0.0, bg);
+        }
+        if selected {
+            painter.rect_filled(
+                egui::Rect::from_min_max(rect.left_top(), egui::pos2(rect.right(), rect.top() + 2.0)),
+                0.0,
+                ui.visuals().hyperlink_color,
+            );
+        }
 
-    (response.clicked(), close_response.clicked())
+        if tab.missing {
+            painter.text(
+                egui::pos2(rect.left() + 6.0, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                FILE_X,
+                egui::FontId::proportional(11.0),
+                ui.visuals().warn_fg_color,
+            );
+        }
+        painter.galley(
+            egui::pos2(
+                rect.left() + 8.0 + missing_width,
+                rect.center().y - title.size().y / 2.0,
+            ),
+            title,
+            text_color,
+        );
+
+        if hovered {
+            painter.text(
+                close_center,
+                egui::Align2::CENTER_CENTER,
+                X,
+                egui::FontId::proportional(11.0),
+                crate::chrome::ui::widgets::icon_text_color(ui, close_response.hovered()),
+            );
+        } else if tab.dirty {
+            painter.circle_filled(
+                egui::pos2(rect.right() - close_size / 2.0 - 5.0, rect.center().y),
+                3.0,
+                ui.visuals().hyperlink_color,
+            );
+        }
+
+        if response.clicked() {
+            events.push(DocumentEvent::SwitchDocument(index));
+        }
+        if close_response.clicked() {
+            events.push(DocumentEvent::CloseDocument(index));
+        }
+        events
+    }
 }

@@ -40,7 +40,6 @@ impl AppTheme {
             raised: colors.raised,
             hover: colors.hover,
             active: colors.active,
-            accent: colors.accent,
         };
         style_widgets(&mut visuals, &palette);
         Self { visuals }
@@ -55,7 +54,6 @@ struct Palette {
     raised: Color32,
     hover: Color32,
     active: Color32,
-    accent: Color32,
 }
 
 fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
@@ -66,41 +64,39 @@ fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
         raised,
         hover,
         active,
-        accent,
     } = *palette;
-    let corner = CornerRadius::same(4);
-    visuals.widgets.noninteractive = egui::style::WidgetVisuals {
-        bg_fill: raised,
+    // Flat chrome: every interactive state is a square, borderless fill. Only
+    // `noninteractive.bg_stroke` keeps a line, because egui paints panel
+    // separator lines and `Frame::group` outlines from it.
+    let flat = egui::style::WidgetVisuals {
+        bg_fill: Color32::TRANSPARENT,
         weak_bg_fill: Color32::TRANSPARENT,
-        bg_stroke: Stroke::new(1.0, border),
-        corner_radius: CornerRadius::same(2),
+        bg_stroke: Stroke::NONE,
+        corner_radius: CornerRadius::ZERO,
         fg_stroke: Stroke::new(1.0, text),
         expansion: 0.0,
     };
+    visuals.widgets.noninteractive = egui::style::WidgetVisuals {
+        bg_fill: raised,
+        bg_stroke: Stroke::new(1.0, border),
+        fg_stroke: Stroke::new(1.0, text),
+        ..flat
+    };
     visuals.widgets.inactive = egui::style::WidgetVisuals {
         bg_fill: raised,
-        weak_bg_fill: raised,
-        bg_stroke: Stroke::new(1.0, border),
-        corner_radius: corner,
-        fg_stroke: Stroke::new(1.0, text),
-        expansion: 0.0,
+        weak_bg_fill: weak,
+        ..flat
     };
     visuals.widgets.hovered = egui::style::WidgetVisuals {
         bg_fill: hover,
         weak_bg_fill: hover,
-        bg_stroke: Stroke::new(1.0, accent),
-        corner_radius: corner,
-        fg_stroke: Stroke::new(1.0, text),
-        expansion: 0.0,
+        ..flat
     };
     visuals.widgets.active = egui::style::WidgetVisuals {
         bg_fill: active,
         weak_bg_fill: active,
-        bg_stroke: Stroke::new(1.0, accent),
-        corner_radius: corner,
         fg_stroke: Stroke::new(1.5, text),
-        expansion: 0.0,
+        ..flat
     };
     visuals.widgets.open = visuals.widgets.hovered;
-    visuals.widgets.inactive.weak_bg_fill = weak;
 }

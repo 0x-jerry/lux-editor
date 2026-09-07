@@ -42,10 +42,14 @@ impl Component for DocumentTabsView {
         let previous_identity = ui.data(|data| data.get_temp::<Option<PathBuf>>(active_state_id));
         let reveal_active = previous_identity.as_ref() != Some(&active_identity);
         ui.data_mut(|data| data.insert_temp(active_state_id, active_identity));
-        egui::Frame::new()
+        let strip = egui::Frame::new()
             .fill(input.background)
             .inner_margin(egui::Margin::same(0))
             .show(ui, |ui| {
+                // Wheel over the strip scrolls it horizontally without Shift;
+                // egui reads only the wheel axis matching a single-direction
+                // scroll area unless this style flag is set.
+                ui.style_mut().always_scroll_the_only_direction = true;
                 egui::ScrollArea::horizontal()
                     .id_salt("document_tabs_scroll")
                     .auto_shrink([false, true])
@@ -67,6 +71,12 @@ impl Component for DocumentTabsView {
                         });
                     });
             });
+        // Hairline under the strip, separating it from the editor below.
+        ui.painter().hline(
+            strip.response.rect.x_range(),
+            strip.response.rect.bottom(),
+            egui::Stroke::new(1.0, ui.visuals().widgets.noninteractive.bg_stroke.color),
+        );
         events
     }
 }

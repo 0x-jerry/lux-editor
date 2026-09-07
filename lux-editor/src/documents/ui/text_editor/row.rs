@@ -1,4 +1,5 @@
 use super::metrics::TextEditorMetrics;
+use crate::component::Component;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::build_highlighted_line_job;
@@ -13,11 +14,6 @@ pub struct VisibleRow {
     pub bottom: f32,
 }
 
-pub struct RowRenderOutput {
-    pub inner_rect: egui::Rect,
-    pub visible_rows: Vec<VisibleRow>,
-}
-
 #[derive(Clone, Default)]
 struct RevealState {
     last_caret_line: usize,
@@ -25,192 +21,239 @@ struct RevealState {
     target_offset: Option<f32>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn render_rows(
-    ui: &mut egui::Ui,
-    buffer: &Buffer,
-    highlight_snapshot: &HighlightSnapshot,
-    editor_config: &Config,
-    carets: &[(usize, usize)],
-    selection_ranges: &[Range<usize>],
-    active_caret_index: usize,
-    caret_visible: bool,
-    metrics: &TextEditorMetrics,
-    events: &mut Vec<EditingEvent>,
-) -> RowRenderOutput {
-    // show_rows virtualizes on `row_height + item_spacing.y`; a contiguous
-    // grid of lines (no gaps) is what a code editor wants, so zero the spacing
-    // before the scroll area reads it.
-    ui.spacing_mut().item_spacing.y = 0.0;
+pub struct RowsInput<'a> {
+    pub buffer: &'a Buffer,
+    pub highlight_snapshot: &'a HighlightSnapshot,
+    pub editor_config: &'a Config,
+    pub carets: &'a [(usize, usize)],
+    pub selection_ranges: &'a [Range<usize>],
+    pub active_caret_index: usize,
+    pub caret_visible: bool,
+    pub metrics: &'a TextEditorMetrics,
+    pub total_lines: usize,
+}
 
-    let total_lines = buffer.len_lines();
-    let mut visible_rows = Vec::new();
+/// The scrollable text area: virtualizes rows via a scroll area and tracks the
+/// scroll/reveal state. Rebuilds `visible_rows` and `inner_rect` each frame for
+/// the gutter to consume.
+pub struct Rows {
+    visible_rows: Vec<VisibleRow>,
+    inner_rect: egui::Rect,
+}
 
-    let (active_line, _) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
-    // Scroll and reveal state are keyed per document: a first-time open starts
-    // at the top, and switching tabs restores each file's own position.
-    let document_salt = buffer
-        .path()
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "untitled".to_owned());
-    let reveal_id = egui::Id::new(("editor_text_editor_reveal", document_salt.clone()));
-    let mut reveal: RevealState = ui.data_mut(|data| data.get_temp(reveal_id).unwrap_or_default());
-
-    // Don't fight the user dragging the scrollbar: only reveal on caret moves.
-    let user_scrolling = ui.input(|input| {
-        input.smooth_scroll_delta.y.abs() > 0.0
-            || input
-                .raw
-                .events
-                .iter()
-                .any(|event| matches!(event, egui::Event::MouseWheel { .. }))
-    });
-    if user_scrolling {
-        reveal.last_caret_line = active_line;
-    }
-    let viewport_height = ui.available_height();
-    let caret_row_top = active_line.saturating_sub(1) as f32 * metrics.row_height;
-    if !user_scrolling && reveal.last_caret_line != active_line {
-        reveal.last_caret_line = active_line;
-        let margin = metrics.row_height * 3.0;
-        let content_height = total_lines as f32 * metrics.row_height;
-        let max_scroll = (content_height - viewport_height).max(0.0);
-        let caret_bottom = caret_row_top + metrics.row_height;
-        if caret_row_top < reveal.offset || caret_bottom > reveal.offset + viewport_height {
-            reveal.target_offset = Some((caret_row_top - margin).clamp(0.0, max_scroll));
-        } else {
-            reveal.target_offset = None;
+impl Default for Rows {
+    fn default() -> Self {
+        Rows {
+            visible_rows: Vec::new(),
+            inner_rect: egui::Rect::ZERO,
         }
-    }
-
-    let mut scroll_area = egui::ScrollArea::both()
-        .id_salt(("editor_text_editor_scroll", document_salt))
-        .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
-        .auto_shrink([false, false]);
-    if let Some(target) = reveal.target_offset {
-        scroll_area = scroll_area.vertical_scroll_offset(target);
-    }
-
-    let scroll_output =
-        scroll_area.show_rows(ui, metrics.row_height, total_lines, |ui, row_range| {
-            for line_index in row_range {
-                render_row(
-                    ui,
-                    buffer,
-                    highlight_snapshot,
-                    editor_config,
-                    line_index,
-                    carets,
-                    selection_ranges,
-                    active_caret_index,
-                    caret_visible,
-                    metrics,
-                    events,
-                    &mut visible_rows,
-                );
-            }
-        });
-
-    reveal.offset = scroll_output.state.offset.y;
-    reveal.target_offset = None;
-    ui.data_mut(|data| data.insert_temp(reveal_id, reveal));
-
-    RowRenderOutput {
-        inner_rect: scroll_output.inner_rect,
-        visible_rows,
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn render_row(
-    ui: &mut egui::Ui,
-    buffer: &Buffer,
-    highlight_snapshot: &HighlightSnapshot,
-    editor_config: &Config,
-    line_index: usize,
-    carets: &[(usize, usize)],
-    selection_ranges: &[Range<usize>],
-    active_caret_index: usize,
-    caret_visible: bool,
-    metrics: &TextEditorMetrics,
-    events: &mut Vec<EditingEvent>,
-    visible_rows: &mut Vec<VisibleRow>,
-) {
-    let line_start = buffer.text().line_to_char(line_index);
-    let line_text_owned = buffer
-        .line(line_index)
-        .and_then(|mut lines| lines.next())
-        .map(|line| line.to_string())
-        .unwrap_or_default();
-    let line_text = display_line_text(&line_text_owned);
-    let line_len = line_text.chars().count();
+impl Rows {
+    pub fn visible_rows(&self) -> &[VisibleRow] {
+        &self.visible_rows
+    }
 
-    let tokens = highlight_snapshot.line_tokens.get(line_index);
-    let default_color = crate::highlighting::snapshot_color(
-        highlight_snapshot.foreground,
-        ui.visuals().text_color(),
-    );
-    let job = build_highlighted_line_job(
-        line_text,
-        tokens.map(Vec::as_slice).unwrap_or(&[]),
-        editor_config.settings.font.size,
-        default_color,
-    );
-    let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
-    let row_width = galley.size().x.max(ui.available_width());
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(row_width, metrics.row_height),
-        egui::Sense::click_and_drag(),
-    );
-    let response = response.on_hover_and_drag_cursor(egui::CursorIcon::Text);
-    let text_origin = egui::pos2(rect.left() + metrics.gutter_total_width, rect.top());
+    pub fn inner_rect(&self) -> egui::Rect {
+        self.inner_rect
+    }
+}
 
-    for range in selection_ranges {
-        paint_selection(
+impl Component for Rows {
+    type Message = EditingEvent;
+    type Input<'a> = RowsInput<'a>;
+
+    fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<EditingEvent> {
+        let mut events = Vec::new();
+        // show_rows virtualizes on `row_height + item_spacing.y`; a contiguous
+        // grid of lines (no gaps) is what a code editor wants, so zero the spacing
+        // before the scroll area reads it.
+        ui.spacing_mut().item_spacing.y = 0.0;
+
+        let (active_line, _) = input
+            .carets
+            .get(input.active_caret_index)
+            .copied()
+            .unwrap_or((1, 1));
+        // Scroll and reveal state are keyed per document: a first-time open starts
+        // at the top, and switching tabs restores each file's own position.
+        let document_salt = input
+            .buffer
+            .path()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "untitled".to_owned());
+        let reveal_id = egui::Id::new(("editor_text_editor_reveal", document_salt.clone()));
+        let mut reveal: RevealState =
+            ui.data_mut(|data| data.get_temp(reveal_id).unwrap_or_default());
+
+        // Don't fight the user dragging the scrollbar: only reveal on caret moves.
+        let user_scrolling = ui.input(|input| {
+            input.smooth_scroll_delta.y.abs() > 0.0
+                || input
+                    .raw
+                    .events
+                    .iter()
+                    .any(|event| matches!(event, egui::Event::MouseWheel { .. }))
+        });
+        if user_scrolling {
+            reveal.last_caret_line = active_line;
+        }
+        let viewport_height = ui.available_height();
+        let caret_row_top = active_line.saturating_sub(1) as f32 * input.metrics.row_height;
+        if !user_scrolling && reveal.last_caret_line != active_line {
+            reveal.last_caret_line = active_line;
+            let margin = input.metrics.row_height * 3.0;
+            let content_height = input.total_lines as f32 * input.metrics.row_height;
+            let max_scroll = (content_height - viewport_height).max(0.0);
+            let caret_bottom = caret_row_top + input.metrics.row_height;
+            if caret_row_top < reveal.offset || caret_bottom > reveal.offset + viewport_height {
+                reveal.target_offset = Some((caret_row_top - margin).clamp(0.0, max_scroll));
+            } else {
+                reveal.target_offset = None;
+            }
+        }
+
+        let mut scroll_area = egui::ScrollArea::both()
+            .id_salt(("editor_text_editor_scroll", document_salt))
+            .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
+            .auto_shrink([false, false]);
+        if let Some(target) = reveal.target_offset {
+            scroll_area = scroll_area.vertical_scroll_offset(target);
+        }
+
+        self.visible_rows.clear();
+        let scroll_output = scroll_area.show_rows(
             ui,
-            line_start,
-            line_len,
-            range,
-            &galley,
-            text_origin,
-            metrics,
+            input.metrics.row_height,
+            input.total_lines,
+            |ui, row_range| {
+                for line_index in row_range {
+                    let mut row = Row;
+                    events.extend(row.render(
+                        ui,
+                        RowInput {
+                            line_index,
+                            buffer: input.buffer,
+                            highlight_snapshot: input.highlight_snapshot,
+                            editor_config: input.editor_config,
+                            carets: input.carets,
+                            selection_ranges: input.selection_ranges,
+                            active_caret_index: input.active_caret_index,
+                            caret_visible: input.caret_visible,
+                            metrics: input.metrics,
+                            visible_rows: &mut self.visible_rows,
+                        },
+                    ));
+                }
+            },
         );
-    }
-    ui.painter()
-        .galley(text_origin, galley.clone(), ui.visuals().text_color());
-    push_pointer_events(
-        ui,
-        buffer,
-        highlight_snapshot,
-        editor_config,
-        line_index,
-        &galley,
-        text_origin,
-        &rect,
-        metrics,
-        &response,
-        events,
-    );
-    for (index, (caret_line, caret_column)) in carets.iter().enumerate() {
-        if *caret_line != line_index + 1 {
-            continue;
-        }
-        let char_pos = line_start + caret_column.saturating_sub(1);
-        let covered = selection_ranges
-            .iter()
-            .any(|range| char_pos >= range.start && char_pos < range.end);
-        if covered {
-            continue;
-        }
-        let show = caret_visible || index != active_caret_index;
-        paint_caret(ui, &galley, text_origin, *caret_column, show, metrics);
-    }
 
-    visible_rows.push(VisibleRow {
-        index: line_index,
-        top: rect.top(),
-        bottom: rect.bottom(),
-    });
+        reveal.offset = scroll_output.state.offset.y;
+        reveal.target_offset = None;
+        ui.data_mut(|data| data.insert_temp(reveal_id, reveal));
+
+        self.inner_rect = scroll_output.inner_rect;
+
+        events
+    }
+}
+
+pub struct RowInput<'a> {
+    pub line_index: usize,
+    pub buffer: &'a Buffer,
+    pub highlight_snapshot: &'a HighlightSnapshot,
+    pub editor_config: &'a Config,
+    pub carets: &'a [(usize, usize)],
+    pub selection_ranges: &'a [Range<usize>],
+    pub active_caret_index: usize,
+    pub caret_visible: bool,
+    pub metrics: &'a TextEditorMetrics,
+    pub visible_rows: &'a mut Vec<VisibleRow>,
+}
+
+/// A single visible line: highlights, selection, caret and pointer interaction.
+pub struct Row;
+
+impl Component for Row {
+    type Message = EditingEvent;
+    type Input<'a> = RowInput<'a>;
+
+    fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<EditingEvent> {
+        let line_start = input.buffer.text().line_to_char(input.line_index);
+        let line_text_owned = input
+            .buffer
+            .line(input.line_index)
+            .and_then(|mut lines| lines.next())
+            .map(|line| line.to_string())
+            .unwrap_or_default();
+        let line_text = display_line_text(&line_text_owned);
+        let line_len = line_text.chars().count();
+
+        let tokens = input.highlight_snapshot.line_tokens.get(input.line_index);
+        let default_color = crate::highlighting::snapshot_color(
+            input.highlight_snapshot.foreground,
+            ui.visuals().text_color(),
+        );
+        let job = build_highlighted_line_job(
+            line_text,
+            tokens.map(Vec::as_slice).unwrap_or(&[]),
+            input.editor_config.settings.font.size,
+            default_color,
+        );
+        let galley = ui.fonts_mut(|fonts| fonts.layout_job(job));
+        let row_width = galley.size().x.max(ui.available_width());
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(row_width, input.metrics.row_height),
+            egui::Sense::click_and_drag(),
+        );
+        let response = response.on_hover_and_drag_cursor(egui::CursorIcon::Text);
+        let text_origin = egui::pos2(rect.left(), rect.top());
+
+        let mut events = Vec::new();
+        for range in input.selection_ranges {
+            paint_selection(
+                ui,
+                &input,
+                line_start,
+                line_len,
+                range,
+                &galley,
+                text_origin,
+            );
+        }
+        ui.painter()
+            .galley(text_origin, galley.clone(), ui.visuals().text_color());
+        events.extend(push_pointer_events(
+            ui,
+            &input,
+            &galley,
+            &rect,
+            &response,
+        ));
+        for (index, (caret_line, caret_column)) in input.carets.iter().enumerate() {
+            if *caret_line != input.line_index + 1 {
+                continue;
+            }
+            let char_pos = line_start + caret_column.saturating_sub(1);
+            let covered = input
+                .selection_ranges
+                .iter()
+                .any(|range| char_pos >= range.start && char_pos < range.end);
+            if covered {
+                continue;
+            }
+            let show = input.caret_visible || index != input.active_caret_index;
+            paint_caret(ui, &galley, text_origin, *caret_column, show, input.metrics);
+        }
+
+        input.visible_rows.push(VisibleRow {
+            index: input.line_index,
+            top: rect.top(),
+            bottom: rect.bottom(),
+        });
+        events
+    }
 }
 
 fn display_line_text(line: &str) -> &str {
@@ -219,12 +262,12 @@ fn display_line_text(line: &str) -> &str {
 
 fn paint_selection(
     ui: &egui::Ui,
+    input: &RowInput<'_>,
     line_start: usize,
     line_len: usize,
     range: &Range<usize>,
     galley: &egui::text::Galley,
     text_origin: egui::Pos2,
-    metrics: &TextEditorMetrics,
 ) {
     let line_end = line_start + line_len;
     if range.end <= line_start || range.start >= line_end {
@@ -255,7 +298,7 @@ fn paint_selection(
     };
     let rect = egui::Rect::from_min_max(
         egui::pos2(x0, text_origin.y),
-        egui::pos2(x1, text_origin.y + metrics.row_height),
+        egui::pos2(x1, text_origin.y + input.metrics.row_height),
     );
     ui.painter()
         .rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
@@ -287,20 +330,16 @@ fn paint_caret(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 fn push_pointer_events(
     ui: &egui::Ui,
-    buffer: &Buffer,
-    highlight_snapshot: &HighlightSnapshot,
-    editor_config: &Config,
-    line_index: usize,
+    input: &RowInput<'_>,
     galley: &egui::text::Galley,
-    text_origin: egui::Pos2,
     rect: &egui::Rect,
-    metrics: &TextEditorMetrics,
     response: &egui::Response,
-    events: &mut Vec<EditingEvent>,
-) {
+) -> Vec<EditingEvent> {
+    let line_index = input.line_index;
+    let text_origin = egui::pos2(rect.left(), rect.top());
+    let mut events = Vec::new();
     let column_from = |pointer: egui::Pos2| {
         galley
             .cursor_from_pos(egui::vec2(
@@ -335,9 +374,9 @@ fn push_pointer_events(
     // Drags keep targeting the row where the press started, so project the
     // pointer onto the row it is over and let the app clamp to real lines.
     let line_column_from = |pointer: egui::Pos2| {
-        let row_delta = ((pointer.y - rect.top()) / metrics.row_height).floor() as isize;
+        let row_delta = ((pointer.y - rect.top()) / input.metrics.row_height).floor() as isize;
         let pointed_line = (line_index as isize + row_delta).max(0) as usize;
-        let pointed_top = rect.top() + row_delta as f32 * metrics.row_height;
+        let pointed_top = rect.top() + row_delta as f32 * input.metrics.row_height;
         // The pressed row's galley only maps x within its own text, so over a
         // different line its end clamps the cursor to the pressed line's width.
         // Lay the pointed line out the same way to track the caret it paints.
@@ -345,7 +384,8 @@ fn push_pointer_events(
         let column = if pointed_line == line_index {
             galley.cursor_from_pos(cursor_offset).index.0
         } else {
-            let line_text_owned = buffer
+            let line_text_owned = input
+                .buffer
                 .line(pointed_line)
                 .and_then(|mut lines| lines.next())
                 .map(|line| line.to_string())
@@ -353,15 +393,15 @@ fn push_pointer_events(
             if line_text_owned.is_empty() {
                 galley.cursor_from_pos(cursor_offset).index.0
             } else {
-                let tokens = highlight_snapshot.line_tokens.get(pointed_line);
+                let tokens = input.highlight_snapshot.line_tokens.get(pointed_line);
                 let default_color = crate::highlighting::snapshot_color(
-                    highlight_snapshot.foreground,
+                    input.highlight_snapshot.foreground,
                     ui.visuals().text_color(),
                 );
                 let job = build_highlighted_line_job(
                     display_line_text(&line_text_owned),
                     tokens.map(Vec::as_slice).unwrap_or(&[]),
-                    editor_config.settings.font.size,
+                    input.editor_config.settings.font.size,
                     default_color,
                 );
                 ui.ctx()
@@ -401,4 +441,5 @@ fn push_pointer_events(
             add_cursor: false,
         });
     }
+    events
 }

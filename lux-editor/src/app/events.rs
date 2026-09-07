@@ -14,7 +14,7 @@ impl App {
             CustomEvent::Workspace(event) => self.handle_workspace_event(event),
             CustomEvent::Document(event) => self.handle_document_event(event, ctx),
             CustomEvent::App(event) => self.handle_app_event(event, ctx),
-            CustomEvent::Shell(event) => self.handle_shell_event(event, ctx),
+            CustomEvent::Shell(event) => self.handle_shell_event(event),
             CustomEvent::Configuration(event) => self.handle_configuration_event(event),
             CustomEvent::Editing(event) => self.handle_editing_event(event),
         }

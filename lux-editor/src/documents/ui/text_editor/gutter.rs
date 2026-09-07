@@ -39,12 +39,4 @@ pub fn paint_gutter(
             metrics.gutter_text_color,
         );
     }
-
-    ui.painter().line_segment(
-        [
-            egui::pos2(gutter_rect.right(), gutter_rect.top()),
-            egui::pos2(gutter_rect.right(), gutter_rect.bottom()),
-        ],
-        egui::Stroke::new(1.0, metrics.gutter_separator_color),
-    );
 }

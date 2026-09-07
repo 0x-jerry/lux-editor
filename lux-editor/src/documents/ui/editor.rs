@@ -1,6 +1,7 @@
 use crate::documents::tabs::{DocumentTabsInput, DocumentTabsView};
 use super::text_editor::{TextEditor, TextEditorState};
 use crate::chrome::ui::welcome::WelcomeView;
+use crate::chrome::ui::{FileMissingInput, FileMissingView, WorkspaceStartInput, WorkspaceStartView};
 use crate::settings::Config;
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
@@ -27,6 +28,10 @@ pub struct EditorViewState<'a> {
     pub selection_ranges: &'a [Range<usize>],
     pub active_caret_index: usize,
     pub caret_visible: bool,
+    pub sidebar_visible: bool,
+    pub document_dirty: bool,
+    pub document_status: Option<&'a str>,
+    pub restoring_session: bool,
 }
 
 impl Component for EditorView {
@@ -45,11 +50,31 @@ impl Component for EditorView {
             selection_ranges,
             active_caret_index,
             caret_visible,
+            sidebar_visible,
+            document_dirty,
+            document_status,
+            restoring_session,
         } = state;
         let mut events = Vec::new();
         if workspace_path.is_none() && buffer.path().is_none() {
             let mut welcome_view = WelcomeView;
             events.extend(welcome_view.render(ui, editor_config));
+            return events;
+        }
+
+        let nothing_open = buffer.path().is_none()
+            && !document_dirty
+            && buffer.text().len_chars() == 0
+            && !restoring_session;
+        if let (Some(path), true) = (workspace_path, nothing_open) {
+            let mut start_view = WorkspaceStartView;
+            events.extend(start_view.render(
+                ui,
+                WorkspaceStartInput {
+                    workspace_path: path,
+                    sidebar_visible,
+                },
+            ));
             return events;
         }
 
@@ -69,6 +94,25 @@ impl Component for EditorView {
                 .into_iter()
                 .map(CustomEvent::Document),
         );
+
+        // A vanished file is not editable, so the page replaces the text area
+        // and leaves the strip reachable for the other tabs.
+        let missing = document_tabs
+            .get(active_document_index)
+            .is_some_and(|tab| tab.missing);
+        if missing {
+            if let Some(path) = buffer.path() {
+                let mut missing_view = FileMissingView;
+                missing_view.render(
+                    ui,
+                    FileMissingInput {
+                        path,
+                        loader_error: document_status,
+                    },
+                );
+            }
+            return events;
+        }
 
         let mut text_editor = TextEditor;
         events.extend(

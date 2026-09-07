@@ -71,6 +71,7 @@ impl App {
 
         self.chrome.command_panel.open()
             || self.chrome.shell.shell_view() != ShellView::Editor
+            || self.active_document().missing
             || ctx.egui_wants_keyboard_input()
     }
 }

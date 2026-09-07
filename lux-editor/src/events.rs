@@ -29,10 +29,13 @@ pub enum WorkspaceEvent {
 /// save/format commands that act on the current document.
 #[derive(Debug)]
 pub enum DocumentEvent {
-    /// An async file load finished.
-    FileLoaded {
-        path: PathBuf,
-        buffer: Result<lux_core::Buffer, String>,
+    /// Loads finished, in the order they were requested.
+    FilesLoaded {
+        entries: Vec<(PathBuf, Result<lux_core::Buffer, String>)>,
+        /// Tab to focus once the batch lands.
+        activate: Option<PathBuf>,
+        /// Workspace the batch was requested for; a stale batch is dropped.
+        workspace: Option<PathBuf>,
     },
     /// An async save finished.
     FileSaved {

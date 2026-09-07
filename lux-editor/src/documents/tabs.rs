@@ -4,10 +4,12 @@ use crate::component::Component;
 pub struct DocumentTab {
     pub title: String,
     pub dirty: bool,
+    /// The file behind the tab is gone; the strip strikes the title through.
+    pub missing: bool,
 }
 
 use eframe::egui;
-use egui_phosphor::regular::X;
+use egui_phosphor::regular::{FILE_X, X};
 
 /// The editor document tab strip.
 pub(crate) struct DocumentTabsView;
@@ -52,7 +54,8 @@ impl Component for DocumentTabsView {
 }
 
 /// A document tab: filled when active with an accent top bar; the close button
-/// appears on hover, and an accent dot marks unsaved changes otherwise.
+/// appears on hover, an accent dot marks unsaved changes otherwise, and a
+/// deleted file is struck through.
 fn document_tab(
     ui: &mut egui::Ui,
     tab: &DocumentTab,
@@ -61,10 +64,35 @@ fn document_tab(
 ) -> (bool, bool) {
     let row_height = ui.spacing().interact_size.y;
     let font = egui::TextStyle::Button.resolve(ui.style());
-    let text_width =
-        ui.fonts_mut(|fonts| fonts.glyph_width(&font, 'M')) * tab.title.chars().count() as f32;
+    let text_color = if tab.missing {
+        ui.visuals().warn_fg_color
+    } else if selected {
+        ui.visuals().strong_text_color()
+    } else {
+        ui.visuals().weak_text_color()
+    };
+    // Strikethrough needs a laid-out job, which also measures the tab exactly.
+    let title = {
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            &tab.title,
+            0.0,
+            egui::text::TextFormat {
+                font_id: font.clone(),
+                color: text_color,
+                strikethrough: if tab.missing {
+                    egui::Stroke::new(1.0, text_color)
+                } else {
+                    egui::Stroke::NONE
+                },
+                ..Default::default()
+            },
+        );
+        ui.fonts_mut(|fonts| fonts.layout_job(job))
+    };
     let close_size = 16.0;
-    let tab_width = text_width + 12.0 + close_size + 8.0;
+    let missing_width = if tab.missing { 14.0 } else { 0.0 };
+    let tab_width = title.size().x + 12.0 + close_size + 8.0 + missing_width;
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(tab_width, row_height), egui::Sense::click());
     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -101,16 +129,21 @@ fn document_tab(
         );
     }
 
-    let text_color = if selected {
-        ui.visuals().strong_text_color()
-    } else {
-        ui.visuals().weak_text_color()
-    };
-    painter.text(
-        egui::pos2(rect.left() + 8.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        &tab.title,
-        font,
+    if tab.missing {
+        painter.text(
+            egui::pos2(rect.left() + 6.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            FILE_X,
+            egui::FontId::proportional(11.0),
+            ui.visuals().warn_fg_color,
+        );
+    }
+    painter.galley(
+        egui::pos2(
+            rect.left() + 8.0 + missing_width,
+            rect.center().y - title.size().y / 2.0,
+        ),
+        title,
         text_color,
     );
 

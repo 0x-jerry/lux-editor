@@ -3,6 +3,7 @@
 
 use crate::app::App;
 use crate::events::{CustomEvent, WorkspaceEvent};
+use crate::settings::WorkspaceSession;
 use crate::workspace::FileTree;
 use crate::workspace::watch;
 use eframe::egui;
@@ -54,8 +55,10 @@ impl Workspace {
 impl App {
     pub(crate) fn open_folder(&mut self, path: PathBuf, ctx: &egui::Context) {
         let path = path.canonicalize().unwrap_or(path);
+        let tree = FileTree::new(&path);
+        let root = tree.root().to_path_buf();
         self.workspace.path = Some(path.clone());
-        self.workspace.file_tree = Some(FileTree::new(&path));
+        self.workspace.file_tree = Some(tree);
         self.settings.editor_config.add_recent(path.clone(), true);
         self.workspace.watcher = Workspace::start_watcher(
             &path,
@@ -63,7 +66,7 @@ impl App {
             self.runtime.ctx.clone(),
         );
         self.documents.reset_editor_state();
-        self.open_workspace_last_file(&path, ctx);
+        self.restore_workspace_session(&path, &root, ctx);
         self.restart_settings_watcher();
         if self.settings.editor_config.reload_settings() {
             self.chrome.needs_style_refresh = true;
@@ -73,40 +76,106 @@ impl App {
             .sync_config_draft(&self.settings.editor_config.settings);
     }
 
+    /// Restore a workspace's tree expansion and tabs; one never seen before
+    /// opens with just its root expanded, so the top level is already visible.
+    fn restore_workspace_session(
+        &mut self,
+        workspace_path: &Path,
+        root: &Path,
+        ctx: &egui::Context,
+    ) {
+        let Some(session) = self
+            .settings
+            .editor_config
+            .workspace_session(workspace_path)
+            .cloned()
+        else {
+            self.chrome.shell.set_file_tree_expanded([root.to_path_buf()]);
+            return;
+        };
+        self.chrome.shell.set_file_tree_expanded(
+            session
+                .expanded_dirs
+                .into_iter()
+                .filter(|dir| dir.is_dir()),
+        );
+        self.open_files(session.open_files, session.active_file, ctx);
+    }
+
+    /// Snapshot the live tabs and tree expansion into the workspace's session;
+    /// runs every logic pass and only re-arms the debounced write on a change.
+    pub(crate) fn sync_workspace_session(&mut self) {
+        let Some(workspace_path) = self.workspace.path.clone() else {
+            return;
+        };
+        // Loads in flight would otherwise blank the session between the
+        // workspace opening and its restored tabs landing.
+        if self.documents.pending_loads > 0 {
+            return;
+        }
+        let inside = |path: &PathBuf| path.starts_with(&workspace_path);
+        let open_files = self
+            .documents
+            .tabs
+            .iter()
+            .filter_map(|document| document.buffer.path().cloned())
+            .filter(|path| inside(path))
+            .collect::<Vec<_>>();
+        let active_file = self
+            .active_document()
+            .buffer
+            .path()
+            .filter(|path| inside(path))
+            .cloned()
+            .or_else(|| {
+                // A tab left over from another workspace has focus: keep the
+                // remembered file while it is still open instead of erasing it.
+                let remembered = self
+                    .settings
+                    .editor_config
+                    .workspace_session(&workspace_path)?
+                    .active_file
+                    .clone()?;
+                open_files.contains(&remembered).then_some(remembered)
+            });
+        let expanded_dirs = self
+            .chrome
+            .shell
+            .file_tree_expanded()
+            .iter()
+            .filter(|path| inside(path))
+            .cloned()
+            .collect();
+        self.settings
+            .editor_config
+            .set_workspace_session(WorkspaceSession {
+                workspace_path,
+                open_files,
+                active_file,
+                expanded_dirs,
+            });
+    }
+
     pub(crate) fn initialize_from_path(&mut self, initial_path: Option<PathBuf>, ctx: &egui::Context) {
         let Some(path) = initial_path else {
             return;
         };
         let path = path.canonicalize().unwrap_or(path);
-
         if path.is_dir() {
-            self.workspace.path = Some(path.clone());
-            self.workspace.file_tree = Some(FileTree::new(&path));
-            self.settings.editor_config.add_recent(path.clone(), true);
-            self.workspace.watcher = Workspace::start_watcher(
-                &path,
-                self.runtime.event_tx.clone(),
-                self.runtime.ctx.clone(),
-            );
-            self.open_workspace_last_file(&path, ctx);
-            return;
-        }
-
-        if path.is_file() {
+            self.open_folder(path, ctx);
+        } else if path.is_file() {
             self.open_file(path, ctx);
         }
     }
 
     pub(crate) fn track_file_open(&mut self, path: &Path) {
-        if let Some(workspace_path) = self
+        // In-workspace files belong to the session; recents are for the rest.
+        if self
             .workspace
             .path
             .as_ref()
-            .filter(|workspace_path| path.starts_with(workspace_path))
+            .is_some_and(|workspace_path| path.starts_with(workspace_path))
         {
-            self.settings
-                .editor_config
-                .set_workspace_last_file(workspace_path, path);
             return;
         }
         self.settings
@@ -114,22 +183,27 @@ impl App {
             .add_recent(path.to_path_buf(), false);
     }
 
-    fn open_workspace_last_file(&mut self, workspace_path: &Path, ctx: &egui::Context) {
-        let Some(path) = self
-            .settings
-            .editor_config
-            .workspace_last_file(workspace_path)
-        else {
-            return;
-        };
-        if path.is_file() {
-            self.open_file(path, ctx);
-        }
-    }
-
     pub(crate) fn on_file_change(&mut self) {
         if let Some(tree) = &mut self.workspace.file_tree {
             tree.refresh();
+        }
+        self.sync_missing_documents();
+    }
+
+    /// Flag tabs whose file vanished, and re-read the ones whose file came back
+    /// so the missing page cannot outlive the gap it describes.
+    fn sync_missing_documents(&mut self) {
+        let mut revived = Vec::new();
+        for document in self.documents.tabs.iter_mut() {
+            let exists = document.buffer.path().is_some_and(|path| path.exists());
+            if document.observe_file_exists(exists)
+                && let Some(path) = document.buffer.path()
+            {
+                revived.push(path.clone());
+            }
+        }
+        if !revived.is_empty() {
+            self.load_files(revived, None);
         }
     }
 }

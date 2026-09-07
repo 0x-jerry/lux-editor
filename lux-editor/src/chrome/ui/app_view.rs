@@ -29,6 +29,8 @@ pub struct AppViewInput<'a> {
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub document_status: Option<&'a str>,
+    /// Still reading the files a restored workspace remembered; the welcome page waits.
+    pub restoring_session: bool,
     /// All cursor positions as 1-based (line, column).
     pub carets: Vec<(usize, usize)>,
     pub selection_ranges: Vec<Range<usize>>,
@@ -58,6 +60,7 @@ impl Component for AppView {
             highlight_snapshot,
             editor_config,
             document_status,
+            restoring_session,
             carets,
             selection_ranges,
             active_caret_index,
@@ -76,6 +79,7 @@ impl Component for AppView {
                 highlight_snapshot,
                 editor_config,
                 document_status,
+                restoring_session,
                 carets,
                 selection_ranges,
                 active_caret_index,

@@ -9,10 +9,18 @@ pub struct RecentItem {
     pub is_dir: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct WorkspaceFileState {
+/// What the editor remembers about a workspace: tabs in order, focused tab,
+/// expanded tree folders.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct WorkspaceSession {
+    #[serde(default)]
     pub workspace_path: PathBuf,
-    pub file_path: PathBuf,
+    #[serde(default)]
+    pub open_files: Vec<PathBuf>,
+    #[serde(default)]
+    pub active_file: Option<PathBuf>,
+    #[serde(default)]
+    pub expanded_dirs: Vec<PathBuf>,
 }
 
 fn default_theme_choice() -> String {

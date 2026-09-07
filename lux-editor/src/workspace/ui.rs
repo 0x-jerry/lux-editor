@@ -4,14 +4,18 @@ use crate::component::Component;
 use eframe::egui;
 use eframe::egui::{Id, TextEdit, Ui, collapsing_header::CollapsingState};
 use egui_phosphor::regular::{FILE_CODE, FOLDER, FOLDER_OPEN};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Left sidebar file tree; emits navigation and file-system events. Owns the
-/// last active file it drew (revealing the tree when that file changes) and
-/// the in-place rename state.
+/// last active file it drew (revealing the tree when that file changes), the
+/// set of expanded directories (the app persists it per workspace) and the
+/// in-place rename state.
 #[derive(Default)]
 pub struct FileTreePanel {
     last_active_path: Option<PathBuf>,
+    /// Open directories; egui's own collapsing state does not outlive the run.
+    expanded: HashSet<PathBuf>,
     /// Path currently being renamed in place, with the new-name draft.
     renaming: Option<(PathBuf, String)>,
 }
@@ -62,6 +66,23 @@ impl Component for FileTreePanel {
 }
 
 impl FileTreePanel {
+    /// Replace the expanded set, on workspace open.
+    pub fn set_expanded(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.expanded = paths.into_iter().collect();
+    }
+
+    pub fn expanded(&self) -> &HashSet<PathBuf> {
+        &self.expanded
+    }
+
+    fn set_expanded_for(&mut self, path: &Path, open: bool) {
+        if open {
+            self.expanded.insert(path.to_path_buf());
+        } else {
+            self.expanded.remove(path);
+        }
+    }
+
     /// Renders one row, loading directory children from the tree on demand.
     /// While a row is being renamed the rename `TextEdit` replaces it and no
     /// row action is emitted.
@@ -131,14 +152,19 @@ impl FileTreePanel {
 
                 let should_reveal = reveal_active_file
                     && active_file_path.is_some_and(|active_path| active_path.starts_with(path));
-                let mut state =
-                    CollapsingState::load_with_default_open(ui.ctx(), id, should_reveal);
-                if should_reveal && !state.is_open() {
-                    state.set_open(true);
+                if should_reveal {
+                    self.set_expanded_for(path, true);
+                }
+                let is_open = self.expanded.contains(path);
+                // The disclosure triangle toggles egui's own copy of this state;
+                // folding it back below keeps the set the only thing serialized.
+                let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, is_open);
+                if state.is_open() != is_open {
+                    state.set_open(is_open);
                     state.store(ui.ctx());
                 }
-                let is_open = state.is_open();
-                state
+                let mut toggled = false;
+                let (collapser, _, _) = state
                     .show_header(ui, |ui| {
                         let row_height = ui.spacing().interact_size.y;
                         let folder_name = path
@@ -157,13 +183,7 @@ impl FileTreePanel {
                             .inner;
 
                         if response.clicked() {
-                            let mut state = CollapsingState::load_with_default_open(
-                                ui.ctx(),
-                                id,
-                                should_reveal,
-                            );
-                            state.set_open(!is_open);
-                            state.store(ui.ctx());
+                            toggled = true;
                         }
 
                         response.context_menu(|ui| {
@@ -201,6 +221,13 @@ impl FileTreePanel {
                             }
                         }
                     });
+
+                if collapser.clicked() {
+                    toggled = true;
+                }
+                if toggled {
+                    self.set_expanded_for(path, !is_open);
+                }
 
                 event
             }

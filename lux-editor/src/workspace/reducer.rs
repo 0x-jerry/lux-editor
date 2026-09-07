@@ -19,7 +19,9 @@ impl App {
                 self.on_file_change();
             }
             WorkspaceEvent::Rename(old, new) => {
-                std::fs::rename(old, new).ok();
+                if std::fs::rename(&old, &new).is_ok() {
+                    self.on_path_renamed(&old, &new);
+                }
                 self.on_file_change();
             }
             WorkspaceEvent::NewFile(parent) => {

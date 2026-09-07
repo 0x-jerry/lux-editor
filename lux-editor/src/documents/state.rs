@@ -6,13 +6,32 @@ use crate::documents::formatter::run_formatter;
 use crate::events::{CustomEvent, DocumentEvent};
 use eframe::egui;
 use lux_core::Buffer;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// Index of the tab already showing `path`, if any.
+pub(crate) fn tab_with_path(tabs: &[OpenDocument], path: &Path) -> Option<usize> {
+    tabs.iter().position(|document| {
+        document
+            .buffer
+            .path()
+            .is_some_and(|existing_path| existing_path == path)
+    })
+}
+
+/// Tab that holds `path`'s content. A tab on the missing-file page does not, so
+/// opening that file again reads it instead of focusing the dead tab.
+fn openable_tab(tabs: &[OpenDocument], path: &Path) -> Option<usize> {
+    tab_with_path(tabs, path).filter(|&index| !tabs[index].missing)
+}
 
 pub(crate) struct Documents {
     pub(crate) tabs: Vec<OpenDocument>,
     pub(crate) active_document: usize,
     pub(crate) caret_blink_anchor: Instant,
+    /// Loads handed to the runtime but not landed yet; the workspace session is
+    /// frozen while this is non-zero so a restore cannot be captured as empty.
+    pub(crate) pending_loads: usize,
 }
 
 impl Documents {
@@ -23,6 +42,7 @@ impl Documents {
             tabs: vec![OpenDocument::new_empty()],
             active_document: 0,
             caret_blink_anchor: Instant::now(),
+            pending_loads: 0,
         }
     }
 
@@ -47,6 +67,52 @@ impl Documents {
         self.touch_caret_blink();
     }
 
+    /// Land a finished load batch: an existing tab for the same path is replaced
+    /// in place, new files append in read order and the first one takes over the
+    /// empty untitled slot instead of adding a tab.
+    pub(crate) fn apply_loaded(
+        &mut self,
+        entries: Vec<(PathBuf, Result<Buffer, String>)>,
+        activate: Option<PathBuf>,
+    ) {
+        for (path, result) in entries {
+            let document = match result {
+                Ok(buffer) => OpenDocument::from_buffer(buffer),
+                Err(err) => {
+                    let mut document = OpenDocument::missing(path.clone());
+                    document.document_status = Some(err);
+                    document
+                }
+            };
+            match tab_with_path(&self.tabs, &path) {
+                Some(index) => self.tabs[index] = document,
+                None if self.reuse_active_slot() => {
+                    let active = self.active_document;
+                    self.tabs[active] = document;
+                }
+                None => {
+                    self.tabs.push(document);
+                    self.active_document = self.tabs.len() - 1;
+                }
+            }
+        }
+        if let Some(path) = activate
+            && let Some(index) = tab_with_path(&self.tabs, &path)
+        {
+            self.active_document = index;
+        }
+    }
+
+    fn reuse_active_slot(&self) -> bool {
+        if self.tabs.len() != 1 || self.active_document != 0 {
+            return false;
+        }
+        let active_document = &self.tabs[self.active_document];
+        active_document.buffer.path().is_none()
+            && !active_document.document_dirty
+            && active_document.buffer.text().len_chars() == 0
+    }
+
     pub(crate) fn caret_blink_visible(&self) -> bool {
         self.caret_blink_anchor.elapsed().as_millis() % Self::CARET_BLINK_PERIOD.as_millis()
             < (Self::CARET_BLINK_PERIOD.as_millis() / 2)
@@ -60,30 +126,83 @@ impl Documents {
 impl App {
     pub(crate) fn open_file(&mut self, path: PathBuf, ctx: &egui::Context) {
         let path = path.canonicalize().unwrap_or(path);
-        if let Some(index) = self.documents.tabs.iter().position(|doc| {
-            doc.buffer
-                .path()
-                .is_some_and(|existing_path| existing_path == &path)
-        }) {
+        if let Some(index) = openable_tab(&self.documents.tabs, &path) {
             self.switch_to_document(index, ctx);
             return;
         }
+        self.load_files(vec![path.clone()], Some(path));
+    }
 
+    /// Restore files as tabs from one task reading them in order, so the strip
+    /// and the focused tab come back as saved rather than in disk order.
+    pub(crate) fn open_files(
+        &mut self,
+        paths: Vec<PathBuf>,
+        activate: Option<PathBuf>,
+        ctx: &egui::Context,
+    ) {
+        let mut paths = paths
+            .into_iter()
+            .map(|path| path.canonicalize().unwrap_or(path))
+            .collect::<Vec<_>>();
+        paths.retain(|path| openable_tab(&self.documents.tabs, path).is_none());
+        if paths.is_empty() {
+            // Nothing left to read, but the remembered tab still wants focus.
+            if let Some(path) = activate
+                && let Some(index) = tab_with_path(&self.documents.tabs, &path)
+            {
+                self.switch_to_document(index, ctx);
+            }
+            return;
+        }
+        self.load_files(paths, activate);
+    }
+
+    /// Move tabs to `new` when the tree renamed `old` out from under them.
+    pub(crate) fn on_path_renamed(&mut self, old: &Path, new: &Path) {
+        let mut moved = false;
+        for document in self.documents.tabs.iter_mut() {
+            if document.buffer.path().is_some_and(|path| path == old) {
+                document.buffer.set_path(new);
+                document.missing = false;
+                moved = true;
+            }
+        }
+        if moved {
+            self.refresh_language_intelligence();
+        }
+    }
+
+    /// Read `paths` into tabs; `activate` names the one to focus, `None` keeps
+    /// the current one. Each call is one batch, so a restore keeps its order.
+    pub(crate) fn load_files(&mut self, paths: Vec<PathBuf>, activate: Option<PathBuf>) {
+        self.documents.pending_loads += 1;
+        let workspace = self.workspace.path.clone();
         let event_tx = self.runtime.event_tx.clone();
         let wake = self.runtime.ctx.clone();
         self.runtime.rt.spawn(async move {
-            let buffer = Buffer::from_file(&path)
-                .await
-                .map_err(|err| err.to_string());
-            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FileLoaded {
-                path,
-                buffer,
+            let mut entries = Vec::with_capacity(paths.len());
+            for path in paths {
+                let buffer = Buffer::from_file(&path)
+                    .await
+                    .map_err(|err| err.to_string());
+                entries.push((path, buffer));
+            }
+            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FilesLoaded {
+                entries,
+                activate,
+                workspace,
             }));
             wake.request_repaint();
         });
     }
 
     pub(crate) fn save_current_buffer(&mut self, _ctx: &egui::Context) -> bool {
+        if self.active_document().missing {
+            self.active_document_mut().document_status =
+                Some("File not found — nothing to save".to_string());
+            return false;
+        }
         let active_path = self.active_document().buffer.path().cloned();
         if active_path.is_none() {
             if let Some(path) = rfd::FileDialog::new().save_file() {
@@ -189,14 +308,47 @@ impl App {
         self.update_window_title(ctx);
         self.refresh_language_intelligence();
     }
+}
 
-    pub(crate) fn should_reuse_active_document_slot(&self) -> bool {
-        if self.documents.tabs.len() != 1 || self.documents.active_document != 0 {
-            return false;
-        }
-        let active_document = self.active_document();
-        active_document.buffer.path().is_none()
-            && !active_document.document_dirty
-            && active_document.buffer.text().len_chars() == 0
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn buffer(path: &str) -> Buffer {
+        let mut buffer = Buffer::new();
+        buffer.set_path(path);
+        buffer
+    }
+
+    #[test]
+    fn loaded_batch_keeps_order_and_focuses_the_activated_tab() {
+        let mut documents = Documents::with_empty_document();
+        documents.apply_loaded(
+            vec![
+                (PathBuf::from("/ws/a.rs"), Ok(buffer("/ws/a.rs"))),
+                (
+                    PathBuf::from("/ws/gone.rs"),
+                    Err("No such file or directory".to_string()),
+                ),
+                (PathBuf::from("/ws/b.rs"), Ok(buffer("/ws/b.rs"))),
+            ],
+            Some(PathBuf::from("/ws/b.rs")),
+        );
+        assert_eq!(documents.tabs.len(), 3);
+        assert_eq!(documents.active_document, 2);
+        assert!(documents.tabs[1].missing);
+
+        assert_eq!(
+            tab_with_path(&documents.tabs, Path::new("/ws/gone.rs")),
+            Some(1)
+        );
+        assert_eq!(openable_tab(&documents.tabs, Path::new("/ws/gone.rs")), None);
+        documents.apply_loaded(
+            vec![(PathBuf::from("/ws/gone.rs"), Ok(buffer("/ws/gone.rs")))],
+            Some(PathBuf::from("/ws/gone.rs")),
+        );
+        assert_eq!(documents.tabs.len(), 3);
+        assert_eq!(documents.active_document, 1);
+        assert!(!documents.tabs[1].missing);
     }
 }

@@ -1,35 +1,27 @@
 //! Document reducer: IO round-trips, tab lifecycle and pointer-caret edits.
 
 use crate::app::App;
-use crate::documents::OpenDocument;
 use crate::events::{DocumentEvent, EditingEvent};
 use eframe::egui;
+use std::path::PathBuf;
 
 impl App {
     /// Document lifecycle & content pipeline: IO round-trips and tabs.
     pub(crate) fn handle_document_event(&mut self, event: DocumentEvent, ctx: &egui::Context) {
         match event {
-            DocumentEvent::FileLoaded { path, buffer } => match buffer {
-                Ok(buffer) => {
-                    crate::app::startup::stage_once!("first document loaded");
-                    let next_doc = OpenDocument::from_buffer(buffer);
-                    if self.should_reuse_active_document_slot() {
-                        self.documents.tabs[self.documents.active_document] = next_doc;
-                    } else {
-                        self.documents.tabs.push(next_doc);
-                        self.documents.active_document =
-                            self.documents.tabs.len().saturating_sub(1);
-                    }
-                    self.documents.touch_caret_blink();
-                    self.update_window_title(ctx);
-                    self.track_file_open(&path);
-                    self.refresh_language_intelligence();
+            DocumentEvent::FilesLoaded {
+                entries,
+                activate,
+                workspace,
+            } => {
+                self.documents.pending_loads = self.documents.pending_loads.saturating_sub(1);
+                // A batch from a workspace the user left would append foreign
+                // tabs, steal focus from the new restore and churn the recents.
+                if workspace.as_deref() != self.workspace.path.as_deref() || entries.is_empty() {
+                    return;
                 }
-                Err(err) => {
-                    self.active_document_mut().document_status =
-                        Some(format!("Failed to open {}: {}", path.display(), err));
-                }
-            },
+                self.on_files_loaded(entries, activate, ctx);
+            }
             DocumentEvent::FileSaved {
                 path,
                 generation,
@@ -75,5 +67,21 @@ impl App {
                 self.select_word_from_pointer(line_index, column)
             }
         }
+    }
+
+    fn on_files_loaded(
+        &mut self,
+        entries: Vec<(PathBuf, Result<lux_core::Buffer, String>)>,
+        activate: Option<PathBuf>,
+        ctx: &egui::Context,
+    ) {
+        crate::app::startup::stage_once!("first document loaded");
+        for (path, _) in &entries {
+            self.track_file_open(path);
+        }
+        self.documents.apply_loaded(entries, activate);
+        self.documents.touch_caret_blink();
+        self.update_window_title(ctx);
+        self.refresh_language_intelligence();
     }
 }

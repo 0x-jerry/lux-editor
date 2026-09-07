@@ -38,6 +38,7 @@ impl EframeApp for App {
         }
 
         self.process_pending_events(ctx);
+        self.sync_workspace_session();
         self.flush_recent_config(ctx);
 
         // Native menubar/tray events flow through the same command pipeline as
@@ -114,6 +115,7 @@ impl EframeApp for App {
             .map(|document| crate::documents::DocumentTab {
                 title: document.title(),
                 dirty: document.document_dirty,
+                missing: document.missing,
             })
             .collect::<Vec<_>>();
         let active_document = &self.documents.tabs[self.documents.active_document];
@@ -133,6 +135,7 @@ impl EframeApp for App {
                     highlight_snapshot,
                     editor_config: &self.settings.editor_config,
                     document_status: active_document.document_status.as_deref(),
+                    restoring_session: self.documents.pending_loads > 0,
                     carets,
                     selection_ranges,
                     active_caret_index,

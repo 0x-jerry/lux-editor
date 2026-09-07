@@ -1,20 +1,26 @@
 //! On-disk settings store: user `config.json`, `recent.json` (recent items +
-//! per-workspace last open file) and the in-memory [`Config`] that debounces
-//! recent-item writes.
+//! per-workspace sessions: open tabs, active file, expanded tree folders) and
+//! the in-memory [`Config`] that debounces recent-item writes.
 
-use super::schema::{EditorSettings, RecentItem, WorkspaceFileState};
+use super::schema::{EditorSettings, RecentItem, WorkspaceSession};
 use std::path::{Path, PathBuf};
+
+const MAX_SESSIONS: usize = 50;
+const MAX_SESSION_FILES: usize = 100;
+const MAX_EXPANDED_DIRS: usize = 512;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 struct RecentConfigFile {
+    #[serde(default)]
     recent_items: Vec<RecentItem>,
-    workspace_file_states: Vec<WorkspaceFileState>,
+    #[serde(default)]
+    workspace_sessions: Vec<WorkspaceSession>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
     pub recent_items: Vec<RecentItem>,
-    workspace_file_states: Vec<WorkspaceFileState>,
+    workspace_sessions: Vec<WorkspaceSession>,
     pub settings: EditorSettings,
     /// Recent changes wait for the app's debounced flush instead of writing
     /// synchronously (including during startup).
@@ -26,7 +32,7 @@ impl Config {
         let recent_config = Self::load_recent_config();
         Self {
             recent_items: recent_config.recent_items,
-            workspace_file_states: recent_config.workspace_file_states,
+            workspace_sessions: recent_config.workspace_sessions,
             settings: Self::load_settings(),
             recent_dirty: false,
         }
@@ -63,34 +69,48 @@ impl Config {
     pub fn add_recent(&mut self, path: PathBuf, is_dir: bool) {
         let item = RecentItem { path, is_dir };
         insert_recent(&mut self.recent_items, item, 10);
-        self.prune_workspace_file_states_to_recent_dirs();
         self.recent_dirty = true;
     }
 
     pub fn clear_recent_items(&mut self) {
         self.recent_items.clear();
-        self.workspace_file_states.clear();
+        self.workspace_sessions.clear();
         self.recent_dirty = true;
     }
 
-    pub fn set_workspace_last_file(&mut self, workspace_path: &Path, file_path: &Path) {
-        insert_workspace_state(
-            &mut self.workspace_file_states,
-            WorkspaceFileState {
-                workspace_path: workspace_path.to_path_buf(),
-                file_path: file_path.to_path_buf(),
-            },
-            50,
-        );
-        self.prune_workspace_file_states_to_recent_dirs();
-        self.recent_dirty = true;
-    }
-
-    pub fn workspace_last_file(&self, workspace_path: &Path) -> Option<PathBuf> {
-        self.workspace_file_states
+    pub fn workspace_session(&self, workspace_path: &Path) -> Option<&WorkspaceSession> {
+        self.workspace_sessions
             .iter()
-            .find(|entry| entry.workspace_path == workspace_path)
-            .map(|entry| entry.file_path.clone())
+            .find(|session| session.workspace_path == workspace_path)
+    }
+
+    /// Upsert a workspace session; `false` when nothing changed, so the per-
+    /// frame session snapshot never re-arms the debounced disk write. Bounded by
+    /// `MAX_SESSIONS`, and not tied to `recent_items`, which file opens drain.
+    pub fn set_workspace_session(&mut self, mut session: WorkspaceSession) -> bool {
+        session
+            .open_files
+            .truncate(session.open_files.len().min(MAX_SESSION_FILES));
+        session.expanded_dirs.sort();
+        session
+            .expanded_dirs
+            .truncate(session.expanded_dirs.len().min(MAX_EXPANDED_DIRS));
+        let existing = self
+            .workspace_sessions
+            .iter()
+            .position(|stored| stored.workspace_path == session.workspace_path);
+        match existing {
+            Some(index) if self.workspace_sessions[index] == session => return false,
+            Some(index) => {
+                self.workspace_sessions[index] = session;
+            }
+            None => {
+                self.workspace_sessions.insert(0, session);
+                self.workspace_sessions.truncate(MAX_SESSIONS);
+            }
+        }
+        self.recent_dirty = true;
+        true
     }
 
     pub fn user_settings_path() -> PathBuf {
@@ -135,10 +155,23 @@ impl Config {
     }
 
     fn load_recent_config() -> RecentConfigFile {
-        if let Ok(data) = std::fs::read_to_string(Self::recent_items_path()) {
-            serde_json::from_str::<RecentConfigFile>(&data).unwrap_or_default()
-        } else {
-            RecentConfigFile::default()
+        let path = Self::recent_items_path();
+        let Ok(data) = std::fs::read_to_string(&path) else {
+            return RecentConfigFile::default();
+        };
+        match serde_json::from_str::<RecentConfigFile>(&data) {
+            Ok(mut file) => {
+                // A truncated entry would park a session nothing can look up.
+                file.workspace_sessions
+                    .retain(|session| !session.workspace_path.as_os_str().is_empty());
+                file
+            }
+            Err(err) => {
+                // The next flush would replace the file; keep the bytes readable.
+                log::warn!("unreadable {}, keeping a copy beside it: {err}", path.display());
+                std::fs::rename(&path, path.with_extension("json.bak")).ok();
+                RecentConfigFile::default()
+            }
         }
     }
 
@@ -149,20 +182,12 @@ impl Config {
         }
         let data = RecentConfigFile {
             recent_items: self.recent_items.clone(),
-            workspace_file_states: self.workspace_file_states.clone(),
+            workspace_sessions: self.workspace_sessions.clone(),
         };
         match serde_json::to_string(&data) {
             Ok(data) => std::fs::write(path, data).is_ok(),
             Err(_) => false,
         }
-    }
-
-    fn prune_workspace_file_states_to_recent_dirs(&mut self) {
-        self.workspace_file_states.retain(|workspace_state| {
-            self.recent_items
-                .iter()
-                .any(|item| item.is_dir && item.path == workspace_state.workspace_path)
-        });
     }
 
     fn recent_items_path() -> PathBuf {
@@ -177,16 +202,6 @@ fn insert_recent(items: &mut Vec<RecentItem>, item: RecentItem, max: usize) {
     items.retain(|existing| existing.path != item.path);
     items.insert(0, item);
     items.truncate(max);
-}
-
-fn insert_workspace_state(
-    states: &mut Vec<WorkspaceFileState>,
-    state: WorkspaceFileState,
-    max: usize,
-) {
-    states.retain(|existing| existing.workspace_path != state.workspace_path);
-    states.insert(0, state);
-    states.truncate(max);
 }
 
 #[cfg(test)]
@@ -213,63 +228,62 @@ mod tests {
         assert_eq!(items[0].path, PathBuf::from("/f14"));
     }
 
-    #[test]
-    fn insert_workspace_state_dedups_and_caps() {
-        let mut states = Vec::new();
-        for i in 0..60 {
-            insert_workspace_state(
-                &mut states,
-                WorkspaceFileState {
-                    workspace_path: PathBuf::from(format!("/ws{i}")),
-                    file_path: PathBuf::from("/f"),
-                },
-                50,
-            );
+    fn session(workspace: &str, files: &[&str], expanded: &[&str]) -> WorkspaceSession {
+        WorkspaceSession {
+            workspace_path: PathBuf::from(workspace),
+            open_files: files.iter().map(PathBuf::from).collect(),
+            active_file: files.last().map(PathBuf::from),
+            expanded_dirs: expanded.iter().map(PathBuf::from).collect(),
         }
-        assert_eq!(states.len(), 50);
-        assert_eq!(states[0].workspace_path, PathBuf::from("/ws59"));
     }
 
     #[test]
-    fn prune_workspace_states_keeps_only_recent_dirs() {
+    fn set_workspace_session_upserts_and_detects_no_change() {
+
         let mut config = Config {
-            recent_items: vec![recent("/ws1", true)],
-            workspace_file_states: vec![
-                WorkspaceFileState {
-                    workspace_path: PathBuf::from("/ws1"),
-                    file_path: PathBuf::from("/ws1/f"),
-                },
-                WorkspaceFileState {
-                    workspace_path: PathBuf::from("/gone"),
-                    file_path: PathBuf::from("/gone/f"),
-                },
-            ],
-            settings: Default::default(),
-            recent_dirty: false,
+            recent_items: vec![recent("/ws", true)],
+            ..Default::default()
         };
-        config.prune_workspace_file_states_to_recent_dirs();
-        assert_eq!(config.workspace_file_states.len(), 1);
+        assert!(config.set_workspace_session(session("/ws", &["/ws/a.rs"], &["/ws/b"])));
+        assert!(config.recent_dirty);
+        config.recent_dirty = false;
+        // Identical snapshot (order-insensitive expansion) must not re-dirty.
+        assert!(!config.set_workspace_session(session("/ws", &["/ws/a.rs"], &["/ws/b"])));
+        assert!(!config.recent_dirty);
+        assert!(config.set_workspace_session(session("/ws", &["/ws/a.rs"], &[])));
         assert_eq!(
-            config.workspace_file_states[0].workspace_path,
-            PathBuf::from("/ws1")
+            config
+                .workspace_session(Path::new("/ws"))
+                .unwrap()
+                .open_files,
+            vec![PathBuf::from("/ws/a.rs")]
+        );
+
+        let many = (0..150)
+            .map(|index| format!("/ws/f{index}"))
+            .collect::<Vec<_>>();
+        let refs = many.iter().map(String::as_str).collect::<Vec<_>>();
+        config.set_workspace_session(session("/ws", &refs, &[]));
+        assert_eq!(
+            config.workspace_session(Path::new("/ws")).unwrap().open_files.len(),
+            MAX_SESSION_FILES
         );
     }
 
     #[test]
-    fn workspace_last_file_finds_matching_entry() {
-        let config = Config {
-            recent_items: vec![],
-            workspace_file_states: vec![WorkspaceFileState {
-                workspace_path: PathBuf::from("/ws"),
-                file_path: PathBuf::from("/ws/a.rs"),
-            }],
-            settings: Default::default(),
-            recent_dirty: false,
-        };
-        assert_eq!(
-            config.workspace_last_file(Path::new("/ws")),
-            Some(PathBuf::from("/ws/a.rs"))
-        );
-        assert_eq!(config.workspace_last_file(Path::new("/other")), None);
+    fn session_survives_recent_eviction() {
+        let mut config = Config::default();
+        config.set_workspace_session(session("/ws", &["/ws/f"], &[]));
+        for index in 0..12 {
+            config.add_recent(PathBuf::from(format!("/other{index}.rs")), false);
+        }
+        assert_eq!(config.recent_items.len(), 10);
+        assert!(config.workspace_session(Path::new("/ws")).is_some());
+    }
+
+    #[test]
+    fn recent_config_fields_are_all_optional() {
+        let file: RecentConfigFile = serde_json::from_str(r#"{"recent_items":[]}"#).unwrap();
+        assert!(file.workspace_sessions.is_empty());
     }
 }

@@ -7,10 +7,14 @@ pub(crate) mod widgets;
 mod about;
 mod app_view;
 mod command_panel;
+mod file_missing;
 mod shell;
 pub(crate) mod welcome;
+mod workspace_start;
 
 pub use about::AboutWindow;
 pub use app_view::{AppView, AppViewInput};
 pub use command_panel::CommandPanel;
+pub use file_missing::{FileMissingView, FileMissingInput};
 pub use shell::Shell;
+pub use workspace_start::{WorkspaceStartInput, WorkspaceStartView};

@@ -16,6 +16,7 @@ use super::widgets::{
 };
 use eframe::egui;
 use lux_core::Buffer;
+use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -29,6 +30,7 @@ pub struct ShellInput<'a> {
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub document_status: Option<&'a str>,
+    pub restoring_session: bool,
     /// All cursor positions as 1-based (line, column).
     pub carets: Vec<(usize, usize)>,
     pub selection_ranges: Vec<Range<usize>>,
@@ -80,6 +82,15 @@ impl Shell {
         self.sidebar_visible = !self.sidebar_visible;
     }
 
+    /// Seed the tree's expanded folders (workspace restore / first open).
+    pub fn set_file_tree_expanded(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.file_tree_panel.set_expanded(paths);
+    }
+
+    pub fn file_tree_expanded(&self) -> &HashSet<PathBuf> {
+        self.file_tree_panel.expanded()
+    }
+
     pub fn sync_config_draft(&mut self, settings: &EditorSettings) {
         self.configuration_view.sync_draft(settings);
     }
@@ -99,6 +110,7 @@ impl Component for Shell {
             highlight_snapshot,
             editor_config,
             document_status,
+            restoring_session,
             carets,
             selection_ranges,
             active_caret_index,
@@ -185,6 +197,10 @@ impl Component for Shell {
                             selection_ranges: &selection_ranges,
                             active_caret_index,
                             caret_visible,
+                            sidebar_visible: self.sidebar_visible,
+                            document_dirty,
+                            document_status,
+                            restoring_session,
                         },
                     ));
                 } else {

@@ -179,16 +179,26 @@ mod tests {
         for (source, kind, expect) in [
             ("{\"key\": true}\n", LanguageKind::Json, None),
             ("key: value\n# comment\n", LanguageKind::Yaml, None),
-            ("[section]\nflag = true\n", LanguageKind::Toml, Some(boolean_color)),
+            (
+                "[section]\nflag = true\n",
+                LanguageKind::Toml,
+                Some(boolean_color),
+            ),
         ] {
             let snapshot = snapshot_for(source, kind);
-            let colored: Vec<[u8; 4]> = snapshot.line_tokens.iter().flatten().map(|s| s.color).collect();
-            assert!(colored.iter().any(|c| *c != snapshot.foreground.unwrap()), "{kind:?}: {colored:?}");
+            let colored: Vec<[u8; 4]> = snapshot
+                .line_tokens
+                .iter()
+                .flatten()
+                .map(|s| s.color)
+                .collect();
+            assert!(
+                colored.iter().any(|c| *c != snapshot.foreground.unwrap()),
+                "{kind:?}: {colored:?}"
+            );
             if let Some(expected) = expect {
                 assert!(
-                    snapshot.line_tokens[1]
-                        .iter()
-                        .any(|s| s.color == expected),
+                    snapshot.line_tokens[1].iter().any(|s| s.color == expected),
                     "{kind:?} boolean must use the boolean color"
                 );
             }
@@ -222,10 +232,7 @@ mod tests {
                 "<?xml version=\"1.0\"?>\n<note>\n  <to>Tove</to>\n</note>\n",
                 LanguageKind::Xml,
             ),
-            (
-                "<div class=\"box\"><p>Text</p></div>\n",
-                LanguageKind::Html,
-            ),
+            ("<div class=\"box\"><p>Text</p></div>\n", LanguageKind::Html),
         ] {
             let snapshot = snapshot_for(source, kind);
             let colored: Vec<[u8; 4]> = snapshot

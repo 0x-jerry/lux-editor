@@ -35,14 +35,13 @@ impl Component for Gutter {
                 continue;
             }
             if row.index + 1 == input.active_line {
-                painter.rect_filled(
-                    row_rect,
-                    0.0,
-                    visuals.selection.bg_fill.gamma_multiply(0.2),
-                );
+                painter.rect_filled(row_rect, 0.0, visuals.selection.bg_fill.gamma_multiply(0.2));
             }
             painter.text(
-                egui::pos2(row_rect.right() - input.metrics.char_width, row_rect.center().y),
+                egui::pos2(
+                    row_rect.right() - input.metrics.char_width,
+                    row_rect.center().y,
+                ),
                 egui::Align2::RIGHT_CENTER,
                 (row.index + 1).to_string(),
                 egui::TextStyle::Monospace.resolve(ui.style()),

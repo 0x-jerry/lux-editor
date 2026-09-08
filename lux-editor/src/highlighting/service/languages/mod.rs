@@ -71,36 +71,32 @@ define_languages! {
 
 /// Injection-only grammars appended after the visible defs: no file extension
 /// selects them and they have no `LanguageKind` variant.
-pub(crate) static INTERNAL_LANGUAGES: &[&LanguageDef] = &[
-    &markdown_inline::DEF,
-];
+pub(crate) static INTERNAL_LANGUAGES: &[&LanguageDef] = &[&markdown_inline::DEF];
 
 /// Canonical names and aliases → index into `LANGUAGES` then
 /// `INTERNAL_LANGUAGES`, used by injection resolution and `requires` recursion.
-pub(crate) static NAME_INDEX: std::sync::LazyLock<
-    std::collections::HashMap<&'static str, usize>,
-> = std::sync::LazyLock::new(|| {
-    let mut map = std::collections::HashMap::new();
-    for (index, def) in LANGUAGES.iter().chain(INTERNAL_LANGUAGES).enumerate() {
-        map.insert(def.name, index);
-        for alias in def.aliases {
-            map.insert(*alias, index);
+pub(crate) static NAME_INDEX: std::sync::LazyLock<std::collections::HashMap<&'static str, usize>> =
+    std::sync::LazyLock::new(|| {
+        let mut map = std::collections::HashMap::new();
+        for (index, def) in LANGUAGES.iter().chain(INTERNAL_LANGUAGES).enumerate() {
+            map.insert(def.name, index);
+            for alias in def.aliases {
+                map.insert(*alias, index);
+            }
         }
-    }
-    map
-});
+        map
+    });
 
-static EXTENSIONS: std::sync::LazyLock<
-    std::collections::HashMap<&'static str, LanguageKind>,
-> = std::sync::LazyLock::new(|| {
-    let mut map = std::collections::HashMap::new();
-    for (index, def) in LANGUAGES.iter().enumerate() {
-        for ext in def.extensions {
-            map.insert(*ext, KINDS[index]);
+static EXTENSIONS: std::sync::LazyLock<std::collections::HashMap<&'static str, LanguageKind>> =
+    std::sync::LazyLock::new(|| {
+        let mut map = std::collections::HashMap::new();
+        for (index, def) in LANGUAGES.iter().enumerate() {
+            for ext in def.extensions {
+                map.insert(*ext, KINDS[index]);
+            }
         }
-    }
-    map
-});
+        map
+    });
 
 impl LanguageKind {
     fn from_extension(extension: &str) -> Self {
@@ -139,10 +135,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for def in LANGUAGES.iter().chain(INTERNAL_LANGUAGES) {
             for name in std::iter::once(def.name).chain(def.aliases.iter().copied()) {
-                assert!(
-                    seen.insert(name),
-                    "name `{name}` registered more than once"
-                );
+                assert!(seen.insert(name), "name `{name}` registered more than once");
             }
         }
     }
@@ -151,10 +144,7 @@ mod tests {
     fn required_languages_are_registered() {
         for def in LANGUAGES.iter().chain(INTERNAL_LANGUAGES) {
             for name in def.requires {
-                assert!(
-                    NAME_INDEX.contains_key(name),
-                    "unknown requires `{name}`"
-                );
+                assert!(NAME_INDEX.contains_key(name), "unknown requires `{name}`");
             }
         }
     }

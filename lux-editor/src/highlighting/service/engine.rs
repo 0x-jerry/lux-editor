@@ -1,10 +1,8 @@
-use tree_sitter_highlight::{
-    HighlightConfiguration, HighlightEvent, Highlighter,
-};
+use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
+use super::LanguageKind;
 use super::languages::{ConfigInput, INTERNAL_LANGUAGES, LANGUAGES, LanguageDef, NAME_INDEX};
 use super::style::{RECOGNIZED_NAMES, ThemeColors};
-use super::LanguageKind;
 
 #[derive(Clone, Copy)]
 pub(super) struct RawSpan {
@@ -46,9 +44,10 @@ fn configure(def: &LanguageDef, input: ConfigInput) -> Option<HighlightConfigura
 
 /// Def at `index` in the concatenation of `LANGUAGES` + `INTERNAL_LANGUAGES`.
 fn def_for(index: usize) -> &'static LanguageDef {
-    LANGUAGES.get(index).copied().unwrap_or_else(|| {
-        INTERNAL_LANGUAGES[index - LANGUAGES.len()]
-    })
+    LANGUAGES
+        .get(index)
+        .copied()
+        .unwrap_or_else(|| INTERNAL_LANGUAGES[index - LANGUAGES.len()])
 }
 
 impl Engines {
@@ -116,7 +115,10 @@ impl Engines {
         colors: &ThemeColors,
         mentioned: &mut Vec<usize>,
     ) -> Option<Vec<RawSpan>> {
-        let Self { highlighter, states } = self;
+        let Self {
+            highlighter,
+            states,
+        } = self;
         let config = states[index].config.as_ref()?;
         let events = highlighter
             .highlight(config, document.as_bytes(), None, |name| {

@@ -130,7 +130,7 @@ impl App {
         }
 
         match command {
-            EditorCommand::InsertText(text) => self.insert_text_with_pairing(&text, ctx),
+            EditorCommand::InsertText(text) => self.insert_or_replace_selection(&text, ctx),
             EditorCommand::Paste(text) => self.insert_or_replace_selection(&text, ctx),
             EditorCommand::InsertNewline => self.insert_newline(ctx),
             EditorCommand::InsertTab => self.insert_or_replace_selection("    ", ctx),

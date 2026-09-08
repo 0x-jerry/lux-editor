@@ -5,7 +5,6 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 
 pub mod editor;
-pub mod pairing;
 
 #[derive(Debug)]
 pub struct Buffer {

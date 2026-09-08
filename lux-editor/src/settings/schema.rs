@@ -79,29 +79,12 @@ impl Default for FormatterSettings {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct BehaviorSettings {
-    /// Auto-close brackets/quotes, skip over closing partners, and delete
-    /// auto-paired pairs with Backspace.
-    pub smart_pairing: bool,
-}
-
-impl Default for BehaviorSettings {
-    fn default() -> Self {
-        Self {
-            smart_pairing: true,
-        }
-    }
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct EditorSettings {
     pub theme: ThemeSettings,
     pub font: FontSettings,
     #[serde(default)]
     pub formatter: FormatterSettings,
-    #[serde(default)]
-    pub behavior: BehaviorSettings,
 }
 
 #[cfg(test)]

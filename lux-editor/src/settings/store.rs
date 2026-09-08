@@ -145,8 +145,6 @@ impl Config {
             .unwrap()
             .set_default("formatter.format_on_save", true)
             .unwrap()
-            .set_default("behavior.smart_pairing", true)
-            .unwrap()
             .add_source(::config::File::from(user_settings).required(false))
             .build()
             .ok()

@@ -188,27 +188,6 @@ impl Component for ConfigurationView {
             );
         });
 
-        section(ui, "Typing", |ui| {
-            egui::Grid::new("config_typing_grid")
-                .num_columns(2)
-                .spacing([16.0, 8.0])
-                .show(ui, |ui| {
-                    ui.label("Smart bracket pairing");
-                    if ui
-                        .checkbox(&mut self.draft.behavior.smart_pairing, "")
-                        .on_hover_text(
-                            "Auto-close brackets and quotes, skip over closing partners, \
-                         delete empty pairs with Backspace, and open blank lines \
-                         inside empty pairs with Enter",
-                        )
-                        .changed()
-                    {
-                        changed = true;
-                    }
-                    ui.end_row();
-                });
-        });
-
         if changed {
             self.schedule_autosave();
         }

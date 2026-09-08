@@ -159,29 +159,6 @@ impl CaretState {
         caret.caret_char = next;
     }
 
-    /// The characters immediately before and after cursor `index`'s caret.
-    pub fn neighbor_chars(&self, index: usize, buffer: &Buffer) -> (Option<char>, Option<char>) {
-        let caret = self.caret_char_at(index);
-        let prev = if caret == 0 {
-            None
-        } else {
-            Some(buffer.text().char(caret - 1))
-        };
-        let next = if caret >= buffer.text().len_chars() {
-            None
-        } else {
-            Some(buffer.text().char(caret))
-        };
-        (prev, next)
-    }
-
-    /// Move cursor `index` by `delta` characters (used after pairing edits).
-    pub fn nudge_caret(&mut self, index: usize, delta: isize, buffer: &Buffer) {
-        let current = self.caret_char_at(index);
-        let next = (current as isize + delta).max(0) as usize;
-        self.set_caret_char_at(index, next.min(buffer.text().len_chars()), buffer, false);
-    }
-
     pub fn set_caret_char(&mut self, next: usize, buffer: &Buffer, selecting: bool) {
         self.set_caret_char_at(self.active_index, next, buffer, selecting);
     }

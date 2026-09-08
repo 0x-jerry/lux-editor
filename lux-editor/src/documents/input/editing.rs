@@ -1,10 +1,8 @@
 use crate::app::App;
 use eframe::egui;
 use lux_core::editor::{
-    EditTransaction, INDENT, SubEdit, indentation_for_newline, leading_indent, next_word_boundary,
-    previous_word_boundary,
+    EditTransaction, SubEdit, indentation_for_newline, next_word_boundary, previous_word_boundary,
 };
-use lux_core::pairing::{PairingAction, action_for, closing_pair, matched_pair_around};
 
 impl App {
     pub(crate) fn selected_text(&self) -> Option<String> {
@@ -48,82 +46,7 @@ impl App {
         self.apply_multi_edit(edits, text, ctx)
     }
 
-    /// Typed single-char insert with smart pairing: auto-close openers, skip
-    /// over closing partners, and no pairing behavior over selections.
-    pub(crate) fn insert_text_with_pairing(&mut self, text: &str, ctx: &egui::Context) -> bool {
-        let enabled = self.settings.editor_config.settings.behavior.smart_pairing;
-        if !enabled || text.chars().count() != 1 {
-            return self.insert_or_replace_selection(text, ctx);
-        }
-        let ch = text.chars().next().unwrap();
-
-        let (edits, texts, auto_close, skip) = {
-            let active_document = self.active_document();
-            let cursor_count = active_document.caret_state.len();
-            let mut edits = Vec::with_capacity(cursor_count);
-            let mut texts = Vec::with_capacity(cursor_count);
-            let mut auto_close = Vec::new();
-            let mut skip = Vec::new();
-            for index in 0..cursor_count {
-                let (start, end) = active_document.caret_state.edit_target(index);
-                let collapsed = start == end;
-                let (prev, next) = if collapsed {
-                    active_document
-                        .caret_state
-                        .neighbor_chars(index, &active_document.buffer)
-                } else {
-                    (None, None)
-                };
-                let action = if collapsed {
-                    action_for(ch, prev, next)
-                } else {
-                    PairingAction::Plain
-                };
-                match action {
-                    PairingAction::AutoClose => {
-                        let closer = closing_pair(ch).unwrap();
-                        edits.push((start, end));
-                        texts.push(format!("{ch}{closer}"));
-                        auto_close.push(index);
-                    }
-                    PairingAction::Skip => {
-                        edits.push((start, end));
-                        texts.push(String::new());
-                        skip.push(index);
-                    }
-                    PairingAction::Plain => {
-                        edits.push((start, end));
-                        texts.push(text.to_string());
-                    }
-                }
-            }
-            (edits, texts, auto_close, skip)
-        };
-
-        let applied = self.apply_multi_edits(edits, texts, ctx);
-        let mut nudged = false;
-        {
-            let active_document = self.active_document_mut();
-            // Auto-close inserted both chars; settle the caret between them.
-            for index in auto_close {
-                active_document
-                    .caret_state
-                    .nudge_caret(index, -1, &active_document.buffer);
-                nudged = true;
-            }
-            // Skip-over: move past the already-present closing char.
-            for index in skip {
-                active_document
-                    .caret_state
-                    .nudge_caret(index, 1, &active_document.buffer);
-                nudged = true;
-            }
-        }
-        applied || nudged
-    }
-
     pub(crate) fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
-        let smart_pairing = self.settings.editor_config.settings.behavior.smart_pairing;
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
@@ -134,15 +57,6 @@ impl App {
                         let caret = active_document.caret_state.caret_char_at(index);
                         if caret == 0 {
                             (0, 0)
-                        } else if smart_pairing {
-                            let (prev, next) = active_document
-                                .caret_state
-                                .neighbor_chars(index, &active_document.buffer);
-                            if matched_pair_around(prev, next) {
-                                (caret - 1, caret + 1)
-                            } else {
-                                (caret - 1, caret)
-                            }
                         } else {
                             (caret - 1, caret)
                         }
@@ -212,50 +126,21 @@ impl App {
         self.apply_multi_edit(edits, "", ctx)
     }
 
-    /// Enter key: per-cursor indentation, with smart newlines that open a
-    /// blank line inside an empty paired region (`(|)` → two indented lines).
+    /// Enter key: per-cursor indentation.
     pub(crate) fn insert_newline(&mut self, ctx: &egui::Context) -> bool {
-        let smart_pairing = self.settings.editor_config.settings.behavior.smart_pairing;
-        let (edits, texts, smart_mid) = {
+        let (edits, texts) = {
             let active_document = self.active_document();
             let cursor_count = active_document.caret_state.len();
             let mut edits = Vec::with_capacity(cursor_count);
             let mut texts = Vec::with_capacity(cursor_count);
-            let mut smart_mid = Vec::new();
             for index in 0..cursor_count {
                 let caret = active_document.caret_state.caret_char_at(index);
                 edits.push((caret, caret));
-                let (prev, next) = active_document
-                    .caret_state
-                    .neighbor_chars(index, &active_document.buffer);
-                if smart_pairing && matched_pair_around(prev, next) {
-                    let leading = leading_indent(&active_document.buffer, caret);
-                    let inner = format!("{leading}{INDENT}");
-                    let text = format!("\n{inner}\n{leading}");
-                    smart_mid.push((index, caret + 1 + inner.chars().count()));
-                    texts.push(text);
-                } else {
-                    texts.push(indentation_for_newline(&active_document.buffer, caret));
-                }
+                texts.push(indentation_for_newline(&active_document.buffer, caret));
             }
-            (edits, texts, smart_mid)
+            (edits, texts)
         };
-
-        let applied = self.apply_multi_edits(edits, texts, ctx);
-        let mut positioned = false;
-        if !smart_mid.is_empty() {
-            let active_document = self.active_document_mut();
-            for (index, desired) in smart_mid {
-                active_document.caret_state.set_caret_char_at(
-                    index,
-                    desired,
-                    &active_document.buffer,
-                    false,
-                );
-                positioned = true;
-            }
-        }
-        applied || positioned
+        self.apply_multi_edits(edits, texts, ctx)
     }
 
     /// Apply one replacement to the active cursor's target only; other cursors

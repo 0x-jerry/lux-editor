@@ -1,28 +1,24 @@
-use crate::document::DocumentBuffer;
-use crate::events::CustomEvent;
-use crate::settings::Config;
-use crate::theme::StartupFont;
-use eframe::egui;
-use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::Instant;
+//! `App`: plain container for the domain states and the runtime that feeds
+//! them. Behaviour is layered so this struct stays a dumb holder:
+//!
+//! - domain structs (`Documents`, `Workspace`, `SettingsState`,
+//!   `Highlighting`, `Chrome`) own their state and pure transitions;
+//! - [`Ctx`](super::context::Ctx) is a short-lived bundle of `&mut` borrows
+//!   handed to the `app::actions` modules, which implement the cross-domain
+//!   behaviour (each action is an `impl Ctx` method);
+//! - this module only constructs the domains, runs the eframe loop and
+//!   forwards events into a fresh [`Ctx`] each pass.
 
+use crate::app::Runtime;
 use crate::chrome::Chrome;
-use crate::document::OpenDocument;
 use crate::documents::Documents;
 use crate::highlighting::Highlighting;
-use crate::settings::SettingsState;
+use crate::settings::{Config, SettingsState};
+use crate::theme::StartupFont;
 use crate::workspace::Workspace;
-
-/// Async runtime and the channel the app's background workers report through.
-/// `ctx` is the wake handle for the egui loop: producers request a repaint
-/// after sending so the idle app still renders the events they push.
-pub(crate) struct Runtime {
-    pub(crate) rt: tokio::runtime::Runtime,
-    pub(crate) event_tx: Sender<CustomEvent>,
-    pub(crate) event_rx: Receiver<CustomEvent>,
-    pub(crate) ctx: egui::Context,
-}
+use eframe::egui;
+use std::path::PathBuf;
+use std::time::Instant;
 
 pub struct App {
     pub(crate) runtime: Runtime,
@@ -31,10 +27,21 @@ pub struct App {
     pub(crate) settings: SettingsState,
     pub(crate) highlighting: Highlighting,
     pub(crate) chrome: Chrome,
+    /// App-level plumbing that belongs to no single domain: the CLI path to
+    /// open after the first frame, whether that init has run, and the debounce
+    /// deadline for the recent-files flush.
+    pub(crate) frame: FrameState,
+}
+
+/// One-off, app-owned state that crosses every domain but is owned by none of
+/// them. Lives beside the domain bundle rather than inside a domain struct.
+#[derive(Default)]
+pub(crate) struct FrameState {
     /// CLI path (folder or file) opened after the first frame paints, so
     /// window bring-up never waits on disk work.
     pub(crate) pending_init: Option<PathBuf>,
     pub(crate) deferred_init_done: bool,
+    /// Debounce deadline for the recent-files flush.
     pub(crate) recent_flush_deadline: Option<Instant>,
 }
 
@@ -42,7 +49,7 @@ impl App {
     pub fn new(ctx: egui::Context, font_loader: StartupFont) -> Self {
         crate::app::startup::stage("window backend ready, app ctor");
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let (event_tx, event_rx) = mpsc::channel();
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
         let editor_config = Config::load();
         crate::app::startup::stage("config loaded");
         let mut app = Self {
@@ -64,31 +71,16 @@ impl App {
                 startup_font: Some(font_loader),
                 ..Default::default()
             },
-            pending_init: std::env::args().nth(1).map(PathBuf::from),
-            deferred_init_done: false,
-            recent_flush_deadline: None,
+            frame: FrameState {
+                pending_init: std::env::args().nth(1).map(PathBuf::from),
+                ..Default::default()
+            },
         };
         app.chrome
             .shell
             .sync_config_draft(&app.settings.editor_config.settings);
         crate::app::startup::stage("app constructed");
         app
-    }
-
-    pub(crate) fn active_document(&self) -> &OpenDocument {
-        self.documents.active_document()
-    }
-
-    pub(crate) fn active_document_mut(&mut self) -> &mut OpenDocument {
-        self.documents.active_document_mut()
-    }
-
-    pub(crate) fn buffer(&self) -> &DocumentBuffer {
-        &self.active_document().buffer
-    }
-
-    pub(crate) fn buffer_mut(&mut self) -> &mut DocumentBuffer {
-        &mut self.active_document_mut().buffer
     }
 }
 

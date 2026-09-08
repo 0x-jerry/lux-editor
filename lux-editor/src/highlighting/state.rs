@@ -1,10 +1,9 @@
-//! Highlighting domain: the syntax service and its debounced refresh.
+//! Highlighting domain: the syntax service and the debounced refresh flags.
+//! Deciding *when* to refresh and deriving the palette live in
+//! `app::actions::highlighting`, which has the documents/chrome context the
+//! refresh needs; this module only owns the state.
 
-use crate::app::App;
 use crate::highlighting::HighlightingService;
-use crate::highlighting::LanguageKind;
-use crate::theme::{self, SyntaxColors, ThemeChoice};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub(crate) struct Highlighting {
@@ -23,55 +22,36 @@ impl Default for Highlighting {
     }
 }
 
-impl App {
-    const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(60);
+impl Highlighting {
+    pub(crate) const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(60);
 
-    pub(crate) fn schedule_language_refresh(&mut self) {
-        self.highlighting.dirty = true;
-        self.highlighting.deadline = Some(Instant::now() + Self::HIGHLIGHT_DEBOUNCE);
+    pub(crate) fn schedule_refresh(&mut self) {
+        self.dirty = true;
+        self.deadline = Some(Instant::now() + Self::HIGHLIGHT_DEBOUNCE);
     }
 
-    pub(crate) fn flush_scheduled_language_refresh(&mut self) {
-        if self.highlighting.dirty
+    /// Whether a scheduled refresh has reached its deadline and should run.
+    /// Drains `dirty`/`deadline` as a side effect, so a true result means the
+    /// caller owns the refresh.
+    pub(crate) fn take_due_refresh(&mut self) -> bool {
+        if self.dirty
             && self
-                .highlighting
                 .deadline
                 .is_some_and(|deadline| Instant::now() >= deadline)
         {
-            self.highlighting.dirty = false;
-            self.highlighting.deadline = None;
-            self.refresh_language_intelligence();
+            self.dirty = false;
+            self.deadline = None;
+            true
+        } else {
+            false
         }
-    }
-
-    pub(crate) fn refresh_language_intelligence(&mut self) {
-        self.highlighting.service.set_syntax(self.syntax_colors());
-        let language = LanguageKind::from_path(self.buffer().path().map(|v| &**v));
-        // Rope clone is O(1); the worker parses the shared text zero-copy.
-        self.highlighting
-            .service
-            .request_parse(self.buffer().text().clone(), language);
-    }
-
-    /// The syntax palette the current config asks for.
-    fn syntax_colors(&self) -> Arc<SyntaxColors> {
-        // Before the first style pass the raw choice is all there is (`Auto` → dark).
-        let choice = self.chrome.runtime_theme.unwrap_or_else(|| {
-            ThemeChoice::from_value(&self.settings.editor_config.settings.theme.choice)
-        });
-        theme::syntax_colors(choice)
-    }
-
-    /// Whether the applied syntax palette drifted from the configured one; keeps
-    /// chrome-only changes (fonts) from re-parsing the whole buffer.
-    pub(crate) fn syntax_colors_changed(&self) -> bool {
-        !Arc::ptr_eq(self.highlighting.service.syntax(), &self.syntax_colors())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::highlighting::LanguageKind;
     use ropey::Rope;
 
     #[test]

@@ -1,52 +1,41 @@
-use crate::app::App;
 use crate::document::{
     EditTransaction, SubEdit, indentation_for_newline, next_word_boundary, previous_word_boundary,
 };
-use eframe::egui;
+use crate::documents::Documents;
 
-impl App {
+impl Documents {
     pub(crate) fn selected_text(&self) -> Option<String> {
         let active_document = self.active_document();
         let range = active_document.caret_state.selection_range()?;
         Some(active_document.buffer.text().slice(range).to_string())
     }
 
-    pub(crate) fn copy_selection_to_clipboard(&self, ctx: &egui::Context) -> bool {
-        if let Some(selected_text) = self.selected_text() {
-            ctx.copy_text(selected_text);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Cut the active cursor's selection; other cursors are left in place.
-    pub(crate) fn cut_selection_to_clipboard(&mut self, ctx: &egui::Context) -> bool {
-        let Some(range) = self.active_document().caret_state.selection_range() else {
-            return false;
-        };
+    /// Cut the active cursor's selection, returning the removed text so the
+    /// caller can put it on the clipboard; other cursors are left in place.
+    pub(crate) fn cut_selection(&mut self) -> Option<String> {
+        let range = self.active_document().caret_state.selection_range()?;
         let selected_text = self
             .active_document()
             .buffer
             .text()
             .slice(range.clone())
             .to_string();
-        ctx.copy_text(selected_text);
-        self.apply_edit(range.start, range.end, "", ctx)
+        self.apply_edit(range.start, range.end, "");
+        Some(selected_text)
     }
 
     /// Insert `text` at (or replace the selection of) every cursor.
-    pub(crate) fn insert_or_replace_selection(&mut self, text: &str, ctx: &egui::Context) -> bool {
+    pub(crate) fn insert_or_replace_selection(&mut self, text: &str) -> bool {
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
                 .map(|index| active_document.caret_state.edit_target(index))
                 .collect::<Vec<_>>()
         };
-        self.apply_multi_edit(edits, text, ctx)
+        self.apply_multi_edit(edits, text)
     }
 
-    pub(crate) fn delete_backward(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn delete_backward(&mut self) -> bool {
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
@@ -64,10 +53,10 @@ impl App {
                 })
                 .collect::<Vec<_>>()
         };
-        self.apply_multi_edit(edits, "", ctx)
+        self.apply_multi_edit(edits, "")
     }
 
-    pub(crate) fn delete_word_backward(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn delete_word_backward(&mut self) -> bool {
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
@@ -84,10 +73,10 @@ impl App {
                 })
                 .collect::<Vec<_>>()
         };
-        self.apply_multi_edit(edits, "", ctx)
+        self.apply_multi_edit(edits, "")
     }
 
-    pub(crate) fn delete_forward(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn delete_forward(&mut self) -> bool {
         let edits = {
             let active_document = self.active_document();
             let total_chars = active_document.buffer.text().len_chars();
@@ -106,10 +95,10 @@ impl App {
                 })
                 .collect::<Vec<_>>()
         };
-        self.apply_multi_edit(edits, "", ctx)
+        self.apply_multi_edit(edits, "")
     }
 
-    pub(crate) fn delete_word_forward(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn delete_word_forward(&mut self) -> bool {
         let edits = {
             let active_document = self.active_document();
             (0..active_document.caret_state.len())
@@ -123,11 +112,11 @@ impl App {
                 })
                 .collect::<Vec<_>>()
         };
-        self.apply_multi_edit(edits, "", ctx)
+        self.apply_multi_edit(edits, "")
     }
 
     /// Enter key: per-cursor indentation.
-    pub(crate) fn insert_newline(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn insert_newline(&mut self) -> bool {
         let (edits, texts) = {
             let active_document = self.active_document();
             let cursor_count = active_document.caret_state.len();
@@ -140,19 +129,13 @@ impl App {
             }
             (edits, texts)
         };
-        self.apply_multi_edits(edits, texts, ctx)
+        self.apply_multi_edits(edits, texts)
     }
 
     /// Apply one replacement to the active cursor's target only; other cursors
     /// keep their position. Whole-buffer replaces (formatter) and active-only
     /// operations (cut) go through here.
-    pub(crate) fn apply_edit(
-        &mut self,
-        start: usize,
-        end: usize,
-        inserted_text: &str,
-        ctx: &egui::Context,
-    ) -> bool {
+    pub(crate) fn apply_edit(&mut self, start: usize, end: usize, inserted_text: &str) -> bool {
         let active_document = self.active_document();
         let cursor_count = active_document.caret_state.len();
         let active_index = active_document.caret_state.active_index();
@@ -166,7 +149,7 @@ impl App {
             }
         }
         let texts = vec![inserted_text.to_string(); cursor_count];
-        self.apply_multi_edits(edits, texts, ctx)
+        self.apply_multi_edits(edits, texts)
     }
 
     /// Apply one replacement with uniform text at every cursor.
@@ -174,10 +157,9 @@ impl App {
         &mut self,
         edits: Vec<(usize, usize)>,
         inserted_text: &str,
-        ctx: &egui::Context,
     ) -> bool {
         let texts = vec![inserted_text.to_string(); edits.len()];
-        self.apply_multi_edits(edits, texts, ctx)
+        self.apply_multi_edits(edits, texts)
     }
 
     /// Apply `edits[index]` at cursor `index`, replacing its target with
@@ -189,7 +171,6 @@ impl App {
         &mut self,
         edits: Vec<(usize, usize)>,
         texts: Vec<String>,
-        ctx: &egui::Context,
     ) -> bool {
         let total_chars = self.active_document().buffer.text().len_chars();
         let cursor_count = self.active_document().caret_state.len();
@@ -296,11 +277,11 @@ impl App {
                 before,
                 after,
             });
-        self.mark_document_dirty(ctx);
+        self.mark_document_dirty();
         true
     }
 
-    pub(crate) fn mark_document_dirty(&mut self, ctx: &egui::Context) {
+    pub(crate) fn mark_document_dirty(&mut self) {
         let active_document = self.active_document_mut();
         active_document.edit_generation += 1;
         // Dirty reflects the buffer against the saved content, not "an edit
@@ -311,6 +292,5 @@ impl App {
         } else {
             None
         };
-        self.update_window_title(ctx);
     }
 }

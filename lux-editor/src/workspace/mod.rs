@@ -3,7 +3,6 @@
 //! Rendering lives in `file_tree_panel`; the tree model in `tree` is pure data.
 
 pub(crate) mod file_tree_panel;
-mod reducer;
 mod state;
 mod tree;
 mod watcher;

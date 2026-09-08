@@ -1,6 +1,6 @@
 //! Chrome views built on the component pattern. They speak the app's event
-//! language directly, so leaves stay thin and the reducers stay the only
-//! place that mutates state.
+//! language directly, so leaves stay thin and the app's actions (`app/actions`)
+//! stay the only place that mutates state across domains.
 
 pub(crate) mod widgets;
 

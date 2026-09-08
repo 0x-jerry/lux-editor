@@ -1,13 +1,10 @@
 //! Document domain: the open tabs and the caret-blink state scoped to them.
 
-use crate::app::App;
 use crate::document::DocumentBuffer;
 use crate::document::OpenDocument;
-use crate::documents::formatter::run_formatter;
-use crate::events::{CustomEvent, DocumentEvent, LoadResult, ReconcileResult};
-use eframe::egui;
+use crate::events::{LoadResult, ReconcileResult};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 /// Index of the tab already showing `path`, if any.
 pub(crate) fn tab_with_path(tabs: &[OpenDocument], path: &Path) -> Option<usize> {
@@ -21,7 +18,7 @@ pub(crate) fn tab_with_path(tabs: &[OpenDocument], path: &Path) -> Option<usize>
 
 /// Tab that holds `path`'s content. A tab on the missing-file page does not, so
 /// opening that file again reads it instead of focusing the dead tab.
-fn openable_tab(tabs: &[OpenDocument], path: &Path) -> Option<usize> {
+pub(crate) fn openable_tab(tabs: &[OpenDocument], path: &Path) -> Option<usize> {
     tab_with_path(tabs, path).filter(|&index| !tabs[index].missing)
 }
 
@@ -56,6 +53,32 @@ impl Documents {
         self.tabs
             .get_mut(self.active_document)
             .expect("active document index must be valid")
+    }
+
+    pub(crate) fn buffer(&self) -> &DocumentBuffer {
+        &self.active_document().buffer
+    }
+
+    pub(crate) fn buffer_mut(&mut self) -> &mut DocumentBuffer {
+        &mut self.active_document_mut().buffer
+    }
+
+    /// The window title the active document asks for: its path with a dirty
+    /// prefix, or an untitled placeholder.
+    pub(crate) fn window_title(&self) -> String {
+        let active_document = self.active_document();
+        if let Some(path) = active_document.buffer.path() {
+            let dirty_prefix = if active_document.document_dirty {
+                "* "
+            } else {
+                ""
+            };
+            format!("lux - {}{}", dirty_prefix, path.display())
+        } else if active_document.document_dirty {
+            "lux - * Untitled".to_string()
+        } else {
+            "lux".to_string()
+        }
     }
 
     pub(crate) fn reset_editor_state(&mut self) {
@@ -171,207 +194,70 @@ impl Documents {
     pub(crate) fn focus_edit_area(&mut self) {
         self.active_document_mut().edit_area_focused = true;
     }
-}
 
-impl App {
-    pub(crate) fn open_file(&mut self, path: PathBuf, ctx: &egui::Context) {
-        let path = path.canonicalize().unwrap_or(path);
-        if let Some(index) = openable_tab(&self.documents.tabs, &path) {
-            self.switch_to_document(index, ctx);
-            return;
-        }
-        self.load_files(vec![path.clone()], Some(path));
-    }
-
-    /// Restore files as tabs from one task reading them in order, so the strip
-    /// and the focused tab come back as saved rather than in disk order.
-    pub(crate) fn open_files(
-        &mut self,
-        paths: Vec<PathBuf>,
-        activate: Option<PathBuf>,
-        ctx: &egui::Context,
-    ) {
-        let mut paths = paths
-            .into_iter()
-            .map(|path| path.canonicalize().unwrap_or(path))
-            .collect::<Vec<_>>();
-        paths.retain(|path| openable_tab(&self.documents.tabs, path).is_none());
-        if paths.is_empty() {
-            // Nothing left to read, but the remembered tab still wants focus.
-            if let Some(path) = activate
-                && let Some(index) = tab_with_path(&self.documents.tabs, &path)
-            {
-                self.switch_to_document(index, ctx);
-            }
-            return;
-        }
-        self.load_files(paths, activate);
-    }
-
-    /// Move tabs to `new` when the tree renamed `old` out from under them.
-    pub(crate) fn on_path_renamed(&mut self, old: &Path, new: &Path) {
-        let mut moved = false;
-        for document in self.documents.tabs.iter_mut() {
-            if document.buffer.path().is_some_and(|path| path == old) {
-                document.buffer.set_path(new);
-                document.missing = false;
-                moved = true;
-            }
-        }
-        if moved {
-            self.refresh_language_intelligence();
-        }
-    }
-
-    /// Read `paths` into tabs; `activate` names the one to focus, `None` keeps
-    /// the current one. Each call is one batch, so a restore keeps its order.
-    pub(crate) fn load_files(&mut self, paths: Vec<PathBuf>, activate: Option<PathBuf>) {
-        self.documents.pending_loads += 1;
-        let workspace = self.workspace.path.clone();
-        let event_tx = self.runtime.event_tx.clone();
-        let wake = self.runtime.ctx.clone();
-        self.runtime.rt.spawn(async move {
-            let mut entries = Vec::with_capacity(paths.len());
-            for path in paths {
-                let result = match tokio::fs::read(&path).await {
-                    Err(err) => LoadResult::Missing(err.to_string()),
-                    Ok(bytes) => match std::str::from_utf8(&bytes) {
-                        Ok(text) => {
-                            let mut buffer = DocumentBuffer::new();
-                            buffer.set_path(&path);
-                            buffer.insert(0, text);
-                            LoadResult::Loaded(buffer)
-                        }
-                        // Not valid UTF-8: a binary file, not a vanished one.
-                        Err(_) => LoadResult::Binary,
-                    },
+    /// Flag tabs whose file vanished, and collect the ones to re-read (the file
+    /// came back, or a binary file was rewritten). Returns the paths to reload;
+    /// the caller replaces those tabs in place via `load_files`.
+    pub(crate) fn sync_missing_documents(&mut self) -> Vec<PathBuf> {
+        let mut revived = Vec::new();
+        for document in self.tabs.iter_mut() {
+            if document.binary {
+                let Some(path) = document.buffer.path().cloned() else {
+                    continue;
                 };
-                entries.push((path, result));
-            }
-            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FilesLoaded {
-                entries,
-                activate,
-                workspace,
-            }));
-            wake.request_repaint();
-        });
-    }
-
-    pub(crate) fn save_current_buffer(&mut self, _ctx: &egui::Context) -> bool {
-        if self.active_document().missing {
-            self.active_document_mut().document_status =
-                Some("File not found — nothing to save".to_string());
-            return false;
-        }
-        if self.active_document().binary {
-            self.active_document_mut().document_status =
-                Some("Binary file — not editable".to_string());
-            return false;
-        }
-        let active_path = self.active_document().buffer.path().cloned();
-        if active_path.is_none() {
-            if let Some(path) = rfd::FileDialog::new().save_file() {
-                self.buffer_mut().set_path(&path);
-            } else {
-                self.active_document_mut().document_status = Some("Save cancelled".to_string());
-                return false;
-            }
-        }
-
-        let save_path = self.buffer().path().cloned().unwrap();
-        let text = self.buffer().text().to_string();
-        let generation = self.active_document().edit_generation;
-        let formatter = self.settings.editor_config.settings.formatter.clone();
-        let format_on_save = formatter.format_on_save && !formatter.command.trim().is_empty();
-        let event_tx = self.runtime.event_tx.clone();
-        let wake = self.runtime.ctx.clone();
-        self.runtime.rt.spawn_blocking(move || {
-            let mut to_write = text.clone();
-            let mut formatted_result: Option<Result<String, String>> = None;
-            if format_on_save {
-                match run_formatter(&formatter.command, &formatter.args, &text) {
-                    Ok(formatted) if formatted != text => {
-                        to_write = formatted.clone();
-                        formatted_result = Some(Ok(formatted));
-                    }
-                    Ok(_) => {}
-                    Err(err) => formatted_result = Some(Err(err)),
+                let Some(metadata) = std::fs::metadata(&path).ok() else {
+                    continue;
+                };
+                let stat = (
+                    metadata.len(),
+                    metadata
+                        .modified()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                );
+                if document.last_disk_stat != Some(stat) {
+                    revived.push(path);
                 }
+                continue;
             }
-            let ok = std::fs::write(&save_path, to_write).is_ok();
-            let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FileSaved {
-                path: save_path,
-                generation,
-                ok,
-            }));
-            if let Some(result) = formatted_result {
-                let _ = event_tx.send(CustomEvent::Document(DocumentEvent::FormattingFinished {
-                    generation,
-                    from_save: true,
-                    result,
-                }));
+            let exists = document.buffer.path().is_some_and(|path| path.exists());
+            if document.observe_file_exists(exists)
+                && let Some(path) = document.buffer.path()
+            {
+                revived.push(path.clone());
             }
-            wake.request_repaint();
-        });
-        true
+        }
+        revived
     }
 
-    pub(crate) fn update_window_title(&self, ctx: &egui::Context) {
-        let active_document = self.active_document();
-        let title = if let Some(path) = active_document.buffer.path() {
-            let dirty_prefix = if active_document.document_dirty {
-                "* "
-            } else {
-                ""
+    /// Plan a disk re-check of every open tab: (path, current stat, buffer
+    /// text). The stat short-circuit runs here, on the UI thread, so a swoop of
+    /// unrelated watcher events costs only metadata calls; only files that
+    /// actually moved are returned, and the caller reads + byte-compares those
+    /// on a blocking thread.
+    pub(crate) fn disk_change_plan(&self) -> Vec<(PathBuf, (u64, SystemTime), String)> {
+        let mut checks = Vec::new();
+        for document in self.tabs.iter() {
+            if document.binary || document.missing {
+                continue;
+            }
+            let Some(path) = document.buffer.path() else {
+                continue;
             };
-            format!("lux - {}{}", dirty_prefix, path.display())
-        } else if active_document.document_dirty {
-            "lux - * Untitled".to_string()
-        } else {
-            "lux".to_string()
-        };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
-    }
-
-    pub(crate) fn switch_to_document(&mut self, index: usize, ctx: &egui::Context) {
-        if index >= self.documents.tabs.len() {
-            return;
+            let Some(metadata) = std::fs::metadata(path).ok() else {
+                continue;
+            };
+            let stat = (
+                metadata.len(),
+                metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            );
+            if document.last_disk_stat == Some(stat) {
+                continue;
+            }
+            checks.push((path.clone(), stat, document.buffer.text().to_string()));
         }
-        self.documents.active_document = index;
-        self.documents.touch_caret_blink();
-        self.update_window_title(ctx);
-        self.refresh_language_intelligence();
-    }
-
-    pub(crate) fn close_document(&mut self, index: usize, ctx: &egui::Context) {
-        if index >= self.documents.tabs.len() {
-            return;
-        }
-
-        if self.documents.tabs[index].document_dirty {
-            self.documents.tabs[index].document_status =
-                Some("Unsaved changes — save before closing".to_string());
-            return;
-        }
-
-        if self.documents.tabs.len() == 1 {
-            self.documents.tabs[0] = OpenDocument::new_empty();
-            self.documents.active_document = 0;
-            self.documents.touch_caret_blink();
-            self.update_window_title(ctx);
-            self.refresh_language_intelligence();
-            return;
-        }
-
-        self.documents.tabs.remove(index);
-        if self.documents.active_document >= self.documents.tabs.len() {
-            self.documents.active_document = self.documents.tabs.len().saturating_sub(1);
-        } else if index < self.documents.active_document {
-            self.documents.active_document = self.documents.active_document.saturating_sub(1);
-        }
-        self.documents.touch_caret_blink();
-        self.update_window_title(ctx);
-        self.refresh_language_intelligence();
+        checks
     }
 }
 

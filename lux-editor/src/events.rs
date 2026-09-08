@@ -1,6 +1,7 @@
 //! The app's event bus. UI components and background workers report their
-//! effects to the app reducers (`<domain>/reducer.rs`) through a single `CustomEvent`
-//! envelope — one variant per domain, so a new event has to pick a domain:
+//! effects to the app's actions (`app/actions`, `impl Ctx` methods) through a
+//! single `CustomEvent` envelope — one variant per domain, so a new event has
+//! to pick a domain:
 //!
 //! - [`WorkspaceEvent`] — workspace-tree changes (create/delete/rename, refresh)
 //! - [`DocumentEvent`] — document lifecycle & content pipeline (load/save/format,
@@ -72,7 +73,7 @@ pub enum DocumentEvent {
         result: Result<String, String>,
     },
     /// Open files compared against their bytes on disk after a watcher event;
-    /// the reducer reacts per tab (clear stale dirty / flag or reload).
+    /// the documents action reacts per tab (clear stale dirty / flag or reload).
     FilesReconciled {
         results: Vec<ReconcileResult>,
     },

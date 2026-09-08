@@ -1,9 +1,7 @@
-use super::commands::EditorCommand;
-use crate::app::App;
-use crate::chrome::ShellView;
 use crate::document::word_char_range;
+use crate::documents::Documents;
 
-impl App {
+impl Documents {
     pub(crate) fn set_caret_from_pointer(
         &mut self,
         line_index: usize,
@@ -11,13 +9,13 @@ impl App {
         selecting: bool,
         add_cursor: bool,
     ) {
-        self.documents.focus_edit_area();
+        self.focus_edit_area();
         let Some(next) = self.pointer_to_char(line_index, column) else {
             let active_document = self.active_document_mut();
             active_document
                 .caret_state
                 .set_caret_char(0, &active_document.buffer, selecting);
-            self.documents.touch_caret_blink();
+            self.touch_caret_blink();
             return;
         };
         if add_cursor {
@@ -25,18 +23,18 @@ impl App {
             active_document
                 .caret_state
                 .add_cursor_at(next, &active_document.buffer);
-            self.documents.touch_caret_blink();
+            self.touch_caret_blink();
             return;
         }
         let active_document = self.active_document_mut();
         active_document
             .caret_state
             .set_caret_char(next, &active_document.buffer, selecting);
-        self.documents.touch_caret_blink();
+        self.touch_caret_blink();
     }
 
     pub(crate) fn select_word_from_pointer(&mut self, line_index: usize, column: usize) {
-        self.documents.focus_edit_area();
+        self.focus_edit_area();
         let Some(char_index) = self.pointer_to_char(line_index, column) else {
             return;
         };
@@ -47,7 +45,7 @@ impl App {
         active_document
             .caret_state
             .select_range(word.start, word.end, &active_document.buffer);
-        self.documents.touch_caret_blink();
+        self.touch_caret_blink();
     }
 
     fn pointer_to_char(&self, line_index: usize, column: usize) -> Option<usize> {
@@ -60,36 +58,5 @@ impl App {
         let line_text = self.buffer().text().line(line).to_string();
         let line_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
         Some(line_start + column.min(line_len))
-    }
-
-    pub(crate) fn should_ignore_editor_command(
-        &self,
-        command: &EditorCommand,
-        ctx: &eframe::egui::Context,
-    ) -> bool {
-        if matches!(command, EditorCommand::ToggleCommandPanel) {
-            return false;
-        }
-
-        self.chrome.command_panel.open()
-            || self.chrome.shell.shell_view() != ShellView::Editor
-            || self.active_document().missing
-            || self.active_document().binary
-            || !self.active_document().edit_area_focused
-            || ctx.egui_wants_keyboard_input()
-    }
-
-    /// Whether the edit area has focus: the window is focused, we are on the
-    /// editor view, and nothing else (command palette, file-tree rename, config
-    /// field) is stealing keyboard input. If the window isn't focused, the edit
-    /// area isn't either.
-    pub(crate) fn editor_focused(&self, ctx: &eframe::egui::Context) -> bool {
-        self.active_document().edit_area_focused
-            && ctx.input(|i| i.focused)
-            && !self.chrome.command_panel.open()
-            && self.chrome.shell.shell_view() == ShellView::Editor
-            && !self.active_document().missing
-            && !self.active_document().binary
-            && !ctx.egui_wants_keyboard_input()
     }
 }

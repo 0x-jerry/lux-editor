@@ -1,6 +1,6 @@
 //! Native integration: the macOS system menubar and the cross-platform tray
 //! icon. Both report through [`TitleBarMenu`] so the app maps them onto its
-//! existing command pipeline (`App::on_title_bar_menu`).
+//! existing command pipeline (`Ctx::on_title_bar_menu` in `app/actions`).
 
 mod icon;
 #[cfg(target_os = "macos")]

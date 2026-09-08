@@ -3,7 +3,6 @@
 //! plus the configuration view (autosaving settings editor).
 
 pub(crate) mod configuration_view;
-mod reducer;
 pub(crate) mod schema;
 mod state;
 mod store;

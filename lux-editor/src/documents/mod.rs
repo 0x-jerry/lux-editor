@@ -6,12 +6,12 @@
 
 mod formatter;
 mod input;
-mod reducer;
 mod state;
 mod tabs;
 pub(crate) mod ui;
 
-pub(crate) use input::EditorCommand;
-pub(crate) use state::Documents;
+pub(crate) use formatter::run_formatter;
+pub(crate) use input::{EditorCommand, commands_from_event};
+pub(crate) use state::{Documents, openable_tab, tab_with_path};
 pub use tabs::DocumentTab;
 pub use ui::{EditorView, EditorViewState};

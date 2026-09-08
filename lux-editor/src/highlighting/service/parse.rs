@@ -137,6 +137,15 @@ mod tests {
         )
     }
 
+    fn color_at(snapshot: &HighlightSnapshot, line: usize, col: usize) -> [u8; 4] {
+        let foreground = snapshot.foreground.unwrap();
+        snapshot.line_tokens[line]
+            .iter()
+            .find(|span| span.start_col <= col && col < span.end_col)
+            .map(|span| span.color)
+            .unwrap_or(foreground)
+    }
+
     #[test]
     fn split_by_lines_overlaps_are_normalized() {
         // Simulate an upstream grammar emitting overlapping ranges on one line.
@@ -237,6 +246,7 @@ mod tests {
             LanguageKind::Markdown,
         );
         let foreground = snapshot.foreground.unwrap();
+        let syntax = theme::syntax_colors(ThemeChoice::Dark);
         // Lines 3 and 7 are the ```rust/```sh fence bodies; line 11, a fence
         // no registered grammar matches, stays plain.
         for body_index in [3, 7] {
@@ -248,6 +258,27 @@ mod tests {
             );
         }
         assert!(snapshot.line_tokens[11].is_empty());
+        // The injected spans must land on their real columns, not smear across
+        // the line: `fn` keyword and `main` function.
+        assert_eq!(color_at(&snapshot, 3, 0), syntax.tokens["keyword"]);
+        assert_eq!(color_at(&snapshot, 3, 3), syntax.tokens["function"]);
+    }
+
+    #[test]
+    fn markdown_fence_bodies_keep_injected_offsets() {
+        // Mirrors playground/test.md: a misaligned injected parse used to drop
+        // `fn` and paint whole lines with one capture's color.
+        let snapshot = snapshot_for(
+            "```ts\nconsole.log('hello')\n```\n\n```rs\nfn main() {\n    println!(\"hello\");\n}\n```\n",
+            LanguageKind::Markdown,
+        );
+        let syntax = theme::syntax_colors(ThemeChoice::Dark);
+        assert_eq!(color_at(&snapshot, 1, 0), syntax.tokens["variable"], "console");
+        assert_eq!(color_at(&snapshot, 1, 8), syntax.tokens["function"], "log");
+        assert_eq!(color_at(&snapshot, 1, 12), syntax.tokens["string"], "'hello'");
+        assert_eq!(color_at(&snapshot, 5, 0), syntax.tokens["keyword"], "fn");
+        assert_eq!(color_at(&snapshot, 5, 3), syntax.tokens["function"], "main");
+        assert_eq!(color_at(&snapshot, 6, 13), syntax.tokens["string"], "\"hello\"");
     }
 
     #[test]
@@ -395,18 +426,11 @@ mod tests {
     fn uppercase_identifier_uses_constant_color_not_variable() {
         let snapshot = snapshot_for("const foo = bar(FOO);\n", LanguageKind::TypeScript);
         let foreground = snapshot.foreground.unwrap();
-        let color_at = |col: usize| {
-            snapshot.line_tokens[0]
-                .iter()
-                .find(|span| span.start_col <= col && col < span.end_col)
-                .map(|span| span.color)
-                .unwrap_or(foreground)
-        };
         // `foo` (6..9) is a plain variable, `FOO` (11..14) the ALL_CAPS constant.
-        assert_ne!(color_at(6), foreground);
+        assert_ne!(color_at(&snapshot, 0, 6), foreground);
         assert_ne!(
-            color_at(6),
-            color_at(11),
+            color_at(&snapshot, 0, 6),
+            color_at(&snapshot, 0, 11),
             "FOO must not share the variable color"
         );
     }

@@ -4,6 +4,7 @@ use super::LanguageKind;
 use super::engine::{Engines, RawSpan};
 use super::snapshot::{HighlightSnapshot, HighlightSpan};
 use super::style::ThemeColors;
+use crate::highlighting::paint::clip_to_cursor;
 use crate::theme::SyntaxColors;
 
 pub(super) fn parse_snapshot(
@@ -46,7 +47,9 @@ pub(super) fn parse_snapshot(
 }
 
 /// `HighlightEvent::Source` ranges arrive in document order and never
-/// overlap, so this is a pure split at line boundaries.
+/// overlap, so this is a pure split at line boundaries, followed by a
+/// normalization pass that guarantees each line's tokens are disjoint and
+/// column-ordered (see [`normalize_line_tokens`]).
 fn split_by_lines(
     spans: &[RawSpan],
     line_starts: &[usize],
@@ -82,7 +85,40 @@ fn split_by_lines(
             line += 1;
         }
     }
+    for line_tokens in tokens.iter_mut() {
+        normalize_line_tokens(line_tokens);
+    }
     tokens
+}
+
+/// Enforces the `line_tokens` contract on a single line: tokens are sorted by
+/// column and clipped against a monotonic cursor so they never overlap
+/// (zero-width residuals are dropped). It shares [`clip_to_cursor`] with the
+/// painter, so both layers use the identical "first token wins a shared column"
+/// rule and cannot drift. Note that rule is a local convention for deterministic
+/// output, NOT tree-sitter's inner-capture-wins semantics — the engine already
+/// bakes inner-capture-wins into disjoint segments, so this only matters for
+/// hypothetical upstream overlap. Defense-in-depth: the painter re-clips anyway.
+fn normalize_line_tokens(tokens: &mut Vec<HighlightSpan>) {
+    if tokens.len() < 2 {
+        return;
+    }
+    tokens.sort_by_key(|t| (t.start_col, t.end_col));
+    let mut write = 0usize;
+    let mut cursor = 0usize;
+    for read in 0..tokens.len() {
+        let token = tokens[read];
+        if let Some((start, end)) = clip_to_cursor(token.start_col, token.end_col, cursor) {
+            tokens[write] = HighlightSpan {
+                start_col: start,
+                end_col: end,
+                color: token.color,
+            };
+            write += 1;
+            cursor = cursor.max(end);
+        }
+    }
+    tokens.truncate(write);
 }
 
 #[cfg(test)]
@@ -99,6 +135,60 @@ mod tests {
             language,
             1,
         )
+    }
+
+    #[test]
+    fn split_by_lines_overlaps_are_normalized() {
+        // Simulate an upstream grammar emitting overlapping ranges on one line.
+        let spans = vec![
+            RawSpan { start: 0, end: 4, color: [1, 2, 3, 255] },
+            RawSpan { start: 2, end: 8, color: [4, 5, 6, 255] },
+            RawSpan { start: 6, end: 10, color: [7, 8, 9, 255] },
+        ];
+        // One line of 10 bytes.
+        let starts = vec![0];
+        let lengths = vec![10];
+        let tokens = split_by_lines(&spans, &starts, &lengths);
+        let tokens = &tokens[0];
+
+        // Disjoint, ordered, cover 0..10 exactly, no duplicates.
+        let mut cursor = 0usize;
+        for t in tokens {
+            assert!(t.start_col >= cursor, "token must not overlap the previous: {t:?}");
+            assert!(t.start_col < t.end_col, "zero-width token: {t:?}");
+            assert_eq!(t.start_col, cursor, "token should start where the previous left off: {t:?}");
+            cursor = t.end_col;
+        }
+        assert_eq!(cursor, 10, "tokens must cover the whole line");
+    }
+
+    #[test]
+    fn markdown_fence_closing_lines_are_not_duplicated_when_painted() {
+        // Mirrors row.rs: trim the trailing newline (display_line_text), then
+        // build the LayoutJob. A closing fence `` ``` `` must paint exactly 3
+        // backticks, not 6. This is the end-to-end regression for the phantom
+        // backtick bug.
+        use crate::highlighting::build_highlighted_line_job;
+        use eframe::egui;
+
+        let source = "# Title\n\n```ts\nconsole.log(1)\n```\n\n```rs\nfn main() {}\n```\n";
+        let snapshot = snapshot_for(source, LanguageKind::Markdown);
+        let rope = Rope::from_str(source);
+        for line_index in 0..snapshot.line_tokens.len() {
+            let raw = rope.line(line_index).to_string();
+            let trimmed = raw.trim_end_matches(['\r', '\n']);
+            let tokens = snapshot.line_tokens.get(line_index).map(Vec::as_slice).unwrap_or(&[]);
+            let job = build_highlighted_line_job(
+                trimmed,
+                tokens,
+                12.0,
+                egui::Color32::GRAY,
+            );
+            assert_eq!(
+                job.text, trimmed,
+                "line {line_index} painted output must equal the trimmed source (no duplication)"
+            );
+        }
     }
 
     #[test]

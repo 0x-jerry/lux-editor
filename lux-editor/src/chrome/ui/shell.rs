@@ -6,6 +6,7 @@ use super::widgets::{
 };
 use crate::chrome::ShellView;
 use crate::component::Component;
+use crate::document::DocumentBuffer;
 use crate::documents::{EditorView, EditorViewState};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
@@ -15,7 +16,6 @@ use crate::settings::{Config, EditorSettings};
 use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
-use lux_core::Buffer;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 pub struct ShellInput<'a> {
     pub file_tree: Option<&'a mut FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub document_tabs: &'a [crate::documents::DocumentTab],
     pub active_document_index: usize,
     pub highlight_snapshot: &'a HighlightSnapshot,

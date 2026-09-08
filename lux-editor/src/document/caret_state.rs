@@ -1,4 +1,8 @@
-use crate::Buffer;
+//! Cursor and selection state: the multi-cursor model behind every document
+//! (snapshots, movement, selection, word navigation), plus the text-position
+//! helpers it shares with the editing pipeline.
+
+use super::buffer::DocumentBuffer;
 use std::ops::Range;
 
 /// A single cursor: a caret position plus an optional selection anchor.
@@ -57,7 +61,7 @@ impl CaretState {
         }
     }
 
-    pub fn restore(&mut self, snapshot: CaretSnapshot, buffer: &Buffer) {
+    pub fn restore(&mut self, snapshot: CaretSnapshot, buffer: &DocumentBuffer) {
         let len = buffer.text().len_chars();
         self.carets = snapshot
             .carets
@@ -76,7 +80,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn reset_to_buffer_end(&mut self, buffer: &Buffer) {
+    pub fn reset_to_buffer_end(&mut self, buffer: &DocumentBuffer) {
         let len = buffer.text().len_chars();
         self.carets = vec![Caret {
             caret_char: len,
@@ -144,7 +148,7 @@ impl CaretState {
         &mut self,
         index: usize,
         next: usize,
-        buffer: &Buffer,
+        buffer: &DocumentBuffer,
         selecting: bool,
     ) {
         let next = next.min(buffer.text().len_chars());
@@ -159,13 +163,13 @@ impl CaretState {
         caret.caret_char = next;
     }
 
-    pub fn set_caret_char(&mut self, next: usize, buffer: &Buffer, selecting: bool) {
+    pub fn set_caret_char(&mut self, next: usize, buffer: &DocumentBuffer, selecting: bool) {
         self.set_caret_char_at(self.active_index, next, buffer, selecting);
     }
 
     /// Move every cursor to the given clamped positions and drop all
     /// selections and preferred columns (used after multi-edit application).
-    pub fn set_all_caret_chars(&mut self, positions: &[usize], buffer: &Buffer) {
+    pub fn set_all_caret_chars(&mut self, positions: &[usize], buffer: &DocumentBuffer) {
         let len = buffer.text().len_chars();
         for (index, position) in positions.iter().copied().enumerate() {
             let Some(caret) = self.carets.get_mut(index) else {
@@ -177,7 +181,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn select_all(&mut self, buffer: &Buffer) {
+    pub fn select_all(&mut self, buffer: &DocumentBuffer) {
         let len = buffer.text().len_chars();
         self.carets = vec![Caret {
             caret_char: len,
@@ -187,7 +191,7 @@ impl CaretState {
         self.preferred_columns = vec![None];
     }
 
-    pub fn select_range(&mut self, start: usize, end: usize, buffer: &Buffer) {
+    pub fn select_range(&mut self, start: usize, end: usize, buffer: &DocumentBuffer) {
         let total_chars = buffer.text().len_chars();
         self.carets = vec![Caret {
             caret_char: end.min(total_chars),
@@ -200,7 +204,7 @@ impl CaretState {
     // ---- multi-cursor management ------------------------------------------
 
     /// Add a cursor at `char_idx`, or activate the existing one there.
-    pub fn add_cursor_at(&mut self, char_idx: usize, buffer: &Buffer) {
+    pub fn add_cursor_at(&mut self, char_idx: usize, buffer: &DocumentBuffer) {
         let char_idx = char_idx.min(buffer.text().len_chars());
         if let Some(index) = self
             .carets
@@ -218,13 +222,13 @@ impl CaretState {
         self.active_index = self.carets.len() - 1;
     }
 
-    pub fn add_cursor_below(&mut self, buffer: &Buffer) {
+    pub fn add_cursor_below(&mut self, buffer: &DocumentBuffer) {
         let active = self.active_caret();
         let target = line_adjacent_char(buffer, active.caret_char, true);
         self.add_cursor_at(target, buffer);
     }
 
-    pub fn add_cursor_above(&mut self, buffer: &Buffer) {
+    pub fn add_cursor_above(&mut self, buffer: &DocumentBuffer) {
         let active = self.active_caret();
         let target = line_adjacent_char(buffer, active.caret_char, false);
         self.add_cursor_at(target, buffer);
@@ -240,7 +244,7 @@ impl CaretState {
 
     // ---- movement (applies to every cursor) -------------------------------
 
-    pub fn move_left(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_left(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             if !selecting && let Some(range) = self.selection_range_at(index) {
                 self.carets[index].caret_char = range.start;
@@ -253,7 +257,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_right(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_right(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             if !selecting && let Some(range) = self.selection_range_at(index) {
                 self.carets[index].caret_char = range.end;
@@ -266,7 +270,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_word_left(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_word_left(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             if !selecting && let Some(range) = self.selection_range_at(index) {
                 self.carets[index].caret_char = range.start;
@@ -279,7 +283,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_word_right(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_word_right(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             if !selecting && let Some(range) = self.selection_range_at(index) {
                 self.carets[index].caret_char = range.end;
@@ -292,7 +296,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_home(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_home(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             let line = current_line_index(buffer, self.carets[index].caret_char);
             let start = buffer.text().line_to_char(line);
@@ -301,7 +305,7 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_end(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_end(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             let line = current_line_index(buffer, self.carets[index].caret_char);
             let end = line_visual_end_char(buffer, line);
@@ -310,19 +314,25 @@ impl CaretState {
         self.preferred_columns = vec![None; self.carets.len()];
     }
 
-    pub fn move_up(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_up(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             self.move_vertically(buffer, index, selecting, false);
         }
     }
 
-    pub fn move_down(&mut self, buffer: &Buffer, selecting: bool) {
+    pub fn move_down(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
             self.move_vertically(buffer, index, selecting, true);
         }
     }
 
-    fn move_vertically(&mut self, buffer: &Buffer, index: usize, selecting: bool, down: bool) {
+    fn move_vertically(
+        &mut self,
+        buffer: &DocumentBuffer,
+        index: usize,
+        selecting: bool,
+        down: bool,
+    ) {
         let caret = self.carets[index].caret_char;
         let line = current_line_index(buffer, caret);
         let total_lines = buffer.len_lines();
@@ -349,121 +359,15 @@ impl CaretState {
     }
 }
 
-// ---- history ----------------------------------------------------------------
-
-/// One atomic replacement within an edit transaction.
-#[derive(Clone, Debug)]
-pub struct SubEdit {
-    pub start_char: usize,
-    pub deleted_text: String,
-    pub inserted_text: String,
-}
-
-/// A multi-cursor edit bundle: every sub-edit is applied as a single undo step.
-#[derive(Clone, Debug)]
-pub struct EditTransaction {
-    pub edits: Vec<SubEdit>,
-    pub before: CaretSnapshot,
-    pub after: CaretSnapshot,
-}
-
-#[derive(Default)]
-pub struct EditHistory {
-    undo_stack: Vec<EditTransaction>,
-    redo_stack: Vec<EditTransaction>,
-}
-
-impl EditHistory {
-    const MAX_UNDO_DEPTH: usize = 1000;
-
-    pub fn push(&mut self, transaction: EditTransaction) {
-        if is_typed_text_continuation(&self.undo_stack, &transaction) {
-            let last = self.undo_stack.last_mut().unwrap();
-            last.edits[0]
-                .inserted_text
-                .push_str(&transaction.edits[0].inserted_text);
-            last.after = transaction.after;
-            return;
-        }
-        self.undo_stack.push(transaction);
-        if self.undo_stack.len() > Self::MAX_UNDO_DEPTH {
-            self.undo_stack.remove(0);
-        }
-        self.redo_stack.clear();
-    }
-
-    pub fn clear(&mut self) {
-        self.undo_stack.clear();
-        self.redo_stack.clear();
-    }
-
-    pub fn undo(&mut self, buffer: &mut Buffer) -> Option<CaretSnapshot> {
-        let transaction = self.undo_stack.pop()?;
-        for edit in transaction.edits.iter().rev() {
-            apply_replace(
-                buffer,
-                edit.start_char,
-                edit.inserted_text.chars().count(),
-                &edit.deleted_text,
-            );
-        }
-        let before = transaction.before.clone();
-        self.redo_stack.push(transaction);
-        Some(before)
-    }
-
-    pub fn redo(&mut self, buffer: &mut Buffer) -> Option<CaretSnapshot> {
-        let transaction = self.redo_stack.pop()?;
-        for edit in transaction.edits.iter() {
-            apply_replace(
-                buffer,
-                edit.start_char,
-                edit.deleted_text.chars().count(),
-                &edit.inserted_text,
-            );
-        }
-        let after = transaction.after.clone();
-        self.undo_stack.push(transaction);
-        Some(after)
-    }
-}
-
-/// Merge consecutive zero-deletion inserts by the same cursor into a single
-/// undo step (fast typing on one cursor stays one keystroke to undo).
-fn is_typed_text_continuation(
-    undo_stack: &[EditTransaction],
-    transaction: &EditTransaction,
-) -> bool {
-    let (Some(last), Some(next)) = (undo_stack.last(), transaction.edits.first()) else {
-        return false;
-    };
-    if last.edits.len() != 1 || transaction.edits.len() != 1 {
-        return false;
-    }
-    let prior = &last.edits[0];
-    prior.deleted_text.is_empty()
-        && next.deleted_text.is_empty()
-        && next.start_char == prior.start_char + prior.inserted_text.chars().count()
-}
-
-fn apply_replace(buffer: &mut Buffer, start: usize, remove_len: usize, insert_text: &str) {
-    if remove_len > 0 {
-        buffer.remove(start..start + remove_len);
-    }
-    if !insert_text.is_empty() {
-        buffer.insert(start, insert_text);
-    }
-}
-
 // ---- position helpers -------------------------------------------------------
 
-pub fn line_column(buffer: &Buffer, caret_char: usize) -> (usize, usize) {
+pub fn line_column(buffer: &DocumentBuffer, caret_char: usize) -> (usize, usize) {
     let line = current_line_index(buffer, caret_char);
     let line_start = buffer.text().line_to_char(line);
     (line + 1, caret_char.saturating_sub(line_start) + 1)
 }
 
-fn current_line_index(buffer: &Buffer, caret_char: usize) -> usize {
+fn current_line_index(buffer: &DocumentBuffer, caret_char: usize) -> usize {
     let total_chars = buffer.text().len_chars();
     if total_chars == 0 {
         return 0;
@@ -473,7 +377,7 @@ fn current_line_index(buffer: &Buffer, caret_char: usize) -> usize {
     buffer.text().char_to_line(clamped)
 }
 
-fn line_visual_end_char(buffer: &Buffer, line: usize) -> usize {
+fn line_visual_end_char(buffer: &DocumentBuffer, line: usize) -> usize {
     let start = buffer.text().line_to_char(line);
     let line_text = buffer.text().line(line).to_string();
     let content_len = line_text.trim_end_matches(['\n', '\r']).chars().count();
@@ -482,7 +386,7 @@ fn line_visual_end_char(buffer: &Buffer, line: usize) -> usize {
 
 /// Character index on the line below (down = true) or above (down = false),
 /// matching the active cursor's column and clamping to the line's visual end.
-fn line_adjacent_char(buffer: &Buffer, caret_char: usize, down: bool) -> usize {
+fn line_adjacent_char(buffer: &DocumentBuffer, caret_char: usize, down: bool) -> usize {
     let line = current_line_index(buffer, caret_char);
     let total_lines = buffer.len_lines();
     if down && line + 1 >= total_lines {
@@ -499,7 +403,7 @@ fn line_adjacent_char(buffer: &Buffer, caret_char: usize, down: bool) -> usize {
     (target_start + column).min(target_end)
 }
 
-pub fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+pub fn previous_word_boundary(buffer: &DocumentBuffer, caret_char: usize) -> usize {
     if caret_char == 0 {
         return 0;
     }
@@ -521,7 +425,7 @@ pub fn previous_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
     index
 }
 
-pub fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
+pub fn next_word_boundary(buffer: &DocumentBuffer, caret_char: usize) -> usize {
     let total_chars = buffer.text().len_chars();
     if caret_char >= total_chars {
         return total_chars;
@@ -544,11 +448,11 @@ pub fn next_word_boundary(buffer: &Buffer, caret_char: usize) -> usize {
     caret_char + offset
 }
 
-pub(crate) fn is_word_char(ch: char) -> bool {
+fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 
-pub fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Range<usize>> {
+pub fn word_char_range(buffer: &DocumentBuffer, char_index: usize) -> Option<Range<usize>> {
     let total_chars = buffer.text().len_chars();
     if total_chars == 0 {
         return None;
@@ -579,86 +483,19 @@ pub fn word_char_range(buffer: &Buffer, char_index: usize) -> Option<Range<usize
     Some(start..end)
 }
 
-// ---- indentation ------------------------------------------------------------
-
-pub const INDENT: &str = "    ";
-
-/// Whitespace at the start of the line containing `caret_char`.
-pub fn leading_indent(buffer: &Buffer, caret_char: usize) -> String {
-    let total_chars = buffer.text().len_chars();
-    if total_chars == 0 {
-        return String::new();
-    }
-    let line_probe = if caret_char == 0 {
-        0
-    } else {
-        caret_char
-            .saturating_sub(1)
-            .min(total_chars.saturating_sub(1))
-    };
-    let line_idx = buffer.text().char_to_line(line_probe);
-    let line = buffer.text().line(line_idx).to_string();
-    line.trim_end_matches(['\n', '\r'])
-        .chars()
-        .take_while(|c| *c == ' ' || *c == '\t')
-        .collect::<String>()
-}
-
-/// Text for an Enter press at `caret_char`: newline plus the next line's
-/// indentation, growing inside `{` blocks and dedenting after `}`.
-pub fn indentation_for_newline(buffer: &Buffer, caret_char: usize) -> String {
-    let total_chars = buffer.text().len_chars();
-    if total_chars == 0 {
-        return "\n".to_string();
-    }
-
-    let line_probe = if caret_char == 0 {
-        0
-    } else {
-        caret_char
-            .saturating_sub(1)
-            .min(total_chars.saturating_sub(1))
-    };
-    let line_idx = buffer.text().char_to_line(line_probe);
-    let line = buffer.text().line(line_idx).to_string();
-    let content = line.trim_end_matches(['\n', '\r']);
-    let leading = leading_indent(buffer, caret_char);
-    let trimmed = content.trim_end();
-
-    if trimmed.ends_with('{') {
-        return format!("\n{}{}", leading, INDENT);
-    }
-
-    if trimmed.starts_with('}') {
-        let dedented = if leading.ends_with('\t') {
-            leading.trim_end_matches('\t').to_string()
-        } else if leading.ends_with(INDENT) {
-            leading.trim_end_matches(INDENT).to_string()
-        } else {
-            String::new()
-        };
-        return format!("\n{}", dedented);
-    }
-
-    format!("\n{}", leading)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        CaretState, EditHistory, EditTransaction, SubEdit, indentation_for_newline, leading_indent,
-        line_column, word_char_range,
-    };
-    use crate::Buffer;
+    use super::super::buffer::DocumentBuffer;
+    use super::{CaretState, line_column, word_char_range};
 
-    fn insert(buffer: &mut Buffer, text: &str) {
+    fn insert(buffer: &mut DocumentBuffer, text: &str) {
         let caret = buffer.text().len_chars();
         buffer.insert(caret, text);
     }
 
     #[test]
     fn selects_all_characters() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abc");
         let mut caret = CaretState::default();
         caret.select_all(&buffer);
@@ -667,7 +504,7 @@ mod tests {
 
     #[test]
     fn move_word_right_skips_to_next_word_boundary() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "alpha beta");
         let mut caret = CaretState::default();
         caret.move_word_right(&buffer, false);
@@ -678,7 +515,7 @@ mod tests {
 
     #[test]
     fn move_word_left_skips_to_previous_word_boundary() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "alpha beta");
         let mut caret = CaretState::default();
         caret.set_caret_char(buffer.text().len_chars(), &buffer, false);
@@ -689,119 +526,8 @@ mod tests {
     }
 
     #[test]
-    fn undo_redo_replays_transaction() {
-        let mut buffer = Buffer::new();
-        insert(&mut buffer, "ab");
-        let mut history = EditHistory::default();
-        history.push(EditTransaction {
-            edits: vec![SubEdit {
-                start_char: 2,
-                deleted_text: String::new(),
-                inserted_text: "c".to_string(),
-            }],
-            before: Default::default(),
-            after: Default::default(),
-        });
-        buffer.insert(2, "c");
-
-        history.undo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "ab");
-        history.redo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "abc");
-    }
-
-    #[test]
-    fn consecutive_inserts_coalesce_into_one_undo_step() {
-        let mut buffer = Buffer::new();
-        let mut history = EditHistory::default();
-        for ch in ["a", "b", "c"] {
-            let caret = buffer.text().len_chars();
-            history.push(EditTransaction {
-                edits: vec![SubEdit {
-                    start_char: caret,
-                    deleted_text: String::new(),
-                    inserted_text: ch.to_string(),
-                }],
-                before: Default::default(),
-                after: Default::default(),
-            });
-            buffer.insert(caret, ch);
-        }
-        assert_eq!(buffer.text().to_string(), "abc");
-
-        // A single undo removes the whole typed run.
-        history.undo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "");
-        history.redo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "abc");
-    }
-
-    #[test]
-    fn non_contiguous_inserts_do_not_coalesce() {
-        let mut buffer = Buffer::new();
-        let mut history = EditHistory::default();
-        history.push(EditTransaction {
-            edits: vec![SubEdit {
-                start_char: 0,
-                deleted_text: String::new(),
-                inserted_text: "a".to_string(),
-            }],
-            before: Default::default(),
-            after: Default::default(),
-        });
-        buffer.insert(0, "a");
-        history.push(EditTransaction {
-            edits: vec![SubEdit {
-                start_char: 0,
-                deleted_text: String::new(),
-                inserted_text: "b".to_string(),
-            }],
-            before: Default::default(),
-            after: Default::default(),
-        });
-        buffer.insert(0, "b");
-
-        history.undo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "a");
-        history.undo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "");
-    }
-
-    #[test]
-    fn multi_edit_undo_restores_all_positions() {
-        let mut buffer = Buffer::new();
-        insert(&mut buffer, "one two three");
-        let mut history = EditHistory::default();
-        // Sub-edits are stored in final-buffer coordinates: with "X" inserted
-        // at 0 and "Y" at 8, the latter lands at 9 in the final buffer.
-        history.push(EditTransaction {
-            edits: vec![
-                SubEdit {
-                    start_char: 0,
-                    deleted_text: String::new(),
-                    inserted_text: "X".to_string(),
-                },
-                SubEdit {
-                    start_char: 9,
-                    deleted_text: String::new(),
-                    inserted_text: "Y".to_string(),
-                },
-            ],
-            before: Default::default(),
-            after: Default::default(),
-        });
-        buffer.insert(8, "Y");
-        buffer.insert(0, "X");
-
-        history.undo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "one two three");
-        history.redo(&mut buffer);
-        assert_eq!(buffer.text().to_string(), "Xone two Ythree");
-    }
-
-    #[test]
     fn move_home_and_end_track_line_bounds() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "  hello\nworld");
         let mut caret = CaretState::default();
         caret.set_caret_char(6, &buffer, false); // 'o' on the first line
@@ -813,11 +539,11 @@ mod tests {
 
     #[test]
     fn line_column_at_buffer_end_handles_trailing_newline() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "a\nb\n");
         // The final newline leaves an empty line; the buffer end is its start.
         assert_eq!(line_column(&buffer, 4), (3, 1));
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "a\nb");
         // Without a trailing newline the end sits on the last content line.
         assert_eq!(line_column(&buffer, 3), (2, 2));
@@ -825,7 +551,7 @@ mod tests {
 
     #[test]
     fn caret_at_buffer_end_moves_on_the_trailing_empty_line() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "ab\ncd\n");
         let mut caret = CaretState::default();
         caret.set_caret_char(4, &buffer, false); // 'd' on line 2
@@ -842,7 +568,7 @@ mod tests {
 
     #[test]
     fn move_down_up_preserve_preferred_column() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "ab\ncdef\ngh");
         let mut caret = CaretState::default();
         caret.set_caret_char(1, &buffer, false); // 'b', column 1 on line 0
@@ -856,7 +582,7 @@ mod tests {
 
     #[test]
     fn move_left_without_select_collapses_selection() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abc");
         let mut caret = CaretState::default();
         caret.set_caret_char(3, &buffer, true); // select 0..3
@@ -868,7 +594,7 @@ mod tests {
 
     #[test]
     fn selection_range_is_normalized_and_length_reported() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abcde");
         let mut caret = CaretState::default();
         caret.set_caret_char(4, &buffer, true); // anchor 0, caret 4
@@ -880,7 +606,7 @@ mod tests {
 
     #[test]
     fn drag_select_anchors_at_press_point_not_stale_caret() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abcdefgh");
         let mut caret = CaretState::default();
         caret.set_caret_char(7, &buffer, false); // stale caret from a previous interaction
@@ -891,7 +617,7 @@ mod tests {
 
     #[test]
     fn add_cursor_dedupes_and_activates() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abcd");
         let mut caret = CaretState::default();
         caret.set_caret_char(1, &buffer, false);
@@ -905,7 +631,7 @@ mod tests {
 
     #[test]
     fn movement_applies_to_all_cursors() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abcd efgh");
         let mut caret = CaretState::default();
         caret.set_caret_char(1, &buffer, false);
@@ -917,7 +643,7 @@ mod tests {
 
     #[test]
     fn remove_extra_cursors_keeps_active_only() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "abcd");
         let mut caret = CaretState::default();
         caret.set_caret_char(0, &buffer, false);
@@ -931,7 +657,7 @@ mod tests {
 
     #[test]
     fn line_column_reports_one_based_positions() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "ab\ncdef");
         assert_eq!(line_column(&buffer, 3), (2, 1)); // 'c' -> line 2, col 1
         assert_eq!(line_column(&buffer, 5), (2, 3)); // 'e' -> line 2, col 3
@@ -939,7 +665,7 @@ mod tests {
 
     #[test]
     fn word_char_range_selects_word_at_middle_and_edges() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "alpha beta");
         assert_eq!(word_char_range(&buffer, 2), Some(0..5)); // middle
         assert_eq!(word_char_range(&buffer, 0), Some(0..5)); // first char
@@ -949,48 +675,19 @@ mod tests {
 
     #[test]
     fn word_char_range_handles_punctuation_and_whitespace() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "foo,bar baz");
         assert_eq!(word_char_range(&buffer, 3), Some(3..4));
         assert_eq!(word_char_range(&buffer, 7), None);
-        let empty = Buffer::new();
+        let empty = DocumentBuffer::new();
         assert_eq!(word_char_range(&empty, 0), None);
     }
 
     #[test]
     fn word_char_range_does_not_cross_newlines() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         insert(&mut buffer, "foo\nbar");
         assert_eq!(word_char_range(&buffer, 2), Some(0..3));
         assert_eq!(word_char_range(&buffer, 5), Some(4..7));
-    }
-
-    #[test]
-    fn indentation_for_newline_grows_after_open_brace() {
-        let mut buffer = Buffer::new();
-        insert(&mut buffer, "fn main() {");
-        let text = indentation_for_newline(&buffer, 11);
-        assert_eq!(text, "\n    ");
-    }
-
-    #[test]
-    fn indentation_for_newline_dedents_after_close_brace() {
-        let mut buffer = Buffer::new();
-        insert(&mut buffer, "}");
-        let text = indentation_for_newline(&buffer, 1);
-        assert_eq!(text, "\n");
-    }
-
-    #[test]
-    fn indentation_for_newline_empty_buffer_is_bare_newline() {
-        let buffer = Buffer::new();
-        assert_eq!(indentation_for_newline(&buffer, 0), "\n");
-    }
-
-    #[test]
-    fn leading_indent_collects_line_whitespace() {
-        let mut buffer = Buffer::new();
-        insert(&mut buffer, "  \tfoo");
-        assert_eq!(leading_indent(&buffer, 4), "  \t");
     }
 }

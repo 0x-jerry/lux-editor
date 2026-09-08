@@ -1,14 +1,15 @@
-//! Document model: one open file's buffer plus the editor state scoped to it
-//! (carets, edit history, dirty flag, status message).
+//! `OpenDocument`: one open file's buffer plus the editor state scoped to
+//! it (carets, edit history, dirty flag, status message).
 
-use lux_core::Buffer;
-use lux_core::editor::{CaretState, EditHistory};
+use super::buffer::DocumentBuffer;
+use super::caret_state::CaretState;
+use super::edit_history::EditHistory;
 use ropey::Rope;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
 pub struct OpenDocument {
-    pub(crate) buffer: Buffer,
+    pub(crate) buffer: DocumentBuffer,
     pub(crate) caret_state: CaretState,
     pub(crate) edit_history: EditHistory,
     pub(crate) document_dirty: bool,
@@ -34,7 +35,7 @@ pub struct OpenDocument {
 impl OpenDocument {
     pub fn new_empty() -> Self {
         Self {
-            buffer: Buffer::new(),
+            buffer: DocumentBuffer::new(),
             caret_state: Default::default(),
             edit_history: Default::default(),
             document_dirty: false,
@@ -69,7 +70,7 @@ impl OpenDocument {
         document
     }
 
-    pub fn from_buffer(buffer: Buffer) -> Self {
+    pub fn from_buffer(buffer: DocumentBuffer) -> Self {
         // Clone before moving the buffer: persistent rope, shares the tree.
         let saved_text = buffer.text().clone();
         let doc = Self {
@@ -148,7 +149,7 @@ mod tests {
     use super::*;
 
     fn document(dirty: bool, missing: bool) -> OpenDocument {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         buffer.set_path("/ws/a.rs");
         let mut document = if missing {
             OpenDocument::missing(buffer.path().unwrap().clone())
@@ -179,7 +180,7 @@ mod tests {
 
     #[test]
     fn edit_then_revert_returns_to_clean() {
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         buffer.set_path("/ws/a.rs");
         buffer.insert(0, "hello");
         let mut document = OpenDocument::from_buffer(buffer);

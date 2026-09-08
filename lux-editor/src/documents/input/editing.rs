@@ -1,8 +1,8 @@
 use crate::app::App;
-use eframe::egui;
-use lux_core::editor::{
+use crate::document::{
     EditTransaction, SubEdit, indentation_for_newline, next_word_boundary, previous_word_boundary,
 };
+use eframe::egui;
 
 impl App {
     pub(crate) fn selected_text(&self) -> Option<String> {

@@ -1,9 +1,9 @@
 use crate::component::Component;
+use crate::document::DocumentBuffer;
 use crate::events::ConfigurationEvent;
 use crate::settings::{Config, EditorSettings};
 use crate::theme::ThemeChoice;
 use eframe::egui;
-use lux_core::Buffer;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -58,7 +58,7 @@ impl ConfigurationView {
 
 pub struct ConfigurationViewInput<'a> {
     pub workspace_path: Option<&'a PathBuf>,
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub editor_config: &'a Config,
 }
 

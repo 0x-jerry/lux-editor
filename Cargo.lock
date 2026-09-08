@@ -219,12 +219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.104"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
-
-[[package]]
 name = "arboard"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2610,16 +2604,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
-name = "lux-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ropey",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "lux-editor"
 version = "0.1.0"
 dependencies = [
@@ -2633,7 +2617,6 @@ dependencies = [
  "font-kit",
  "ignore",
  "log",
- "lux-core",
  "muda",
  "notify",
  "objc2 0.6.4",

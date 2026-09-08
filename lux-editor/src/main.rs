@@ -1,6 +1,7 @@
 mod app;
 mod chrome;
 mod component;
+mod document;
 mod documents;
 mod events;
 mod highlighting;

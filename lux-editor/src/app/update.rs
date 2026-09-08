@@ -96,7 +96,7 @@ impl EframeApp for App {
             let caret_state = &active_document.caret_state;
             let carets = (0..caret_state.len())
                 .map(|index| {
-                    lux_core::editor::line_column(
+                    crate::document::line_column(
                         &active_document.buffer,
                         caret_state.caret_char_at(index),
                     )

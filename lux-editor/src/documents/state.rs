@@ -1,11 +1,11 @@
 //! Document domain: the open tabs and the caret-blink state scoped to them.
 
 use crate::app::App;
-use crate::documents::OpenDocument;
+use crate::document::DocumentBuffer;
+use crate::document::OpenDocument;
 use crate::documents::formatter::run_formatter;
 use crate::events::{CustomEvent, DocumentEvent, LoadResult, ReconcileResult};
 use eframe::egui;
-use lux_core::Buffer;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -237,7 +237,7 @@ impl App {
                     Err(err) => LoadResult::Missing(err.to_string()),
                     Ok(bytes) => match std::str::from_utf8(&bytes) {
                         Ok(text) => {
-                            let mut buffer = Buffer::new();
+                            let mut buffer = DocumentBuffer::new();
                             buffer.set_path(&path);
                             buffer.insert(0, text);
                             LoadResult::Loaded(buffer)
@@ -379,8 +379,8 @@ impl App {
 mod tests {
     use super::*;
 
-    fn buffer(path: &str) -> Buffer {
-        let mut buffer = Buffer::new();
+    fn buffer(path: &str) -> DocumentBuffer {
+        let mut buffer = DocumentBuffer::new();
         buffer.set_path(path);
         buffer
     }
@@ -459,7 +459,7 @@ mod tests {
         std::fs::write(&path, "same").unwrap();
 
         let mut documents = Documents::with_empty_document();
-        let mut buffer = Buffer::new();
+        let mut buffer = DocumentBuffer::new();
         buffer.set_path(&path);
         buffer.insert(0, "same");
         documents.apply_loaded(

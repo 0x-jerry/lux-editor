@@ -1,15 +1,15 @@
+use crate::document::DocumentBuffer;
 use crate::events::CustomEvent;
 use crate::settings::Config;
 use crate::theme::StartupFont;
 use eframe::egui;
-use lux_core::Buffer;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Instant;
 
 use crate::chrome::Chrome;
+use crate::document::OpenDocument;
 use crate::documents::Documents;
-use crate::documents::OpenDocument;
 use crate::highlighting::Highlighting;
 use crate::settings::SettingsState;
 use crate::workspace::Workspace;
@@ -83,11 +83,11 @@ impl App {
         self.documents.active_document_mut()
     }
 
-    pub(crate) fn buffer(&self) -> &Buffer {
+    pub(crate) fn buffer(&self) -> &DocumentBuffer {
         &self.active_document().buffer
     }
 
-    pub(crate) fn buffer_mut(&mut self) -> &mut Buffer {
+    pub(crate) fn buffer_mut(&mut self) -> &mut DocumentBuffer {
         &mut self.active_document_mut().buffer
     }
 }

@@ -1,11 +1,11 @@
 use super::metrics::TextEditorMetrics;
 use crate::component::Component;
+use crate::document::DocumentBuffer;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::build_highlighted_line_job;
 use crate::settings::Config;
 use eframe::egui;
-use lux_core::Buffer;
 use std::ops::Range;
 
 pub struct VisibleRow {
@@ -22,7 +22,7 @@ struct RevealState {
 }
 
 pub struct RowsInput<'a> {
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub carets: &'a [(usize, usize)],
@@ -161,7 +161,7 @@ impl Component for Rows {
 
 pub struct RowInput<'a> {
     pub line_index: usize,
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub carets: &'a [(usize, usize)],
@@ -224,13 +224,7 @@ impl Component for Row {
         }
         ui.painter()
             .galley(text_origin, galley.clone(), ui.visuals().text_color());
-        events.extend(push_pointer_events(
-            ui,
-            &input,
-            &galley,
-            &rect,
-            &response,
-        ));
+        events.extend(push_pointer_events(ui, &input, &galley, &rect, &response));
         for (index, (caret_line, caret_column)) in input.carets.iter().enumerate() {
             if *caret_line != input.line_index + 1 {
                 continue;

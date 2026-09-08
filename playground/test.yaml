@@ -1,5 +1,5 @@
 # sample manifest
-name: lux-editor
+name: sample-app
 version: 1
 enabled: true
 tags: [fast, low-latency]

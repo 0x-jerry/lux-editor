@@ -3,11 +3,11 @@ mod metrics;
 mod row;
 
 use crate::component::Component;
+use crate::document::DocumentBuffer;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::settings::Config;
 use eframe::egui;
-use lux_core::Buffer;
 use std::ops::Range;
 
 use self::gutter::{Gutter, GutterInput};
@@ -15,7 +15,7 @@ use self::metrics::measure_text_editor;
 use self::row::{Rows, RowsInput};
 
 pub struct TextEditorState<'a> {
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     /// All cursor positions as 1-based (line, column).
@@ -56,7 +56,10 @@ impl Component for TextEditor {
         let available = ui.available_rect_before_wrap();
         let gutter_rect = egui::Rect::from_min_max(
             available.min,
-            egui::pos2(available.left() + metrics.gutter_total_width, available.bottom()),
+            egui::pos2(
+                available.left() + metrics.gutter_total_width,
+                available.bottom(),
+            ),
         );
         let rows_rect = egui::Rect::from_min_max(
             egui::pos2(gutter_rect.right(), available.top()),

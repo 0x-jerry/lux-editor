@@ -1,7 +1,5 @@
 [workspace]
-members = ["lux-core",
-    "lux-editor",
-]
+members = ["lux-editor"]
 resolver = "2"
 
 [profile.release]

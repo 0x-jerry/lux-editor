@@ -10,6 +10,7 @@
 //! - [`ConfigurationEvent`] — configuration-view autosave
 //! - [`EditingEvent`] — caret/pointer interaction in the text editor
 
+use crate::document::DocumentBuffer;
 use crate::settings::EditorSettings;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -30,7 +31,7 @@ pub enum WorkspaceEvent {
 /// file, or a binary file the editor refuses to load as text.
 #[derive(Debug)]
 pub enum LoadResult {
-    Loaded(lux_core::Buffer),
+    Loaded(DocumentBuffer),
     Missing(String),
     Binary,
 }

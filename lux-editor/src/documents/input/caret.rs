@@ -1,7 +1,7 @@
 use super::commands::EditorCommand;
 use crate::app::App;
 use crate::chrome::ShellView;
-use lux_core::editor::word_char_range;
+use crate::document::word_char_range;
 
 impl App {
     pub(crate) fn set_caret_from_pointer(

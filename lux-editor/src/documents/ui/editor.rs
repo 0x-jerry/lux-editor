@@ -5,6 +5,7 @@ use crate::chrome::ui::{
     WorkspaceStartView,
 };
 use crate::component::Component;
+use crate::document::DocumentBuffer;
 use crate::documents::DocumentTab;
 use crate::documents::tabs::{DocumentTabsInput, DocumentTabsView};
 use crate::events::CustomEvent;
@@ -12,7 +13,6 @@ use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::Config;
 use eframe::egui;
-use lux_core::Buffer;
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -21,7 +21,7 @@ pub struct EditorView;
 
 pub struct EditorViewState<'a> {
     pub workspace_path: Option<&'a PathBuf>,
-    pub buffer: &'a Buffer,
+    pub buffer: &'a DocumentBuffer,
     pub document_tabs: &'a [DocumentTab],
     pub active_document_index: usize,
     pub highlight_snapshot: &'a HighlightSnapshot,

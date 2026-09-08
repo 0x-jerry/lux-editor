@@ -21,6 +21,7 @@
     "background": "#eff1f5",
     "tokens": {
       "attribute": "#8c6e1e",
+      "boolean": "#aa5a32",
       "comment": "#a7aaba",
       "comment.documentation": "#a7aaba",
       "constant": "#aa5a32",

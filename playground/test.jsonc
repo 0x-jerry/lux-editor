@@ -1,0 +1,8 @@
+// Editor settings (jsonc: JSON with comments)
+{
+  // Tabs restore on workspace reopen.
+  "restoreTabs": true,
+  "theme": "dark",
+  /* A block comment works too. */
+  "ignored": ["target", "node_modules"]
+}

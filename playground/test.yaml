@@ -1,0 +1,8 @@
+# sample manifest
+name: lux-editor
+version: 1
+enabled: true
+tags: [fast, low-latency]
+nested:
+  key: "quoted string"
+  url: https://example.com

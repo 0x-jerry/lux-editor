@@ -5,6 +5,7 @@ use crate::theme::SyntaxColors;
 /// the bundled queries plus the tree-sitter standard names.
 pub(super) static RECOGNIZED_NAMES: &[&str] = &[
     "attribute",
+    "boolean",
     "comment",
     "comment.documentation",
     "constant",

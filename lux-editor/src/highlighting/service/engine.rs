@@ -1,11 +1,10 @@
-use tree_sitter::Language;
 use tree_sitter_highlight::{
-    Error as HighlightError, HighlightConfiguration, HighlightEvent, Highlighter,
+    HighlightConfiguration, HighlightEvent, Highlighter,
 };
 
-use super::LanguageKind;
+use super::languages::{ConfigInput, INTERNAL_LANGUAGES, LANGUAGES, LanguageDef, NAME_INDEX};
 use super::style::{RECOGNIZED_NAMES, ThemeColors};
-use std::sync::LazyLock;
+use super::LanguageKind;
 
 #[derive(Clone, Copy)]
 pub(super) struct RawSpan {
@@ -14,138 +13,72 @@ pub(super) struct RawSpan {
     pub color: [u8; 4],
 }
 
-const TYPESCRIPT_QUERY: &str = include_str!("../../../assets/highlights/typescript.scm");
-const TSX_QUERY: &str = concat!(
-    include_str!("../../../assets/highlights/typescript.scm"),
-    "\n",
-    include_str!("../../../assets/highlights/typescript-tsx.scm")
-);
-static JS_QUERY: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}\n{}",
-        tree_sitter_javascript::HIGHLIGHT_QUERY,
-        tree_sitter_javascript::JSX_HIGHLIGHT_QUERY
-    )
-});
-// The bundled query omits `injection.include-children` for (inline), so the
-// crate subtracts the emphasis delimiters from the reparsed range and the
-// inline pass matches nothing.
-static MD_INJECTION_QUERY: LazyLock<String> = LazyLock::new(|| {
-    tree_sitter_md::INJECTION_QUERY_BLOCK.replace(
-        "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\"))",
-        "((inline) @injection.content\n  (#set! injection.language \"markdown_inline\")\n  (#set! injection.include-children))",
-    )
-});
-
-/// One `HighlightConfiguration` per language, compiled on the first request
-/// for that language only — thread startup costs nothing at launch.
 #[derive(Default)]
-pub(super) struct Engines {
-    highlighter: Highlighter,
-    /// Bit per tried language: a `configure` failure must not make every
-    /// subsequent parse retry the compile (and re-log the error).
-    tried: u8,
-    rust: Option<HighlightConfiguration>,
-    javascript: Option<HighlightConfiguration>,
-    typescript: Option<HighlightConfiguration>,
-    tsx: Option<HighlightConfiguration>,
-    /// (block, markdown_inline); the inline grammar is reached through the
-    /// block query's injection captures.
-    markdown: Option<(HighlightConfiguration, HighlightConfiguration)>,
+struct EngineState {
+    config: Option<HighlightConfiguration>,
+    /// A `configure` failure must not make every subsequent parse retry the
+    /// compile (and re-log the error).
+    tried: bool,
 }
 
-fn configure(
-    language: Language,
-    name: &str,
-    highlights_query: &str,
-    injection_query: &str,
-    locals_query: &str,
-) -> Option<HighlightConfiguration> {
+/// One `HighlightConfiguration` per registered language, compiled only on the
+/// first request that needs it (or the first injection that names it).
+pub(super) struct Engines {
+    highlighter: Highlighter,
+    /// Parallel to `LANGUAGES` then `INTERNAL_LANGUAGES`; visible kinds index
+    /// `kind.def_index()`.
+    states: Vec<EngineState>,
+}
+
+fn configure(def: &LanguageDef, input: ConfigInput) -> Option<HighlightConfiguration> {
     let mut config = HighlightConfiguration::new(
-        language,
-        name,
-        highlights_query,
-        injection_query,
-        locals_query,
+        input.language,
+        def.name,
+        &input.highlights_query,
+        &input.injection_query,
+        &input.locals_query,
     )
-    .inspect_err(|error| log::error!("highlight config for {name} failed: {error}"))
+    .inspect_err(|error| log::error!("highlight config for {} failed: {error}", def.name))
     .ok()?;
     config.configure(RECOGNIZED_NAMES);
     Some(config)
 }
 
+/// Def at `index` in the concatenation of `LANGUAGES` + `INTERNAL_LANGUAGES`.
+fn def_for(index: usize) -> &'static LanguageDef {
+    LANGUAGES.get(index).copied().unwrap_or_else(|| {
+        INTERNAL_LANGUAGES[index - LANGUAGES.len()]
+    })
+}
+
 impl Engines {
     pub(super) fn new() -> Self {
-        Self::default()
+        Self {
+            highlighter: Highlighter::default(),
+            states: (0..LANGUAGES.len() + INTERNAL_LANGUAGES.len())
+                .map(|_| EngineState::default())
+                .collect(),
+        }
     }
 
-    fn ensure(&mut self, kind: LanguageKind) {
-        let bit = match kind {
-            LanguageKind::Rust => 1 << 0,
-            LanguageKind::JavaScript => 1 << 1,
-            LanguageKind::TypeScript => 1 << 2,
-            LanguageKind::Tsx => 1 << 3,
-            LanguageKind::Markdown => 1 << 4,
-            LanguageKind::PlainText => return,
-        };
-        if self.tried & bit != 0 {
+    pub(super) fn ensure_index(&mut self, index: usize) {
+        let state = &mut self.states[index];
+        if state.tried {
             return;
         }
-        self.tried |= bit;
-        match kind {
-            LanguageKind::Rust if self.rust.is_none() => {
-                self.rust = configure(
-                    tree_sitter_rust::LANGUAGE.into(),
-                    "rust",
-                    tree_sitter_rust::HIGHLIGHTS_QUERY,
-                    "",
-                    "",
-                );
+        state.tried = true;
+        let def = def_for(index);
+        let input = (def.config)();
+        state.config = configure(def, input);
+        if state.config.is_none() {
+            return;
+        }
+        // `requires` grammars are compiled eagerly so the common case needs
+        // no demand-compile passes in `spans`.
+        for name in def.requires {
+            if let Some(&required) = NAME_INDEX.get(name) {
+                self.ensure_index(required);
             }
-            LanguageKind::JavaScript if self.javascript.is_none() => {
-                self.javascript = configure(
-                    tree_sitter_javascript::LANGUAGE.into(),
-                    "javascript",
-                    &JS_QUERY,
-                    "",
-                    tree_sitter_javascript::LOCALS_QUERY,
-                );
-            }
-            LanguageKind::TypeScript if self.typescript.is_none() => {
-                self.typescript = configure(
-                    tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-                    "typescript",
-                    TYPESCRIPT_QUERY,
-                    "",
-                    "",
-                );
-            }
-            LanguageKind::Tsx if self.tsx.is_none() => {
-                self.tsx = configure(
-                    tree_sitter_typescript::LANGUAGE_TSX.into(),
-                    "tsx",
-                    TSX_QUERY,
-                    "",
-                    "",
-                );
-            }
-            LanguageKind::Markdown if self.markdown.is_none() => {
-                self.markdown = configure(
-                    tree_sitter_md::LANGUAGE.into(),
-                    "markdown",
-                    tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
-                    &MD_INJECTION_QUERY,
-                    "",
-                )
-                .zip(configure(
-                    tree_sitter_md::INLINE_LANGUAGE.into(),
-                    "markdown_inline",
-                    tree_sitter_md::HIGHLIGHT_QUERY_INLINE,
-                    tree_sitter_md::INJECTION_QUERY_INLINE,
-                    "",
-                ));
-            }
-            _ => {}
         }
     }
 
@@ -155,45 +88,52 @@ impl Engines {
         document: &str,
         colors: &ThemeColors,
     ) -> Option<Vec<RawSpan>> {
-        self.ensure(language);
-        let Self {
-            highlighter,
-            rust,
-            javascript,
-            typescript,
-            tsx,
-            markdown,
-            ..
-        } = self;
-        let events: Box<dyn Iterator<Item = Result<HighlightEvent, HighlightError>>> =
-            match language {
-                LanguageKind::Markdown => {
-                    let (block, inline) = markdown.as_ref()?;
-                    Box::new(
-                        highlighter
-                            .highlight(block, document.as_bytes(), None, move |name| {
-                                (name == "markdown_inline").then_some(inline)
-                            })
-                            .ok()?,
-                    )
+        if language == LanguageKind::PlainText {
+            return Some(Vec::new());
+        }
+        let index = language.def_index();
+        self.ensure_index(index);
+        // An injection may name a language that is not compiled yet; keep
+        // re-highlighting until every mentioned name either compiled or
+        // failed. Each pass covers the whole document, so later passes
+        // supersede the earlier ones.
+        let mut mentioned: Vec<usize> = Vec::new();
+        loop {
+            let spans = self.highlight_pass(index, document, colors, &mut mentioned);
+            if mentioned.is_empty() {
+                return spans;
+            }
+            for i in mentioned.drain(..) {
+                self.ensure_index(i);
+            }
+        }
+    }
+
+    fn highlight_pass(
+        &mut self,
+        index: usize,
+        document: &str,
+        colors: &ThemeColors,
+        mentioned: &mut Vec<usize>,
+    ) -> Option<Vec<RawSpan>> {
+        let Self { highlighter, states } = self;
+        let config = states[index].config.as_ref()?;
+        let events = highlighter
+            .highlight(config, document.as_bytes(), None, |name| {
+                match NAME_INDEX.get(name).copied() {
+                    Some(candidate) if states[candidate].config.is_some() => {
+                        states[candidate].config.as_ref()
+                    }
+                    Some(candidate) => {
+                        if !states[candidate].tried && !mentioned.contains(&candidate) {
+                            mentioned.push(candidate);
+                        }
+                        None
+                    }
+                    None => None,
                 }
-                kind => {
-                    let config = match kind {
-                        LanguageKind::Rust => rust.as_ref()?,
-                        LanguageKind::JavaScript => javascript.as_ref()?,
-                        LanguageKind::TypeScript => typescript.as_ref()?,
-                        LanguageKind::Tsx => tsx.as_ref()?,
-                        _ => return Some(Vec::new()),
-                    };
-                    Box::new(
-                        highlighter
-                            .highlight(config, document.as_bytes(), None, |_: &str| {
-                                Option::<&HighlightConfiguration>::None
-                            })
-                            .ok()?,
-                    )
-                }
-            };
+            })
+            .ok()?;
 
         let mut spans: Vec<RawSpan> = Vec::new();
         let mut stack: Vec<usize> = Vec::new();
@@ -231,35 +171,38 @@ impl Engines {
 
 #[cfg(test)]
 mod tests {
+    use super::super::languages::KINDS;
     use super::*;
 
     #[test]
     fn every_engine_compiles() {
         let mut engines = Engines::new();
-        for kind in [
-            LanguageKind::Rust,
-            LanguageKind::JavaScript,
-            LanguageKind::TypeScript,
-            LanguageKind::Tsx,
-            LanguageKind::Markdown,
-        ] {
-            engines.ensure(kind);
+        for kind in KINDS {
+            engines.ensure_index(kind.def_index());
         }
-        assert!(engines.rust.is_some());
-        assert!(engines.javascript.is_some());
-        assert!(engines.typescript.is_some());
-        assert!(engines.tsx.is_some());
-        assert!(engines.markdown.is_some());
+        for (index, state) in engines.states.iter().enumerate() {
+            assert!(
+                state.config.is_some(),
+                "engine for {} (index {index}) failed to compile",
+                def_for(index).name
+            );
+        }
     }
 
     #[test]
     fn markdown_inline_injection_is_configured() {
         let mut engines = Engines::new();
-        engines.ensure(LanguageKind::Markdown);
-        let (block, _) = engines.markdown.as_ref().unwrap();
+        engines.ensure_index(LanguageKind::Markdown.def_index());
+        let inline_index = NAME_INDEX["markdown_inline"];
         assert!(
-            block.query.capture_names().contains(&"injection.content"),
-            "block config must carry the inline injection patterns"
+            engines.states[inline_index]
+                .config
+                .as_ref()
+                .unwrap()
+                .query
+                .capture_names()
+                .contains(&"injection.content"),
+            "inline config must carry the inline injection patterns"
         );
     }
 }

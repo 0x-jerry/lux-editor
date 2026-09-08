@@ -1,0 +1,7 @@
+{
+  "name": "lux-editor",
+  "version": 1,
+  "enabled": true,
+  "missing": null,
+  "list": ["a", "b", 3.5, "\u00e9sc ape"]
+}

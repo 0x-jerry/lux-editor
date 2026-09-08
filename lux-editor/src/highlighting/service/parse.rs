@@ -141,6 +141,114 @@ mod tests {
     }
 
     #[test]
+    fn markdown_injects_registered_fence_languages() {
+        let snapshot = snapshot_for(
+            "# Title\n\n```rust\nfn main() {}\n```\n\n```sh\necho \"hi\" # comment\n```\n\n```nope\nplain body\n```\n",
+            LanguageKind::Markdown,
+        );
+        let foreground = snapshot.foreground.unwrap();
+        // Lines 3 and 7 are the ```rust/```sh fence bodies; line 11, a fence
+        // no registered grammar matches, stays plain.
+        for body_index in [3, 7] {
+            assert!(
+                snapshot.line_tokens[body_index]
+                    .iter()
+                    .any(|span| span.color != foreground),
+                "line {body_index} must be highlighted via the registered fence language"
+            );
+        }
+        assert!(snapshot.line_tokens[11].is_empty());
+    }
+
+    #[test]
+    fn markdown_injects_frontmatter() {
+        let snapshot = snapshot_for("---\nflag: true\n---\n\n# Body\n", LanguageKind::Markdown);
+        let foreground = snapshot.foreground.unwrap();
+        assert!(
+            snapshot.line_tokens[1]
+                .iter()
+                .any(|span| span.color != foreground),
+            "frontmatter must be parsed with the yaml grammar"
+        );
+    }
+
+    #[test]
+    fn json_yaml_toml_shell_get_colored_spans() {
+        let syntax = theme::syntax_colors(ThemeChoice::Dark);
+        let boolean_color = syntax.tokens["boolean"];
+        for (source, kind, expect) in [
+            ("{\"key\": true}\n", LanguageKind::Json, None),
+            ("key: value\n# comment\n", LanguageKind::Yaml, None),
+            ("[section]\nflag = true\n", LanguageKind::Toml, Some(boolean_color)),
+        ] {
+            let snapshot = snapshot_for(source, kind);
+            let colored: Vec<[u8; 4]> = snapshot.line_tokens.iter().flatten().map(|s| s.color).collect();
+            assert!(colored.iter().any(|c| *c != snapshot.foreground.unwrap()), "{kind:?}: {colored:?}");
+            if let Some(expected) = expect {
+                assert!(
+                    snapshot.line_tokens[1]
+                        .iter()
+                        .any(|s| s.color == expected),
+                    "{kind:?} boolean must use the boolean color"
+                );
+            }
+        }
+        let snapshot = snapshot_for("echo \"hi\" # comment\n", LanguageKind::Shell);
+        assert!(
+            snapshot.line_tokens[0]
+                .iter()
+                .any(|span| span.color != snapshot.foreground.unwrap()),
+        );
+    }
+
+    #[test]
+    fn json_comments_are_colored() {
+        // .jsonc is the same engine: the grammar treats comments as `extras`.
+        let comment_color = theme::syntax_colors(ThemeChoice::Dark).tokens["comment"];
+        let snapshot = snapshot_for("{\n  // note\n  \"a\": 1\n}\n", LanguageKind::Json);
+        assert!(
+            snapshot.line_tokens[1]
+                .iter()
+                .any(|span| span.color == comment_color),
+            "line comment must use the comment color"
+        );
+    }
+
+    #[test]
+    fn xml_and_html_get_colored_spans() {
+        let comment_color = theme::syntax_colors(ThemeChoice::Dark).tokens["comment"];
+        for (source, kind) in [
+            (
+                "<?xml version=\"1.0\"?>\n<note>\n  <to>Tove</to>\n</note>\n",
+                LanguageKind::Xml,
+            ),
+            (
+                "<div class=\"box\"><p>Text</p></div>\n",
+                LanguageKind::Html,
+            ),
+        ] {
+            let snapshot = snapshot_for(source, kind);
+            let colored: Vec<[u8; 4]> = snapshot
+                .line_tokens
+                .iter()
+                .flatten()
+                .map(|s| s.color)
+                .collect();
+            assert!(
+                colored.iter().any(|c| *c != snapshot.foreground.unwrap()),
+                "{kind:?} should color tag/attribute spans: {colored:?}"
+            );
+        }
+        let snapshot = snapshot_for("<!-- hi -->\n", LanguageKind::Html);
+        assert!(
+            snapshot.line_tokens[0]
+                .iter()
+                .any(|span| span.color == comment_color),
+            "html comment must use the comment color"
+        );
+    }
+
+    #[test]
     fn multi_line_capture_is_split_across_lines() {
         let snapshot = snapshot_for("const t = `a\nb`;\n", LanguageKind::JavaScript);
         assert!(!snapshot.line_tokens[0].is_empty());

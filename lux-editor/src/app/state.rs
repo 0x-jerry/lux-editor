@@ -1,7 +1,7 @@
 //! `App`: plain container for the domain states and the runtime that feeds
 //! them. Behaviour is layered so this struct stays a dumb holder:
 //!
-//! - domain structs (`Documents`, `Workspace`, `SettingsState`,
+//! - domain structs (`TabManager`, `Workspace`, `SettingsState`,
 //!   `Highlighting`, `Chrome`) own their state and pure transitions;
 //! - [`Ctx`](super::context::Ctx) is a short-lived bundle of `&mut` borrows
 //!   handed to the `app::actions` modules, which implement the cross-domain
@@ -11,7 +11,7 @@
 
 use crate::app::Runtime;
 use crate::chrome::Chrome;
-use crate::documents::Documents;
+use crate::tabs::TabManager;
 use crate::highlighting::Highlighting;
 use crate::settings::{Config, SettingsState};
 use crate::theme::StartupFont;
@@ -22,7 +22,7 @@ use std::time::Instant;
 
 pub struct App {
     pub(crate) runtime: Runtime,
-    pub(crate) documents: Documents,
+    pub(crate) tabs: TabManager,
     pub(crate) workspace: Workspace,
     pub(crate) settings: SettingsState,
     pub(crate) highlighting: Highlighting,
@@ -43,6 +43,12 @@ pub(crate) struct FrameState {
     pub(crate) deferred_init_done: bool,
     /// Debounce deadline for the recent-files flush.
     pub(crate) recent_flush_deadline: Option<Instant>,
+    /// A restored session asked for the configuration tab; keyed to the
+    /// workspace whose restore should end on it, so a foreign load batch can
+    /// neither consume it early nor leave it dangling. Consumed once that
+    /// workspace's file batch lands (it activates the remembered file first,
+    /// so returning to the editor from configuration finds that file focused).
+    pub(crate) pending_configuration_restore: Option<PathBuf>,
 }
 
 impl App {
@@ -59,7 +65,7 @@ impl App {
                 event_rx,
                 ctx,
             },
-            documents: Documents::with_empty_document(),
+            tabs: TabManager::with_empty_document(),
             workspace: Workspace::default(),
             settings: SettingsState {
                 editor_config,

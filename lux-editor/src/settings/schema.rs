@@ -19,6 +19,10 @@ pub struct WorkspaceSession {
     pub open_files: Vec<PathBuf>,
     #[serde(default)]
     pub active_file: Option<PathBuf>,
+    /// The configuration tab was focused when the session was saved; reopening
+    /// the workspace restores it as the active tab.
+    #[serde(default)]
+    pub configuration_open: bool,
     #[serde(default)]
     pub expanded_dirs: Vec<PathBuf>,
 }

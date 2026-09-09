@@ -1,6 +1,6 @@
 //! Workspace actions: opening a folder, restoring and persisting its session,
 //! and reacting to file-system changes (watcher events, tree mutations). The
-//! pure per-tab checks live on `Documents`; these `impl Ctx` methods add the
+//! pure per-tab checks live on `TabManager`; these `impl Ctx` methods add the
 //! cross-domain effects (session store, chrome shell expansion, reloads).
 
 use crate::app::Ctx;
@@ -52,7 +52,7 @@ impl Ctx<'_> {
             self.runtime.event_tx.clone(),
             self.egui_ctx().clone(),
         );
-        self.documents.reset_editor_state();
+        self.tabs.reset_editor_state();
         self.restore_workspace_session(&path, &root);
         self.restart_settings_watcher();
         if self.settings.editor_config.reload_settings() {
@@ -81,6 +81,16 @@ impl Ctx<'_> {
             .shell
             .set_file_tree_expanded(session.expanded_dirs.into_iter().filter(|dir| dir.is_dir()));
         self.open_files(session.open_files, session.active_file);
+        // The configuration tab was focused when the session was saved. Restore
+        // it after the remembered file gets focus (they are loaded async), so
+        // "editor" from there finds that file again.
+        if session.configuration_open {
+            if self.tabs.pending_loads > 0 {
+                self.frame.pending_configuration_restore = Some(workspace_path.to_path_buf());
+            } else {
+                self.switch_to_configuration();
+            }
+        }
     }
 
     /// Snapshot the live tabs and tree expansion into the workspace's session;
@@ -91,22 +101,22 @@ impl Ctx<'_> {
         };
         // Loads in flight would otherwise blank the session between the
         // workspace opening and its restored tabs landing.
-        if self.documents.pending_loads > 0 {
+        if self.tabs.pending_loads > 0 {
             return;
         }
         let inside = |path: &PathBuf| path.starts_with(&workspace_path);
         let open_files = self
-            .documents
+            .tabs
             .tabs
             .iter()
+            .filter_map(|tab| tab.content.as_text())
             .filter_map(|document| document.buffer.path().cloned())
             .filter(|path| inside(path))
             .collect::<Vec<_>>();
         let active_file = self
-            .documents
-            .active_document()
-            .buffer
-            .path()
+            .tabs
+            .active_text()
+            .and_then(|document| document.buffer.path())
             .filter(|path| inside(path))
             .cloned()
             .or_else(|| {
@@ -134,6 +144,7 @@ impl Ctx<'_> {
                 workspace_path,
                 open_files,
                 active_file,
+                configuration_open: self.tabs.active_is_configuration(),
                 expanded_dirs,
             });
     }
@@ -169,11 +180,11 @@ impl Ctx<'_> {
         if let Some(tree) = &mut self.workspace.file_tree {
             tree.refresh();
         }
-        let revived = self.documents.sync_missing_documents();
+        let revived = self.tabs.sync_missing_documents();
         if !revived.is_empty() {
             self.load_files(revived, None);
         }
-        let checks = self.documents.disk_change_plan();
+        let checks = self.tabs.disk_change_plan();
         if checks.is_empty() {
             return;
         }

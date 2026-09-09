@@ -99,7 +99,7 @@ impl Component for TitleBar {
 }
 
 fn window_control_button(ui: &mut egui::Ui, glyph: &str, action: impl FnOnce(&egui::Context)) {
-    if super::icon_button(ui, glyph).clicked() {
+    if super::icon_button(ui, glyph, false).clicked() {
         action(ui.ctx());
     }
 }

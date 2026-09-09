@@ -7,6 +7,7 @@ use super::Ctx;
 use crate::app::App;
 use crate::chrome;
 use crate::component::Component;
+use crate::settings::configuration_view::ConfigurationView;
 use crate::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
 use std::time::Duration;
@@ -31,8 +32,12 @@ impl EframeApp for App {
 
         let editor_focused = self.ctx().editor_focused();
         let highlight_snapshot = self.highlighting.service.snapshot();
+        let active_document = self
+            .tabs
+            .active_text()
+            .or_else(|| self.tabs.first_text())
+            .expect("a text tab always exists");
         let (carets, active_caret_index, selection_ranges) = {
-            let active_document = &self.documents.tabs[self.documents.active_document];
             let caret_state = &active_document.caret_state;
             let carets = (0..caret_state.len())
                 .map(|index| {
@@ -47,22 +52,12 @@ impl EframeApp for App {
             (carets, active_caret_index, selection_ranges)
         };
         let caret_visible = if editor_focused {
-            self.documents.caret_blink_visible()
+            self.tabs.caret_blink_visible()
         } else {
             false // hide the caret entirely while the editor isn't focused
         };
-        let document_tabs = self
-            .documents
-            .tabs
-            .iter()
-            .map(|document| crate::documents::DocumentTab {
-                title: document.title(),
-                dirty: document.document_dirty,
-                missing: document.missing,
-                binary: document.binary,
-            })
-            .collect::<Vec<_>>();
-        let active_document = &self.documents.tabs[self.documents.active_document];
+        let tabs = self.tabs.tabs.iter().map(|tab| tab.meta()).collect::<Vec<_>>();
+        let active_tab_id = self.tabs.tabs[self.tabs.active_tab].id;
         let events = {
             let mut view = chrome::AppView;
             view.render(
@@ -74,17 +69,20 @@ impl EframeApp for App {
                     file_tree: self.workspace.file_tree.as_mut(),
                     workspace_path: self.workspace.path.as_ref(),
                     buffer: &active_document.buffer,
-                    document_tabs: &document_tabs,
-                    active_document_index: self.documents.active_document,
+                    tabs: &tabs,
+                    active_tab_id,
+                    active_is_configuration: self.tabs.active_is_configuration(),
                     highlight_snapshot,
                     editor_config: &self.settings.editor_config,
                     document_status: active_document.document_status.as_deref(),
-                    restoring_session: self.documents.pending_loads > 0,
+                    restoring_session: self.tabs.pending_loads > 0,
                     carets,
                     selection_ranges,
                     active_caret_index,
                     caret_visible,
                     document_dirty: active_document.document_dirty,
+                    document_missing: active_document.missing,
+                    document_binary: active_document.binary,
                 },
             )
         };
@@ -132,6 +130,17 @@ impl Ctx<'_> {
         }
 
         self.process_pending_events();
+
+        // Keep the shell's configuration session in step with the tab: created
+        // synced to current settings when the tab opens, dropped when it closes.
+        let has_configuration_tab = self.tabs.has_configuration_tab();
+        if has_configuration_tab && self.chrome.shell.configuration_view.is_none() {
+            let mut view = ConfigurationView::default();
+            view.sync_draft(&self.settings.editor_config.settings);
+            self.chrome.shell.configuration_view = Some(view);
+        } else if !has_configuration_tab && self.chrome.shell.configuration_view.is_some() {
+            self.chrome.shell.configuration_view = None;
+        }
         self.sync_workspace_session();
         self.flush_recent_config();
 

@@ -2,7 +2,7 @@ mod app;
 mod chrome;
 mod component;
 mod document;
-mod documents;
+mod tabs;
 mod events;
 mod highlighting;
 mod native;

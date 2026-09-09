@@ -1,25 +1,19 @@
 use crate::document::{
-    EditTransaction, SubEdit, indentation_for_newline, next_word_boundary, previous_word_boundary,
+    EditTransaction, OpenDocument, SubEdit, indentation_for_newline, next_word_boundary,
+    previous_word_boundary,
 };
-use crate::documents::Documents;
 
-impl Documents {
+impl OpenDocument {
     pub(crate) fn selected_text(&self) -> Option<String> {
-        let active_document = self.active_document();
-        let range = active_document.caret_state.selection_range()?;
-        Some(active_document.buffer.text().slice(range).to_string())
+        let range = self.caret_state.selection_range()?;
+        Some(self.buffer.text().slice(range).to_string())
     }
 
     /// Cut the active cursor's selection, returning the removed text so the
     /// caller can put it on the clipboard; other cursors are left in place.
     pub(crate) fn cut_selection(&mut self) -> Option<String> {
-        let range = self.active_document().caret_state.selection_range()?;
-        let selected_text = self
-            .active_document()
-            .buffer
-            .text()
-            .slice(range.clone())
-            .to_string();
+        let range = self.caret_state.selection_range()?;
+        let selected_text = self.buffer.text().slice(range.clone()).to_string();
         self.apply_edit(range.start, range.end, "");
         Some(selected_text)
     }
@@ -27,9 +21,8 @@ impl Documents {
     /// Insert `text` at (or replace the selection of) every cursor.
     pub(crate) fn insert_or_replace_selection(&mut self, text: &str) -> bool {
         let edits = {
-            let active_document = self.active_document();
-            (0..active_document.caret_state.len())
-                .map(|index| active_document.caret_state.edit_target(index))
+            (0..self.caret_state.len())
+                .map(|index| self.caret_state.edit_target(index))
                 .collect::<Vec<_>>()
         };
         self.apply_multi_edit(edits, text)
@@ -37,13 +30,12 @@ impl Documents {
 
     pub(crate) fn delete_backward(&mut self) -> bool {
         let edits = {
-            let active_document = self.active_document();
-            (0..active_document.caret_state.len())
+            (0..self.caret_state.len())
                 .map(|index| {
-                    if let Some(range) = active_document.caret_state.selection_range_at(index) {
+                    if let Some(range) = self.caret_state.selection_range_at(index) {
                         (range.start, range.end)
                     } else {
-                        let caret = active_document.caret_state.caret_char_at(index);
+                        let caret = self.caret_state.caret_char_at(index);
                         if caret == 0 {
                             (0, 0)
                         } else {
@@ -58,15 +50,14 @@ impl Documents {
 
     pub(crate) fn delete_word_backward(&mut self) -> bool {
         let edits = {
-            let active_document = self.active_document();
-            (0..active_document.caret_state.len())
+            (0..self.caret_state.len())
                 .map(|index| {
-                    if let Some(range) = active_document.caret_state.selection_range_at(index) {
+                    if let Some(range) = self.caret_state.selection_range_at(index) {
                         (range.start, range.end)
                     } else {
-                        let caret = active_document.caret_state.caret_char_at(index);
+                        let caret = self.caret_state.caret_char_at(index);
                         (
-                            previous_word_boundary(&active_document.buffer, caret),
+                            previous_word_boundary(&self.buffer, caret),
                             caret,
                         )
                     }
@@ -78,14 +69,13 @@ impl Documents {
 
     pub(crate) fn delete_forward(&mut self) -> bool {
         let edits = {
-            let active_document = self.active_document();
-            let total_chars = active_document.buffer.text().len_chars();
-            (0..active_document.caret_state.len())
+            let total_chars = self.buffer.text().len_chars();
+            (0..self.caret_state.len())
                 .map(|index| {
-                    if let Some(range) = active_document.caret_state.selection_range_at(index) {
+                    if let Some(range) = self.caret_state.selection_range_at(index) {
                         (range.start, range.end)
                     } else {
-                        let caret = active_document.caret_state.caret_char_at(index);
+                        let caret = self.caret_state.caret_char_at(index);
                         if caret >= total_chars {
                             (total_chars, total_chars)
                         } else {
@@ -100,14 +90,13 @@ impl Documents {
 
     pub(crate) fn delete_word_forward(&mut self) -> bool {
         let edits = {
-            let active_document = self.active_document();
-            (0..active_document.caret_state.len())
+            (0..self.caret_state.len())
                 .map(|index| {
-                    if let Some(range) = active_document.caret_state.selection_range_at(index) {
+                    if let Some(range) = self.caret_state.selection_range_at(index) {
                         (range.start, range.end)
                     } else {
-                        let caret = active_document.caret_state.caret_char_at(index);
-                        (caret, next_word_boundary(&active_document.buffer, caret))
+                        let caret = self.caret_state.caret_char_at(index);
+                        (caret, next_word_boundary(&self.buffer, caret))
                     }
                 })
                 .collect::<Vec<_>>()
@@ -118,14 +107,13 @@ impl Documents {
     /// Enter key: per-cursor indentation.
     pub(crate) fn insert_newline(&mut self) -> bool {
         let (edits, texts) = {
-            let active_document = self.active_document();
-            let cursor_count = active_document.caret_state.len();
+            let cursor_count = self.caret_state.len();
             let mut edits = Vec::with_capacity(cursor_count);
             let mut texts = Vec::with_capacity(cursor_count);
             for index in 0..cursor_count {
-                let caret = active_document.caret_state.caret_char_at(index);
+                let caret = self.caret_state.caret_char_at(index);
                 edits.push((caret, caret));
-                texts.push(indentation_for_newline(&active_document.buffer, caret));
+                texts.push(indentation_for_newline(&self.buffer, caret));
             }
             (edits, texts)
         };
@@ -136,15 +124,14 @@ impl Documents {
     /// keep their position. Whole-buffer replaces (formatter) and active-only
     /// operations (cut) go through here.
     pub(crate) fn apply_edit(&mut self, start: usize, end: usize, inserted_text: &str) -> bool {
-        let active_document = self.active_document();
-        let cursor_count = active_document.caret_state.len();
-        let active_index = active_document.caret_state.active_index();
+        let cursor_count = self.caret_state.len();
+        let active_index = self.caret_state.active_index();
         let mut edits = Vec::with_capacity(cursor_count);
         for index in 0..cursor_count {
             if index == active_index {
                 edits.push((start, end));
             } else {
-                let caret = active_document.caret_state.caret_char_at(index);
+                let caret = self.caret_state.caret_char_at(index);
                 edits.push((caret, caret));
             }
         }
@@ -172,8 +159,8 @@ impl Documents {
         edits: Vec<(usize, usize)>,
         texts: Vec<String>,
     ) -> bool {
-        let total_chars = self.active_document().buffer.text().len_chars();
-        let cursor_count = self.active_document().caret_state.len();
+        let total_chars = self.buffer.text().len_chars();
+        let cursor_count = self.caret_state.len();
 
         // Plan per-cursor replacements, clamped and dropping true no-ops.
         let mut plan: Vec<(usize, usize, usize)> = Vec::new(); // (cursor_index, start, end)
@@ -190,8 +177,8 @@ impl Documents {
             return false;
         }
 
-        let before = self.active_document().caret_state.snapshot();
-        let caret_chars_before = self.active_document().caret_state.caret_chars_snapshot();
+        let before = self.caret_state.snapshot();
+        let caret_chars_before = self.caret_state.caret_chars_snapshot();
 
         // Deduplicate identical targets (two cursors landing on the same
         // position must not double-insert).
@@ -222,25 +209,22 @@ impl Documents {
 
         let mut edited_position: Vec<(usize, usize)> = Vec::new(); // (cursor_index, new_caret)
         let mut sub_edits: Vec<SubEdit> = Vec::with_capacity(items.len());
-        {
-            let active_document = self.active_document_mut();
-            for (index, &(cursor_index, start, end, _)) in items.iter().enumerate() {
-                let inserted_text = texts.get(cursor_index).map_or("", |text| text.as_str());
-                let deleted_text = active_document.buffer.text().slice(start..end).to_string();
-                if end > start {
-                    active_document.buffer.remove(start..end);
-                }
-                if !inserted_text.is_empty() {
-                    active_document.buffer.insert(start, inserted_text);
-                }
-                let next_caret = start + inserted_text.chars().count();
-                edited_position.push((cursor_index, next_caret));
-                sub_edits.push(SubEdit {
-                    start_char: final_starts[index],
-                    deleted_text,
-                    inserted_text: inserted_text.to_string(),
-                });
+        for (index, &(cursor_index, start, end, _)) in items.iter().enumerate() {
+            let inserted_text = texts.get(cursor_index).map_or("", |text| text.as_str());
+            let deleted_text = self.buffer.text().slice(start..end).to_string();
+            if end > start {
+                self.buffer.remove(start..end);
             }
+            if !inserted_text.is_empty() {
+                self.buffer.insert(start, inserted_text);
+            }
+            let next_caret = start + inserted_text.chars().count();
+            edited_position.push((cursor_index, next_caret));
+            sub_edits.push(SubEdit {
+                start_char: final_starts[index],
+                deleted_text,
+                inserted_text: inserted_text.to_string(),
+            });
         }
 
         // Final caret positions: edited cursors land after their inserted
@@ -262,32 +246,28 @@ impl Documents {
                     .sum();
                 positions[index] = (original as isize + shift).max(0) as usize;
             }
-            let active_document = self.active_document_mut();
-            active_document
-                .caret_state
-                .set_all_caret_chars(&positions, &active_document.buffer);
+            self.caret_state
+                .set_all_caret_chars(&positions, &self.buffer);
         }
 
         sub_edits.sort_by_key(|edit| edit.start_char);
-        let after = self.active_document().caret_state.snapshot();
-        self.active_document_mut()
-            .edit_history
+        let after = self.caret_state.snapshot();
+        self.edit_history
             .push(EditTransaction {
                 edits: sub_edits,
                 before,
                 after,
             });
-        self.mark_document_dirty();
+        self.mark_dirty();
         true
     }
 
-    pub(crate) fn mark_document_dirty(&mut self) {
-        let active_document = self.active_document_mut();
-        active_document.edit_generation += 1;
+    pub(crate) fn mark_dirty(&mut self) {
+        self.edit_generation += 1;
         // Dirty reflects the buffer against the saved content, not "an edit
         // happened": an edit undone back to that content is clean again.
-        let dirty = active_document.recompute_dirty();
-        active_document.document_status = if dirty {
+        let dirty = self.recompute_dirty();
+        self.document_status = if dirty {
             Some("Modified".to_string())
         } else {
             None

@@ -13,6 +13,7 @@ impl Ctx<'_> {
             AppEvent::ConfigChange => self.on_config_change(),
             AppEvent::OpenFile(path) => self.open_file(path),
             AppEvent::OpenFolder(path) => self.open_folder(path),
+            AppEvent::OpenConfiguration => self.switch_to_configuration(),
             AppEvent::ClearRecentItems => self.settings.editor_config.clear_recent_items(),
         }
     }

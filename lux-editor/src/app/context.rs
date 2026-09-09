@@ -6,7 +6,7 @@
 use super::state::{App, FrameState};
 use crate::app::Runtime;
 use crate::chrome::Chrome;
-use crate::documents::Documents;
+use crate::tabs::TabManager;
 use crate::highlighting::Highlighting;
 use crate::settings::SettingsState;
 use crate::workspace::Workspace;
@@ -14,7 +14,7 @@ use eframe::egui;
 
 /// Mutable access to every domain for the duration of one action.
 pub(crate) struct Ctx<'a> {
-    pub(crate) documents: &'a mut Documents,
+    pub(crate) tabs: &'a mut TabManager,
     pub(crate) workspace: &'a mut Workspace,
     pub(crate) settings: &'a mut SettingsState,
     pub(crate) highlighting: &'a mut Highlighting,
@@ -36,7 +36,7 @@ impl App {
     /// Borrow every domain at once for one action pass.
     pub(crate) fn ctx(&mut self) -> Ctx<'_> {
         Ctx {
-            documents: &mut self.documents,
+            tabs: &mut self.tabs,
             workspace: &mut self.workspace,
             settings: &mut self.settings,
             highlighting: &mut self.highlighting,

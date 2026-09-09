@@ -6,12 +6,6 @@ use crate::native::NativeChrome;
 use crate::theme::StartupFont;
 use crate::theme::ThemeChoice;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ShellView {
-    Editor,
-    Configuration,
-}
-
 /// Actions exposed by the title-bar menus; the widgets render them, the app
 /// maps them onto its own command/event pipeline.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -234,6 +234,7 @@ mod tests {
             workspace_path: PathBuf::from(workspace),
             open_files: files.iter().map(PathBuf::from).collect(),
             active_file: files.last().map(PathBuf::from),
+            configuration_open: false,
             expanded_dirs: expanded.iter().map(PathBuf::from).collect(),
         }
     }

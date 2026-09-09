@@ -6,7 +6,7 @@ use super::caret_state::CaretState;
 use super::edit_history::EditHistory;
 use ropey::Rope;
 use std::path::PathBuf;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 pub struct OpenDocument {
     pub(crate) buffer: DocumentBuffer,
@@ -30,9 +30,14 @@ pub struct OpenDocument {
     /// is compared against on every edit. A rope clone, so it shares the buffer's
     /// tree instead of duplicating the text.
     pub(crate) saved_text: Rope,
+    /// Caret blink phase, reset whenever the caret moves or becomes visible, so
+    /// a freshly focused tab always shows a solid caret.
+    pub(crate) caret_blink_anchor: Instant,
 }
 
 impl OpenDocument {
+    const CARET_BLINK_PERIOD: std::time::Duration = std::time::Duration::from_millis(1000);
+
     pub fn new_empty() -> Self {
         Self {
             buffer: DocumentBuffer::new(),
@@ -46,6 +51,7 @@ impl OpenDocument {
             edit_area_focused: false,
             last_disk_stat: None,
             saved_text: Rope::new(),
+            caret_blink_anchor: Instant::now(),
         }
     }
 
@@ -85,6 +91,7 @@ impl OpenDocument {
             edit_area_focused: false,
             last_disk_stat: None,
             saved_text,
+            caret_blink_anchor: Instant::now(),
         };
         // Keep the caret at the top of the file: a freshly opened document
         // shows its first lines (the editor reveals the caret on open).
@@ -100,11 +107,20 @@ impl OpenDocument {
             .unwrap_or_else(|| "Untitled".to_string())
     }
 
+    pub(crate) fn touch_caret_blink(&mut self) {
+        self.caret_blink_anchor = Instant::now();
+    }
+
+    pub(crate) fn caret_blink_visible(&self) -> bool {
+        self.caret_blink_anchor.elapsed().as_millis() % Self::CARET_BLINK_PERIOD.as_millis()
+            < (Self::CARET_BLINK_PERIOD.as_millis() / 2)
+    }
+
     /// Re-check the file behind the tab. Returns true when the tab sits on the
     /// missing page and the file has come back, i.e. the caller must re-read it;
     /// the flag stays set until that read lands.
-    /// Dirty documents are never judged, as "save as" sets a path before the
-    /// bytes exist; binary documents are never judged either, they do not turn
+    /// Dirty tabs are never judged, as "save as" sets a path before the
+    /// bytes exist; binary tabs are never judged either, they do not turn
     /// into missing tabs no matter what happens to the file.
     pub(crate) fn observe_file_exists(&mut self, exists: bool) -> bool {
         if self.document_dirty || self.binary || self.buffer.path().is_none() {

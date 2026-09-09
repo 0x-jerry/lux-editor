@@ -1,9 +1,10 @@
-//! Shared clickable icon glyph: faint at rest, theme accent on hover.
+//! Shared clickable icon glyph: faint at rest, theme accent on hover, always
+//! accent when `active`.
 
 use eframe::egui;
 
 /// Frameless, square icon button in the current flow layout.
-pub fn icon_button(ui: &mut egui::Ui, glyph: &str) -> egui::Response {
+pub fn icon_button(ui: &mut egui::Ui, glyph: &str, active: bool) -> egui::Response {
     let side = ui.spacing().interact_size.y;
     let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
     let hovered = response.hovered() || response.is_pointer_button_down_on();
@@ -13,7 +14,11 @@ pub fn icon_button(ui: &mut egui::Ui, glyph: &str) -> egui::Response {
         egui::Align2::CENTER_CENTER,
         glyph,
         font_id,
-        icon_text_color(ui, hovered),
+        if active {
+            ui.visuals().hyperlink_color
+        } else {
+            icon_text_color(ui, hovered)
+        },
     );
     // Not an egui::Button, so the global `visuals.interact_cursor` does not
     // apply; set the hand cursor explicitly to match the rest of the chrome.

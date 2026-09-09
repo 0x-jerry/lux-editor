@@ -1,6 +1,6 @@
 //! The text buffer behind one document: a rope plus the file path it
-//! belongs to. File loading/saving is handled by the documents pipeline
-//! (`crate::documents::state`), so the buffer itself stays synchronous.
+//! belongs to. File loading/saving is handled by the tabs pipeline
+//! (`crate::tabs::state`), so the buffer itself stays synchronous.
 
 use ropey::Rope;
 use std::path::{Path, PathBuf};

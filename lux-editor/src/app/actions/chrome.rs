@@ -3,7 +3,7 @@
 
 use crate::app::Ctx;
 use crate::chrome::TitleBarMenu;
-use crate::documents::EditorCommand;
+use crate::document::EditorCommand;
 use crate::events::ShellEvent;
 use crate::theme::{self, CustomFont, StartupFont, ThemeChoice};
 use eframe::egui;
@@ -13,8 +13,6 @@ impl Ctx<'_> {
     /// Shell & navigation: view switching and title-bar actions.
     pub(crate) fn handle_shell_event(&mut self, event: ShellEvent) {
         match event {
-            ShellEvent::SwitchToEditor => self.chrome.shell.switch_to_editor(),
-            ShellEvent::SwitchToConfiguration => self.chrome.shell.switch_to_configuration(),
             ShellEvent::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
             ShellEvent::ToggleCommandPanel => self.chrome.command_panel.toggle(),
         }
@@ -95,8 +93,8 @@ impl Ctx<'_> {
                 self.execute_command(EditorCommand::SelectAll);
             }
             TitleBarMenu::CommandPalette => self.chrome.command_panel.toggle(),
-            TitleBarMenu::SwitchToEditor => self.chrome.shell.switch_to_editor(),
-            TitleBarMenu::SwitchToConfiguration => self.chrome.shell.switch_to_configuration(),
+            TitleBarMenu::SwitchToEditor => self.switch_to_editor(),
+            TitleBarMenu::SwitchToConfiguration => self.switch_to_configuration(),
             TitleBarMenu::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
             TitleBarMenu::Hide => {
                 self.chrome.native.window_visible = false;

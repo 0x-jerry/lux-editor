@@ -6,7 +6,6 @@ use super::command_panel::CommandPanel;
 use super::shell::{Shell, ShellInput};
 use crate::component::Component;
 use crate::document::DocumentBuffer;
-use crate::documents::DocumentTab;
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::settings::Config;
@@ -24,8 +23,9 @@ pub struct AppViewInput<'a> {
     pub file_tree: Option<&'a mut FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a DocumentBuffer,
-    pub document_tabs: &'a [DocumentTab],
-    pub active_document_index: usize,
+    pub tabs: &'a [crate::tabs::TabMeta],
+    pub active_tab_id: u64,
+    pub active_is_configuration: bool,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub document_status: Option<&'a str>,
@@ -37,6 +37,8 @@ pub struct AppViewInput<'a> {
     pub active_caret_index: usize,
     pub caret_visible: bool,
     pub document_dirty: bool,
+    pub document_missing: bool,
+    pub document_binary: bool,
 }
 
 /// The app's view root. Owns no state itself; the shell and overlay
@@ -55,8 +57,9 @@ impl Component for AppView {
             file_tree,
             workspace_path,
             buffer,
-            document_tabs,
-            active_document_index,
+            tabs,
+            active_tab_id,
+            active_is_configuration,
             highlight_snapshot,
             editor_config,
             document_status,
@@ -66,6 +69,8 @@ impl Component for AppView {
             active_caret_index,
             caret_visible,
             document_dirty,
+            document_missing,
+            document_binary,
         } = input;
 
         let mut events = shell.render(
@@ -74,8 +79,9 @@ impl Component for AppView {
                 file_tree,
                 workspace_path,
                 buffer,
-                document_tabs,
-                active_document_index,
+                tabs,
+                active_tab_id,
+                active_is_configuration,
                 highlight_snapshot,
                 editor_config,
                 document_status,
@@ -85,6 +91,8 @@ impl Component for AppView {
                 active_caret_index,
                 caret_visible,
                 document_dirty,
+                document_missing,
+                document_binary,
             },
         );
 

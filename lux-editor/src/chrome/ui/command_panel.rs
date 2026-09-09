@@ -36,7 +36,6 @@ enum CommandPanelAction {
     OpenFile,
     OpenRecently,
     OpenFolder,
-    SwitchToEditor,
     SwitchToConfiguration,
     ToggleSidebar,
     ClearRecentItems,
@@ -264,11 +263,8 @@ fn run_command_panel_action(action: CommandPanelAction, events: &mut Vec<CustomE
                 events.push(CustomEvent::App(AppEvent::OpenFolder(path)));
             }
         }
-        CommandPanelAction::SwitchToEditor => {
-            events.push(CustomEvent::Shell(ShellEvent::SwitchToEditor));
-        }
         CommandPanelAction::SwitchToConfiguration => {
-            events.push(CustomEvent::Shell(ShellEvent::SwitchToConfiguration));
+            events.push(CustomEvent::App(AppEvent::OpenConfiguration));
         }
         CommandPanelAction::ToggleSidebar => {
             events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
@@ -334,11 +330,6 @@ fn build_root_commands() -> Vec<CommandPanelCommand> {
                 "open".to_string(),
             ],
             action: CommandPanelAction::OpenFolder,
-        },
-        CommandPanelCommand {
-            title: "Switch To Editor".to_string(),
-            keywords: vec!["editor".to_string(), "view".to_string(), "mode".to_string()],
-            action: CommandPanelAction::SwitchToEditor,
         },
         CommandPanelCommand {
             title: "Switch To Configuration".to_string(),
@@ -424,7 +415,6 @@ fn recent_used_title(action: &CommandPanelAction) -> String {
         CommandPanelAction::OpenFile => "Open File".to_string(),
         CommandPanelAction::OpenRecently => "Open Recently".to_string(),
         CommandPanelAction::OpenFolder => "Open Folder".to_string(),
-        CommandPanelAction::SwitchToEditor => "Switch To Editor".to_string(),
         CommandPanelAction::SwitchToConfiguration => "Switch To Configuration".to_string(),
         CommandPanelAction::ToggleSidebar => "Toggle Sidebar".to_string(),
         CommandPanelAction::ClearRecentItems => "Clear Recent Items".to_string(),
@@ -442,7 +432,6 @@ fn action_key(action: &CommandPanelAction) -> String {
         CommandPanelAction::OpenFile => "open-file".to_string(),
         CommandPanelAction::OpenRecently => "open-recently".to_string(),
         CommandPanelAction::OpenFolder => "open-folder".to_string(),
-        CommandPanelAction::SwitchToEditor => "switch-editor".to_string(),
         CommandPanelAction::SwitchToConfiguration => "switch-configuration".to_string(),
         CommandPanelAction::ToggleSidebar => "toggle-sidebar".to_string(),
         CommandPanelAction::ClearRecentItems => "clear-recent-items".to_string(),

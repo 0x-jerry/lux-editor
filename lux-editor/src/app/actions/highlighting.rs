@@ -18,13 +18,17 @@ impl Ctx<'_> {
     }
 
     pub(crate) fn refresh_language_intelligence(&mut self) {
-        let colors = self.syntax_colors();
-        let language = LanguageKind::from_path(self.documents.buffer().path().map(|v| &**v));
-        self.highlighting.service.set_syntax(colors);
+        let Some(active_document) = self.tabs.active_text() else {
+            return;
+        };
+        let language = LanguageKind::from_path(active_document.buffer.path().map(|v| &**v));
         // Rope clone is O(1); the worker parses the shared text zero-copy.
+        let text = active_document.buffer.text().clone();
+        let colors = self.syntax_colors();
+        self.highlighting.service.set_syntax(colors);
         self.highlighting
             .service
-            .request_parse(self.documents.buffer().text().clone(), language);
+            .request_parse(text, language);
     }
 
     /// The syntax palette the current config asks for.

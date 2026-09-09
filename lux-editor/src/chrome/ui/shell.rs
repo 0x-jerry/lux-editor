@@ -1,17 +1,17 @@
 //! The app shell component: chrome (title/status bars), sidebar and the
-//! active view. Owns the shell navigation state and its child components.
+//! active view. Owns the shell chrome state (sidebar, configuration session)
+//! and its child components.
 
 use super::widgets::{
-    StatusBar, StatusBarData, StatusBarSection, TitleBar, TitleBarData, window_resize_handle,
+    StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle,
 };
-use crate::chrome::ShellView;
 use crate::component::Component;
 use crate::document::DocumentBuffer;
-use crate::documents::{EditorView, EditorViewState};
+use crate::tabs::{EditorView, EditorViewState};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
-use crate::settings::configuration_view::{ConfigurationView, ConfigurationViewInput};
+use crate::settings::configuration_view::ConfigurationView;
 use crate::settings::{Config, EditorSettings};
 use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
@@ -25,8 +25,9 @@ pub struct ShellInput<'a> {
     pub file_tree: Option<&'a mut FileTree>,
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a DocumentBuffer,
-    pub document_tabs: &'a [crate::documents::DocumentTab],
-    pub active_document_index: usize,
+    pub tabs: &'a [crate::tabs::TabMeta],
+    pub active_tab_id: u64,
+    pub active_is_configuration: bool,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     pub document_status: Option<&'a str>,
@@ -37,47 +38,36 @@ pub struct ShellInput<'a> {
     pub active_caret_index: usize,
     pub caret_visible: bool,
     pub document_dirty: bool,
+    pub document_missing: bool,
+    pub document_binary: bool,
 }
 
 /// The app shell: chrome (title/status bars), sidebar and the active view.
-/// Owns the shell navigation state and its child components.
+/// Owns the shell chrome state and its child components; the configuration
+/// session exists only while a configuration tab is open.
 pub struct Shell {
-    shell_view: ShellView,
     sidebar_visible: bool,
     title_bar: TitleBar,
     status_bar: StatusBar,
     file_tree_panel: FileTreePanel,
     editor_view: EditorView,
-    configuration_view: ConfigurationView,
+    pub(crate) configuration_view: Option<ConfigurationView>,
 }
 
 impl Default for Shell {
     fn default() -> Self {
         Self {
-            shell_view: ShellView::Editor,
             sidebar_visible: true,
             title_bar: TitleBar,
             status_bar: StatusBar,
             file_tree_panel: FileTreePanel::default(),
             editor_view: EditorView,
-            configuration_view: ConfigurationView::default(),
+            configuration_view: None,
         }
     }
 }
 
 impl Shell {
-    pub fn shell_view(&self) -> ShellView {
-        self.shell_view
-    }
-
-    pub fn switch_to_editor(&mut self) {
-        self.shell_view = ShellView::Editor;
-    }
-
-    pub fn switch_to_configuration(&mut self) {
-        self.shell_view = ShellView::Configuration;
-    }
-
     pub fn toggle_sidebar(&mut self) {
         self.sidebar_visible = !self.sidebar_visible;
     }
@@ -92,7 +82,9 @@ impl Shell {
     }
 
     pub fn sync_config_draft(&mut self, settings: &EditorSettings) {
-        self.configuration_view.sync_draft(settings);
+        if let Some(view) = self.configuration_view.as_mut() {
+            view.sync_draft(settings);
+        }
     }
 }
 
@@ -105,8 +97,9 @@ impl Component for Shell {
             file_tree,
             workspace_path,
             buffer,
-            document_tabs,
-            active_document_index,
+            tabs,
+            active_tab_id,
+            active_is_configuration,
             highlight_snapshot,
             editor_config,
             document_status,
@@ -116,6 +109,8 @@ impl Component for Shell {
             active_caret_index,
             caret_visible,
             document_dirty,
+            document_missing,
+            document_binary,
         } = state;
 
         let mut events = Vec::new();
@@ -127,54 +122,40 @@ impl Component for Shell {
             .map(|range| range.end - range.start)
             .sum();
         let (caret_line, caret_column) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
-        let section = match self.shell_view {
-            ShellView::Editor => StatusBarSection::Editor {
-                caret_line,
-                caret_column,
-                selection_len,
-                document_dirty,
-                document_status,
-            },
-            ShellView::Configuration => StatusBarSection::Configuration {
-                config_status: self.configuration_view.status(),
-            },
-        };
-        let right_label = match self.shell_view {
-            ShellView::Editor => buffer
-                .path()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "Untitled".to_string()),
-            ShellView::Configuration => Config::user_settings_path().display().to_string(),
-        };
         events.extend(self.status_bar.render(
             ui,
             StatusBarData {
-                mode_label: match self.shell_view {
-                    ShellView::Editor => "EDITOR",
-                    ShellView::Configuration => "CONFIGURATION",
+                sidebar_active: self.sidebar_visible,
+                cursor: if active_is_configuration {
+                    None
+                } else {
+                    Some((caret_line, caret_column, selection_len))
                 },
-                section,
-                right_label: &right_label,
             },
         ));
 
-        if self.shell_view == ShellView::Editor
-            && self.sidebar_visible
+        if self.sidebar_visible
             && let Some(tree) = file_tree
         {
             events.extend(self.file_tree_panel.render(
                 ui,
                 FileTreePanelInput {
                     tree,
-                    active_file_path: buffer.path().map(|path| path.as_path()),
+                    // Only a file tab's path belongs in the tree; the
+                    // configuration tab (or any non-file tab) selects nothing.
+                    active_file_path: if active_is_configuration {
+                        None
+                    } else {
+                        buffer.path().map(|path| path.as_path())
+                    },
                 },
             ));
         }
 
-        let central_fill = if self.shell_view == ShellView::Editor {
-            snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color)
-        } else {
+        let central_fill = if active_is_configuration {
             ui.visuals().panel_fill
+        } else {
+            snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color)
         };
         egui::CentralPanel::default()
             .frame(
@@ -183,41 +164,29 @@ impl Component for Shell {
                     .inner_margin(0),
             )
             .show(ui, |ui| {
-                if self.shell_view == ShellView::Editor {
-                    events.extend(self.editor_view.render(
-                        ui,
-                        EditorViewState {
-                            workspace_path,
-                            buffer,
-                            document_tabs,
-                            active_document_index,
-                            highlight_snapshot,
-                            editor_config,
-                            carets: &carets,
-                            selection_ranges: &selection_ranges,
-                            active_caret_index,
-                            caret_visible,
-                            sidebar_visible: self.sidebar_visible,
-                            document_dirty,
-                            document_status,
-                            restoring_session,
-                        },
-                    ));
-                } else {
-                    events.extend(
-                        self.configuration_view
-                            .render(
-                                ui,
-                                ConfigurationViewInput {
-                                    workspace_path,
-                                    buffer,
-                                    editor_config,
-                                },
-                            )
-                            .into_iter()
-                            .map(CustomEvent::Configuration),
-                    );
-                }
+                events.extend(self.editor_view.render(
+                    ui,
+                    EditorViewState {
+                        workspace_path,
+                        buffer,
+                        tabs,
+                        active_tab_id,
+                        active_is_configuration,
+                        configuration: self.configuration_view.as_mut(),
+                        highlight_snapshot,
+                        editor_config,
+                        carets: &carets,
+                        selection_ranges: &selection_ranges,
+                        active_caret_index,
+                        caret_visible,
+                        sidebar_visible: self.sidebar_visible,
+                        document_dirty,
+                        document_status,
+                        document_missing,
+                        document_binary,
+                        restoring_session,
+                    },
+                ));
             });
 
         // Bottom-right resize grip for frameless window builds (no-op on macOS).

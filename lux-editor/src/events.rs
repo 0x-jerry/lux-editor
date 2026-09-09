@@ -5,7 +5,7 @@
 //!
 //! - [`WorkspaceEvent`] — workspace-tree changes (create/delete/rename, refresh)
 //! - [`DocumentEvent`] — document lifecycle & content pipeline (load/save/format,
-//!   tabs, save & format commands)
+//!   tab switching/closing, save & format commands)
 //! - [`AppEvent`] — app-global state (config refresh), open commands, recent items
 //! - [`ShellEvent`] — navigation and title-bar actions
 //! - [`ConfigurationEvent`] — configuration-view autosave
@@ -73,12 +73,14 @@ pub enum DocumentEvent {
         result: Result<String, String>,
     },
     /// Open files compared against their bytes on disk after a watcher event;
-    /// the documents action reacts per tab (clear stale dirty / flag or reload).
+    /// the tabs action reacts per tab (clear stale dirty / flag or reload).
     FilesReconciled {
         results: Vec<ReconcileResult>,
     },
-    SwitchDocument(usize),
-    CloseDocument(usize),
+    /// Focus the tab with this id (any content type).
+    SwitchTab(u64),
+    /// Close the tab with this id.
+    CloseTab(u64),
     SaveFile,
     FormatFile,
 }
@@ -91,14 +93,15 @@ pub enum AppEvent {
     ConfigChange,
     OpenFile(PathBuf),
     OpenFolder(PathBuf),
+    /// Open (or focus) the configuration tab.
+    OpenConfiguration,
     ClearRecentItems,
 }
 
-/// Shell & navigation: view switching, sidebar, command palette and title-bar menus.
+/// Shell & navigation: sidebar, command palette and title-bar menus. View
+/// switching lives in the tab domain (`DocumentEvent`) now.
 #[derive(Debug)]
 pub enum ShellEvent {
-    SwitchToEditor,
-    SwitchToConfiguration,
     ToggleSidebar,
     ToggleCommandPanel,
 }

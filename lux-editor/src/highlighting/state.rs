@@ -1,6 +1,6 @@
 //! Highlighting domain: the syntax service and the debounced refresh flags.
 //! Deciding *when* to refresh and deriving the palette live in
-//! `app::actions::highlighting`, which has the documents/chrome context the
+//! `app::actions::highlighting`, which has the tabs/chrome context the
 //! refresh needs; this module only owns the state.
 
 use crate::highlighting::HighlightingService;

@@ -26,10 +26,6 @@ impl ConfigurationView {
         self.autosave_deadline = None;
     }
 
-    pub fn status(&self) -> Option<&str> {
-        self.status.as_deref()
-    }
-
     fn schedule_autosave(&mut self) {
         self.autosave_deadline = Some(Instant::now() + Self::AUTOSAVE_DELAY);
         self.status = None;

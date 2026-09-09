@@ -1,4 +1,3 @@
-use super::text_editor::{TextEditor, TextEditorState};
 use crate::chrome::ui::welcome::WelcomeView;
 use crate::chrome::ui::{
     FileBinaryInput, FileBinaryView, FileMissingInput, FileMissingView, WorkspaceStartInput,
@@ -6,8 +5,9 @@ use crate::chrome::ui::{
 };
 use crate::component::Component;
 use crate::document::DocumentBuffer;
-use crate::documents::DocumentTab;
-use crate::documents::tabs::{DocumentTabsInput, DocumentTabsView};
+use crate::document::ui::{TextEditor, TextEditorState};
+use crate::settings::configuration_view::{ConfigurationView, ConfigurationViewInput};
+use crate::tabs::{TabMeta, TabStripInput, TabStripView};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
@@ -16,14 +16,19 @@ use eframe::egui;
 use std::ops::Range;
 use std::path::PathBuf;
 
-/// The editor tab strip, welcome fallback and text area.
+/// The editor-area content dispatcher: shared tab strip plus whatever the
+/// active tab holds (the configuration form or the text editor pages).
 pub struct EditorView;
 
 pub struct EditorViewState<'a> {
     pub workspace_path: Option<&'a PathBuf>,
     pub buffer: &'a DocumentBuffer,
-    pub document_tabs: &'a [DocumentTab],
-    pub active_document_index: usize,
+    pub tabs: &'a [TabMeta],
+    pub active_tab_id: u64,
+    pub active_is_configuration: bool,
+    /// The shell-owned configuration session; only used while the
+    /// configuration tab is active.
+    pub configuration: Option<&'a mut ConfigurationView>,
     pub highlight_snapshot: &'a HighlightSnapshot,
     pub editor_config: &'a Config,
     /// All cursor positions as 1-based (line, column).
@@ -34,6 +39,8 @@ pub struct EditorViewState<'a> {
     pub sidebar_visible: bool,
     pub document_dirty: bool,
     pub document_status: Option<&'a str>,
+    pub document_missing: bool,
+    pub document_binary: bool,
     pub restoring_session: bool,
 }
 
@@ -45,8 +52,10 @@ impl Component for EditorView {
         let EditorViewState {
             workspace_path,
             buffer,
-            document_tabs,
-            active_document_index,
+            tabs,
+            active_tab_id,
+            active_is_configuration,
+            configuration,
             highlight_snapshot,
             editor_config,
             carets,
@@ -56,9 +65,50 @@ impl Component for EditorView {
             sidebar_visible,
             document_dirty,
             document_status,
+            document_missing,
+            document_binary,
             restoring_session,
         } = state;
         let mut events = Vec::new();
+
+        let editor_bg = snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color);
+
+        // The strip renders on every page (welcome, configuration, text), so
+        // every tab stays reachable.
+        let mut tabs_view = TabStripView;
+        events.extend(
+            tabs_view
+                .render(
+                    ui,
+                    TabStripInput {
+                        tabs,
+                        active_id: active_tab_id,
+                        background: editor_bg,
+                    },
+                )
+                .into_iter()
+                .map(CustomEvent::Document),
+        );
+
+        if active_is_configuration {
+            if let Some(configuration) = configuration {
+                events.extend(
+                    configuration
+                        .render(
+                            ui,
+                            ConfigurationViewInput {
+                                workspace_path,
+                                buffer,
+                                editor_config,
+                            },
+                        )
+                        .into_iter()
+                        .map(CustomEvent::Configuration),
+                );
+            }
+            return events;
+        }
+
         if workspace_path.is_none() && buffer.path().is_none() {
             let mut welcome_view = WelcomeView;
             events.extend(welcome_view.render(ui, editor_config));
@@ -81,30 +131,9 @@ impl Component for EditorView {
             return events;
         }
 
-        let editor_bg = snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color);
-
-        let mut tabs_view = DocumentTabsView;
-        events.extend(
-            tabs_view
-                .render(
-                    ui,
-                    DocumentTabsInput {
-                        tabs: document_tabs,
-                        active_index: active_document_index,
-                        active_path: buffer.path().map(|path| path.as_path()),
-                        background: editor_bg,
-                    },
-                )
-                .into_iter()
-                .map(CustomEvent::Document),
-        );
-
         // A vanished file is not editable, so the page replaces the text area
         // and leaves the strip reachable for the other tabs.
-        let missing = document_tabs
-            .get(active_document_index)
-            .is_some_and(|tab| tab.missing);
-        if missing {
+        if document_missing {
             if let Some(path) = buffer.path() {
                 let mut missing_view = FileMissingView;
                 missing_view.render(
@@ -120,10 +149,7 @@ impl Component for EditorView {
 
         // A binary file is not editable, so a guide page replaces the text
         // area; the tab is a real file though, never struck through.
-        let binary = document_tabs
-            .get(active_document_index)
-            .is_some_and(|tab| tab.binary);
-        if binary {
+        if document_binary {
             if let Some(path) = buffer.path() {
                 let mut binary_view = FileBinaryView;
                 binary_view.render(ui, FileBinaryInput { path });

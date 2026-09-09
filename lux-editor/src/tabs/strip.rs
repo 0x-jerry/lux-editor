@@ -1,47 +1,34 @@
+use super::state::{TabMeta, TabState};
 use crate::component::Component;
 use crate::events::DocumentEvent;
-use std::path::{Path, PathBuf};
-/// Tab metadata for the editor tab strip.
-pub struct DocumentTab {
-    pub title: String,
-    pub dirty: bool,
-    /// The file behind the tab is gone; the strip strikes the title through.
-    pub missing: bool,
-    /// The file behind the tab is binary; the editor shows a guide page for it.
-    pub binary: bool,
-}
-
 use eframe::egui;
 use egui_phosphor::regular::X;
 
-/// The editor document tab strip.
-pub(crate) struct DocumentTabsView;
-
-pub struct DocumentTabsInput<'a> {
-    pub tabs: &'a [DocumentTab],
-    pub active_index: usize,
-    /// Path of the active document; `None` for an untitled buffer. Identifies
-    /// a switch without relying on the tab index (which shifts on close).
-    pub active_path: Option<&'a Path>,
+/// The shared tab strip input: content-agnostic metadata plus which tab is
+/// active. The strip never looks inside a tab's content.
+pub struct TabStripInput<'a> {
+    pub tabs: &'a [TabMeta],
+    pub active_id: u64,
     pub background: egui::Color32,
 }
 
-impl Component for DocumentTabsView {
+/// The shared tab strip: one fixed-width tab per entry.
+pub(crate) struct TabStripView;
+
+impl Component for TabStripView {
     type Message = DocumentEvent;
-    type Input<'a> = DocumentTabsInput<'a>;
+    type Input<'a> = TabStripInput<'a>;
 
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<DocumentEvent> {
         let mut events = Vec::new();
-        // Reveal the active tab only when the active document changes, so
-        // switching scrolls it into view without re-yanking it back if the
-        // user scrolls away. Keyed by the active document's path (not its
-        // index — closing earlier tabs shifts indices but is not a switch)
-        // and salted with this strip's ui id.
-        let active_state_id = ui.id().with("document_tabs_active_state");
-        let active_identity = input.active_path.map(Path::to_path_buf);
-        let previous_identity = ui.data(|data| data.get_temp::<Option<PathBuf>>(active_state_id));
-        let reveal_active = previous_identity.as_ref() != Some(&active_identity);
-        ui.data_mut(|data| data.insert_temp(active_state_id, active_identity));
+        // Reveal the active tab only when the active tab changes, so switching
+        // scrolls it into view without re-yanking it back if the user scrolls
+        // away. Keyed by the active tab's id (not its index — closing earlier
+        // tabs shifts indices but is not a switch).
+        let active_state_id = ui.id().with("tab_strip_active_state");
+        let previous_id = ui.data(|data| data.get_temp::<u64>(active_state_id));
+        let reveal_active = previous_id != Some(input.active_id);
+        ui.data_mut(|data| data.insert_temp(active_state_id, input.active_id));
         let strip = egui::Frame::new()
             .fill(input.background)
             .inner_margin(egui::Margin::same(0))
@@ -51,27 +38,28 @@ impl Component for DocumentTabsView {
                 // scroll area unless this style flag is set.
                 ui.style_mut().always_scroll_the_only_direction = true;
                 egui::ScrollArea::horizontal()
-                    .id_salt("document_tabs_scroll")
+                    .id_salt("tab_strip_scroll")
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             let mut tab_view = TabView;
-                            for (index, tab) in input.tabs.iter().enumerate() {
+                            for index in 0..input.tabs.len() {
+                                let tab = &input.tabs[index];
                                 events.extend(tab_view.render(
                                     ui,
                                     TabInput {
                                         tab,
                                         index,
-                                        selected: index == input.active_index,
-                                        reveal_active: index == input.active_index && reveal_active,
+                                        selected: tab.id == input.active_id,
+                                        reveal_active: tab.id == input.active_id && reveal_active,
                                     },
                                 ));
                             }
                         });
                     });
             });
-        // Hairline under the strip, separating it from the editor below.
+        // Hairline under the strip, separating it from the content below.
         ui.painter().hline(
             strip.response.rect.x_range(),
             strip.response.rect.bottom(),
@@ -81,9 +69,9 @@ impl Component for DocumentTabsView {
     }
 }
 
-/// A single document tab: filled when active with an accent top bar; the close
-/// button appears on hover, an accent dot marks unsaved changes otherwise, and
-/// a deleted file is struck through.
+/// A single tab: filled when active with an accent top bar; the close button
+/// appears on hover, an accent dot marks unsaved changes otherwise, and a
+/// `Warning` state (e.g. a deleted file) strikes the title through.
 ///
 /// Every tab is fixed-width; long titles elide to it.
 const TAB_WIDTH: f32 = 120.0;
@@ -95,7 +83,7 @@ const TAB_HEIGHT_MIN: f32 = 32.0;
 struct TabView;
 
 struct TabInput<'a> {
-    tab: &'a DocumentTab,
+    tab: &'a TabMeta,
     /// Position in the strip; identifies this tab's close-handle and is echoed
     /// back in the emitted event.
     index: usize,
@@ -118,7 +106,8 @@ impl Component for TabView {
         let mut events = Vec::new();
         let row_height = ui.spacing().interact_size.y.max(TAB_HEIGHT_MIN);
         let font = egui::TextStyle::Button.resolve(ui.style());
-        let text_color = if tab.missing {
+        let warning = tab.state == TabState::Warning;
+        let text_color = if warning {
             ui.visuals().warn_fg_color
         } else if selected {
             ui.visuals().strong_text_color()
@@ -141,7 +130,7 @@ impl Component for TabView {
                 egui::text::TextFormat {
                     font_id: font.clone(),
                     color: text_color,
-                    strikethrough: if tab.missing {
+                    strikethrough: if warning {
                         egui::Stroke::new(1.0, text_color)
                     } else {
                         egui::Stroke::NONE
@@ -203,13 +192,15 @@ impl Component for TabView {
         );
 
         if hovered {
-            painter.text(
-                close_center,
-                egui::Align2::CENTER_CENTER,
-                X,
-                egui::FontId::proportional(11.0),
-                crate::chrome::ui::widgets::icon_text_color(ui, close_response.hovered()),
-            );
+            if tab.closable {
+                painter.text(
+                    close_center,
+                    egui::Align2::CENTER_CENTER,
+                    X,
+                    egui::FontId::proportional(11.0),
+                    crate::chrome::ui::widgets::icon_text_color(ui, close_response.hovered()),
+                );
+            }
         } else if tab.dirty {
             painter.circle_filled(
                 egui::pos2(rect.right() - close_size / 2.0 - 5.0, rect.center().y),
@@ -219,10 +210,10 @@ impl Component for TabView {
         }
 
         if response.clicked() {
-            events.push(DocumentEvent::SwitchDocument(index));
+            events.push(DocumentEvent::SwitchTab(tab.id));
         }
-        if close_response.clicked() {
-            events.push(DocumentEvent::CloseDocument(index));
+        if tab.closable && close_response.clicked() {
+            events.push(DocumentEvent::CloseTab(tab.id));
         }
         events
     }

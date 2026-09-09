@@ -2,4 +2,4 @@ mod caret;
 mod commands;
 mod editing;
 
-pub(crate) use commands::{EditorCommand, commands_from_event};
+pub(crate) use commands::{CommandOutcome, EditorCommand, commands_from_event};

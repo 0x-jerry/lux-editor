@@ -22,5 +22,5 @@ pub(crate) use caret_state::{
 pub(crate) use edit_history::{EditTransaction, SubEdit};
 pub(crate) use formatter::run_formatter;
 pub(crate) use indent::indentation_for_newline;
-pub(crate) use input::{EditorCommand, commands_from_event};
+pub(crate) use input::{CommandOutcome, EditorCommand, commands_from_event};
 pub(crate) use open_document::OpenDocument;

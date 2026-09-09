@@ -1,9 +1,13 @@
-//! Editing actions: turn raw egui input and editor messages into edits on the
-//! active text tab, and decide when the editor (rather than a panel or the
-//! configuration view) owns the keyboard.
+//! Editing actions: route raw egui input and editor messages toward the
+//! active text tab, and perform the handful of global side effects command
+//! execution needs (focus gating, clipboard, save, window title). The document
+//! itself applies every `EditorCommand` through
+//! [`OpenDocument::execute_command`](crate::document::OpenDocument); this
+//! module only orchestrates it and decides when the editor (rather than a
+//! panel or the configuration view) owns the keyboard.
 
 use crate::app::Ctx;
-use crate::document::{EditorCommand, commands_from_event};
+use crate::document::{CommandOutcome, EditorCommand, commands_from_event};
 use crate::events::EditingEvent;
 
 impl Ctx<'_> {
@@ -65,220 +69,22 @@ impl Ctx<'_> {
         }
         let egui = self.egui_ctx().clone();
 
-        let changed = match command {
-            EditorCommand::InsertText(text) => {
-                self.tabs
-                    .active_text_mut()
-                    .is_some_and(|doc| doc.insert_or_replace_selection(&text))
-            }
-            EditorCommand::Paste(text) => {
-                self.tabs
-                    .active_text_mut()
-                    .is_some_and(|doc| doc.insert_or_replace_selection(&text))
-            }
-            EditorCommand::InsertNewline => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.insert_newline()),
-            EditorCommand::InsertTab => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.insert_or_replace_selection("    ")),
-            EditorCommand::Backspace => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.delete_backward()),
-            EditorCommand::Delete => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.delete_forward()),
-            EditorCommand::DeleteWordBackward => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.delete_word_backward()),
-            EditorCommand::DeleteWordForward => self
-                .tabs
-                .active_text_mut()
-                .is_some_and(|doc| doc.delete_word_forward()),
-            EditorCommand::MoveLeft { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_left(&active_document.buffer, selecting);
+        let changed = match self
+            .tabs
+            .active_text_mut()
+            .map_or(CommandOutcome::Noop, |doc| doc.execute_command(command))
+        {
+            CommandOutcome::Copy(text) => {
+                egui.copy_text(text);
                 false
             }
-            EditorCommand::MoveRight { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_right(&active_document.buffer, selecting);
-                false
+            CommandOutcome::Cut(text) => {
+                egui.copy_text(text);
+                true
             }
-            EditorCommand::MoveWordLeft { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_word_left(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::MoveWordRight { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_word_right(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::MoveUp { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_up(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::MoveDown { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_down(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::MoveHome { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_home(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::MoveEnd { selecting } => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .move_end(&active_document.buffer, selecting);
-                false
-            }
-            EditorCommand::SelectAll => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .select_all(&active_document.buffer);
-                false
-            }
-            EditorCommand::Copy => {
-                if let Some(selected_text) = self
-                    .tabs
-                    .active_text()
-                    .and_then(|doc| doc.selected_text())
-                {
-                    egui.copy_text(selected_text);
-                }
-                false
-            }
-            EditorCommand::Cut => {
-                if let Some(removed) = self
-                    .tabs
-                    .active_text_mut()
-                    .and_then(|doc| doc.cut_selection())
-                {
-                    egui.copy_text(removed);
-                    true
-                } else {
-                    false
-                }
-            }
-            EditorCommand::CollapseCarets => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                if active_document.caret_state.has_multiple_cursors() {
-                    active_document.caret_state.remove_extra_cursors();
-                    active_document.touch_caret_blink();
-                }
-                false
-            }
-            EditorCommand::AddCursorBelow => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .add_cursor_below(&active_document.buffer);
-                active_document.touch_caret_blink();
-                false
-            }
-            EditorCommand::AddCursorAbove => {
-                let Some(active_document) = self.tabs.active_text_mut() else {
-                    return false;
-                };
-                active_document
-                    .caret_state
-                    .add_cursor_above(&active_document.buffer);
-                active_document.touch_caret_blink();
-                false
-            }
-            EditorCommand::Undo => {
-                let snapshot = {
-                    let Some(active_document) = self.tabs.active_text_mut() else {
-                        return false;
-                    };
-                    active_document
-                        .edit_history
-                        .undo(&mut active_document.buffer)
-                };
-                if let Some(snapshot) = snapshot {
-                    let Some(active_document) = self.tabs.active_text_mut() else {
-                        return false;
-                    };
-                    active_document
-                        .caret_state
-                        .restore(snapshot, &active_document.buffer);
-                    active_document.mark_dirty();
-                    true
-                } else {
-                    false
-                }
-            }
-            EditorCommand::Redo => {
-                let snapshot = {
-                    let Some(active_document) = self.tabs.active_text_mut() else {
-                        return false;
-                    };
-                    active_document
-                        .edit_history
-                        .redo(&mut active_document.buffer)
-                };
-                if let Some(snapshot) = snapshot {
-                    let Some(active_document) = self.tabs.active_text_mut() else {
-                        return false;
-                    };
-                    active_document
-                        .caret_state
-                        .restore(snapshot, &active_document.buffer);
-                    active_document.mark_dirty();
-                    true
-                } else {
-                    false
-                }
-            }
-            EditorCommand::Save => self.save_current_buffer(),
-            EditorCommand::ToggleCommandPanel => false,
+            CommandOutcome::Save => self.save_current_buffer(),
+            CommandOutcome::Changed => true,
+            CommandOutcome::Noop => false,
         };
 
         if changed {

@@ -120,9 +120,6 @@ pub(crate) struct TabManager {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active_tab: usize,
     next_id: u64,
-    /// The text tab focused before the configuration tab was opened, so
-    /// returning to the editor restores it.
-    previous_text_tab: Option<u64>,
     /// Loads handed to the runtime but not landed yet; the workspace session is
     /// frozen while this is non-zero so a restore cannot be captured as empty.
     pub(crate) pending_loads: usize,
@@ -134,7 +131,6 @@ impl TabManager {
             tabs: vec![Tab::text(0, OpenDocument::new_empty())],
             active_tab: 0,
             next_id: 1,
-            previous_text_tab: None,
             pending_loads: 0,
         }
     }
@@ -163,9 +159,6 @@ impl TabManager {
             self.active_tab = index;
             return;
         }
-        if self.tabs[self.active_tab].content.as_text().is_some() {
-            self.previous_text_tab = Some(self.tabs[self.active_tab].id);
-        }
         self.tabs.push(Tab {
             id: self.next_id,
             content: TabContent::Configuration,
@@ -174,60 +167,28 @@ impl TabManager {
         self.active_tab = self.tabs.len() - 1;
     }
 
-    /// Focus the tab with `id`; a focused text tab is remembered so closing the
-    /// configuration tab can return to it.
+    /// Focus the tab with `id`.
     pub(crate) fn focus_tab(&mut self, id: u64) -> bool {
         let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
             return false;
         };
-        if self.tabs[index].content.as_text().is_some() {
-            self.previous_text_tab = Some(id);
-        }
         self.active_tab = index;
         true
     }
 
-    /// Leave the configuration tab back to the last focused text tab (or the
-    /// first one if it is gone).
-    pub(crate) fn focus_previous_text(&mut self) {
-        let target = self
-            .previous_text_tab
-            .and_then(|id| {
-                self.tabs.iter().position(|tab| {
-                    tab.id == id && tab.content.as_text().is_some()
-                })
-            })
-            .or_else(|| {
-                self.tabs
-                    .iter()
-                    .position(|tab| tab.content.as_text().is_some())
-            });
-        if let Some(index) = target {
-            self.active_tab = index;
-        }
-    }
-
     /// Remove the tab at `index`. Last tab resets the strip to a fresh
-    /// scratch text tab; closing the configuration tab returns to the last
-    /// focused text tab.
+    /// scratch text tab; any other close keeps the current tab when that is
+    /// still valid and otherwise falls back to the last tab.
     pub(crate) fn remove_tab(&mut self, index: usize) {
-        let removed_is_configuration = matches!(self.tabs[index].content, TabContent::Configuration);
-        let removed_id = self.tabs[index].id;
         if self.tabs.len() == 1 {
             self.tabs.clear();
             self.tabs
                 .push(Tab::text(self.next_id, OpenDocument::new_empty()));
             self.next_id += 1;
             self.active_tab = 0;
-            self.previous_text_tab = None;
             return;
         }
         self.tabs.remove(index);
-        if removed_is_configuration {
-            self.focus_previous_text();
-            self.previous_text_tab = None;
-            return;
-        }
         if !self.tabs.iter().any(|tab| tab.content.as_text().is_some()) {
             // Only the configuration tab would be left; the strip always keeps
             // one text tab, so drop it and reset to a fresh scratch.
@@ -236,16 +197,12 @@ impl TabManager {
                 .push(Tab::text(self.next_id, OpenDocument::new_empty()));
             self.next_id += 1;
             self.active_tab = 0;
-            self.previous_text_tab = None;
             return;
         }
         if self.active_tab >= self.tabs.len() {
             self.active_tab = self.tabs.len().saturating_sub(1);
         } else if index < self.active_tab {
             self.active_tab -= 1;
-        }
-        if self.previous_text_tab == Some(removed_id) {
-            self.previous_text_tab = None;
         }
     }
 
@@ -561,10 +518,6 @@ mod tests {
         manager.open_configuration();
         assert_eq!(manager.tabs.len(), 2);
 
-        // Returning to the editor restores the text tab.
-        manager.focus_previous_text();
-        assert!(!manager.active_is_configuration());
-
         // Opening then closing the configuration tab destroys it.
         manager.open_configuration();
         let config_index = manager
@@ -575,6 +528,51 @@ mod tests {
         manager.remove_tab(config_index);
         assert!(!manager.has_configuration_tab());
         assert_eq!(manager.tabs.len(), 1);
+        assert!(!manager.active_is_configuration());
+    }
+
+    #[test]
+    fn closing_configuration_keeps_active_or_falls_back_to_last_text() {
+        let mut manager = TabManager::with_empty_document();
+        manager.apply_loaded(
+            vec![
+                (
+                    PathBuf::from("/ws/a.rs"),
+                    LoadResult::Loaded(buffer("/ws/a.rs")),
+                ),
+                (
+                    PathBuf::from("/ws/b.rs"),
+                    LoadResult::Loaded(buffer("/ws/b.rs")),
+                ),
+            ],
+            None,
+        );
+        assert_eq!(manager.active_tab, 1);
+        let a = manager.tabs[0].id;
+        let b = manager.tabs[1].id;
+
+        // Closing the configuration tab while a text tab is active keeps it.
+        manager.open_configuration();
+        manager.focus_tab(a);
+        let config_index = manager
+            .tabs
+            .iter()
+            .position(|tab| matches!(tab.content, TabContent::Configuration))
+            .unwrap();
+        manager.remove_tab(config_index);
+        assert_eq!(manager.active_tab, 0);
+        assert_eq!(manager.tabs[manager.active_tab].id, a);
+
+        // Closing it while it is active falls back to the last text tab.
+        manager.open_configuration();
+        let config_index = manager
+            .tabs
+            .iter()
+            .position(|tab| matches!(tab.content, TabContent::Configuration))
+            .unwrap();
+        manager.remove_tab(config_index);
+        assert_eq!(manager.active_tab, 1);
+        assert_eq!(manager.tabs[manager.active_tab].id, b);
         assert!(!manager.active_is_configuration());
     }
 

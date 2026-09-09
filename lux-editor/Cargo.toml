@@ -19,7 +19,6 @@ devicons = "0.6"
 # tree-sitter, so a second major in the graph is a hard resolve conflict.
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"
-config = "0.15"
 font-kit = "0.14"
 # glow-only: wgpu adapter discovery/shader prep dominates window bring-up.
 eframe = { version = "0.36", default-features = false, features = [

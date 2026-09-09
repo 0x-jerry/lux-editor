@@ -9,14 +9,7 @@ pub enum ThemeChoice {
 }
 
 impl ThemeChoice {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Auto => "Auto",
-            Self::Dark => "Dark",
-            Self::Light => "Light",
-        }
-    }
-
+    #[cfg_attr(not(test), allow(dead_code))] // schema supplies the view values
     pub fn value(self) -> &'static str {
         match self {
             Self::Auto => "auto",

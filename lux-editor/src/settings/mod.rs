@@ -6,7 +6,8 @@ pub(crate) mod configuration_view;
 pub(crate) mod schema;
 mod state;
 mod store;
+pub(crate) mod types;
 
-pub(crate) use schema::{EditorSettings, WorkspaceSession};
 pub(crate) use state::SettingsState;
 pub(crate) use store::Config;
+pub(crate) use types::{EditorSettings, WorkspaceSession};

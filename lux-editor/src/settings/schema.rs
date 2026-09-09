@@ -1,104 +1,264 @@
-//! Serde schema of everything the user can configure, plus the recent-items
-//! record shapes persisted alongside it (see [`super::store`]).
+//! Declarative schema of the configuration view, modeled on JSON Schema: a
+//! [`SettingSchema`] contains [`SectionSchema`]s, each section contains
+//! [`RowSchema`]s, and each row's `type` (its [`RowType`]) generates the UI —
+//! string → text edit, string+enum → combo, number → drag, boolean → checkbox.
+//!
+//! The view renders generically from [`BUILTIN`]; nothing here knows about the
+//! typed `EditorSettings` except the guard test `tests::rows_resolve_against_the_settings`,
+//! which walks every row and asserts its config path and default equal the
+//! serde-serialized settings. Renaming/retyping a field in `types.rs` or a
+//! typo'd path/default here fails the test instead of silently.
+//!
+//! A row's `path` is the dot-separated key into config.json (e.g. `font.size`),
+//! read and written by walking the object tree. Sections are a pure UI
+//! grouping — Appearance spans the `theme` and `font` groups — so a section
+//! carries only presentation metadata (`title`, `description`).
+//!
+//! Adding a setting: a `RowSchema` in the right section (its `RowType` picks
+//! the widget). Adding a section: a `SectionSchema` entry — no other code
+//! changes.
 
-use std::path::PathBuf;
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct RecentItem {
-    pub path: PathBuf,
-    pub is_dir: bool,
+/// The `type` of a setting; drives which widget renders it. Variants carry the
+/// per-row default so the whole schema stays const-friendly.
+#[derive(Clone, Copy)]
+pub(crate) enum RowType {
+    /// string → single-line text edit.
+    Text {
+        /// Builtin value; only the guard test reads it.
+        #[cfg_attr(not(test), allow(dead_code))]
+        default: &'static str,
+    },
+    /// string constrained to a fixed set → combo box. `(label, value)` pairs.
+    TextChoice {
+        options: &'static [(&'static str, &'static str)],
+        /// Builtin value; only the guard test reads it.
+        #[cfg_attr(not(test), allow(dead_code))]
+        default: &'static str,
+    },
+    /// number → drag value, clamped to `min..=max`.
+    Number {
+        min: f64,
+        max: f64,
+        /// Builtin value; only the guard test reads it.
+        #[cfg_attr(not(test), allow(dead_code))]
+        default: f64,
+    },
+    /// boolean → checkbox with `label` as its text.
+    Bool {
+        label: &'static str,
+        /// Builtin value; only the guard test reads it.
+        #[cfg_attr(not(test), allow(dead_code))]
+        default: bool,
+    },
 }
 
-/// What the editor remembers about a workspace: tabs in order, focused tab,
-/// expanded tree folders.
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct WorkspaceSession {
-    #[serde(default)]
-    pub workspace_path: PathBuf,
-    #[serde(default)]
-    pub open_files: Vec<PathBuf>,
-    #[serde(default)]
-    pub active_file: Option<PathBuf>,
-    /// The configuration tab was focused when the session was saved; reopening
-    /// the workspace restores it as the active tab.
-    #[serde(default)]
-    pub configuration_open: bool,
-    #[serde(default)]
-    pub expanded_dirs: Vec<PathBuf>,
-}
+impl RowType {
+    /// JSON value of this row's builtin default.
+    #[cfg(test)]
+    fn default_json(&self) -> serde_json::Value {
+        match self {
+            RowType::Text { default } => serde_json::json!(default),
+            RowType::TextChoice { default, .. } => serde_json::json!(default),
+            RowType::Number { default, .. } => serde_json::json!(default),
+            RowType::Bool { default, .. } => serde_json::json!(default),
+        }
+    }
 
-fn default_theme_choice() -> String {
-    "auto".to_string()
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct ThemeSettings {
-    /// App theme: "auto" | "dark" | "light". `Auto` follows the OS.
-    /// Chrome and syntax colors both come from the matching theme file
-    /// (`assets/themes/*.json`, embedded at compile time).
-    #[serde(default = "default_theme_choice")]
-    pub choice: String,
-}
-
-impl Default for ThemeSettings {
-    fn default() -> Self {
-        Self {
-            choice: default_theme_choice(),
+    /// Text the control itself shows (currently only the checkbox label); also
+    /// searchable, since it is visible in the row.
+    fn control_label(&self) -> Option<&'static str> {
+        match self {
+            RowType::Bool { label, .. } => Some(label),
+            _ => None,
         }
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct FontSettings {
-    pub family: String,
-    pub size: f32,
+pub(crate) struct RowSchema {
+    /// Dot-separated key into config.json, e.g. "font.size".
+    pub(crate) path: &'static str,
+    pub(crate) title: &'static str,
+    /// Weak helper text under the title; empty renders nothing.
+    pub(crate) description: &'static str,
+    pub(crate) kind: RowType,
 }
 
-impl Default for FontSettings {
-    fn default() -> Self {
-        Self {
-            family: "JetBrains Mono".to_string(),
-            size: 14.0,
+impl RowSchema {
+    fn matches(&self, query: &str, section: &SectionSchema) -> bool {
+        let query = query.trim().to_lowercase();
+        if query.is_empty() {
+            return true;
         }
+        [section.title, section.description, self.title, self.description]
+            .into_iter()
+            .chain(self.kind.control_label())
+            .any(|haystack| haystack.to_lowercase().contains(&query))
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-pub struct FormatterSettings {
-    /// External command run with the document text on stdin; empty disables.
-    pub command: String,
-    /// Space-separated arguments passed to the command.
-    pub args: String,
-    /// Format the buffer immediately before saving.
-    pub format_on_save: bool,
+pub(crate) struct SectionSchema {
+    pub(crate) title: &'static str,
+    /// Weak helper text under the section title; empty renders nothing.
+    pub(crate) description: &'static str,
+    pub(crate) rows: &'static [RowSchema],
 }
 
-impl Default for FormatterSettings {
-    fn default() -> Self {
-        Self {
-            command: String::new(),
-            args: "--stdin".to_string(),
-            format_on_save: true,
-        }
+impl SectionSchema {
+    /// Rows matching `query` against the section title/description plus each
+    /// row's labels; an empty query returns every row.
+    pub(crate) fn visible_rows(&self, query: &str) -> Vec<&'static RowSchema> {
+        self.rows
+            .iter()
+            .filter(|row| row.matches(query, self))
+            .collect()
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
-pub struct EditorSettings {
-    pub theme: ThemeSettings,
-    pub font: FontSettings,
-    #[serde(default)]
-    pub formatter: FormatterSettings,
+pub(crate) struct SettingSchema {
+    pub(crate) sections: &'static [SectionSchema],
 }
+
+/// The built-in configuration: the schema every config view renders from.
+pub(crate) const BUILTIN: SettingSchema = SettingSchema {
+    sections: &[
+        SectionSchema {
+            title: "Appearance",
+            description: "Colors, theme and the code font.",
+            rows: &[
+                RowSchema {
+                    path: "theme.choice",
+                    title: "Theme",
+                    description: "App theme; Auto follows the operating system.",
+                    kind: RowType::TextChoice {
+                        options: &[
+                            ("Auto", "auto"),
+                            ("Dark", "dark"),
+                            ("Light", "light"),
+                        ],
+                        default: "auto",
+                    },
+                },
+                RowSchema {
+                    path: "font.family",
+                    title: "Font family",
+                    description: "Monospace font family used for code.",
+                    kind: RowType::Text {
+                        default: "JetBrains Mono",
+                    },
+                },
+                RowSchema {
+                    path: "font.size",
+                    title: "Font size",
+                    description: "Base font size in points (8–64).",
+                    kind: RowType::Number {
+                        min: 8.0,
+                        max: 64.0,
+                        default: 14.0,
+                    },
+                },
+            ],
+        },
+        SectionSchema {
+            title: "Formatting",
+            description: "How documents are piped to an external formatter.",
+            rows: &[
+                RowSchema {
+                    path: "formatter.command",
+                    title: "Formatter command",
+                    description: "The document is piped to the command on stdin and \
+                                  replaced with its stdout. An empty command disables \
+                                  formatting.",
+                    kind: RowType::Text { default: "" },
+                },
+                RowSchema {
+                    path: "formatter.args",
+                    title: "Arguments",
+                    description: "Arguments are split on whitespace.",
+                    kind: RowType::Text { default: "--stdin" },
+                },
+                RowSchema {
+                    path: "formatter.format_on_save",
+                    title: "Format on save",
+                    description: "",
+                    kind: RowType::Bool {
+                        label: "Run the formatter before writing the file.",
+                        default: true,
+                    },
+                },
+            ],
+        },
+    ],
+};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::settings::types::EditorSettings;
+    use super::{RowSchema, BUILTIN};
+
+    fn all_rows() -> impl Iterator<Item = &'static RowSchema> {
+        BUILTIN
+            .sections
+            .iter()
+            .flat_map(|section| section.rows.iter())
+    }
 
     #[test]
-    fn legacy_theme_settings_ignore_removed_fields() {
-        let settings: ThemeSettings =
-            serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#).unwrap();
-        assert_eq!(settings.choice, "auto");
+    fn section_search_filters_its_rows() {
+        let [appearance, formatting] = BUILTIN.sections else {
+            panic!("expected the two declared sections");
+        };
+        assert_eq!(appearance.rows.len(), 3);
+        assert_eq!(formatting.rows.len(), 3);
+
+        assert_eq!(appearance.visible_rows("").len(), 3);
+        let family: Vec<&str> = appearance.visible_rows("family").iter().map(|row| row.path).collect();
+        assert_eq!(family, vec!["font.family"]);
+        let size: Vec<&str> = appearance.visible_rows("size").iter().map(|row| row.path).collect();
+        assert_eq!(size, vec!["font.size"]);
+        assert!(appearance.visible_rows("xyz").is_empty());
+
+        // Section titles, section descriptions and control labels are searchable too.
+        assert_eq!(appearance.visible_rows("APPEARANCE").len(), 3);
+        assert_eq!(appearance.visible_rows("code font").len(), 3); // Appearance description
+        let rows = formatting.visible_rows("writing");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].path, "formatter.format_on_save");
+    }
+
+    #[test]
+    fn rows_are_unique_and_non_empty() {
+        let rows: Vec<&RowSchema> = all_rows().collect();
+        assert_eq!(rows.len(), 6);
+        for row in &rows {
+            assert_eq!(
+                rows.iter().filter(|other| other.path == row.path).count(),
+                1,
+                "duplicated path {:?}",
+                row.path
+            );
+            assert!(!row.title.is_empty());
+        }
+    }
+
+    /// Every row's path must resolve on the serialized settings defaults and its
+    /// default value must match, so a field rename/retype in `types.rs` or a
+    /// typo'd path/default here fails loudly.
+    #[test]
+    fn rows_resolve_against_the_settings() {
+        let defaults = serde_json::to_value(EditorSettings::default()).unwrap();
+        for row in all_rows() {
+            let mut node = &defaults;
+            for segment in row.path.split('.') {
+                node = node
+                    .get(segment)
+                    .unwrap_or_else(|| panic!("{:?} has no config key {:?}", row.title, row.path));
+            }
+            assert_eq!(
+                node,
+                &row.kind.default_json(),
+                "default mismatch at {}",
+                row.path
+            );
+        }
     }
 }

@@ -2,7 +2,7 @@
 //! per-workspace sessions: open tabs, active file, expanded tree folders) and
 //! the in-memory [`Config`] that debounces recent-item writes.
 
-use super::schema::{EditorSettings, RecentItem, WorkspaceSession};
+use super::types::{EditorSettings, RecentItem, WorkspaceSession};
 use std::path::{Path, PathBuf};
 
 const MAX_SESSIONS: usize = 50;
@@ -131,24 +131,11 @@ impl Config {
     }
 
     pub(crate) fn load_settings() -> EditorSettings {
-        let user_settings = Self::user_settings_path();
-        ::config::Config::builder()
-            .set_default("theme.choice", "auto")
-            .unwrap()
-            .set_default("font.family", "JetBrains Mono")
-            .unwrap()
-            .set_default("font.size", 14.0)
-            .unwrap()
-            .set_default("formatter.command", "")
-            .unwrap()
-            .set_default("formatter.args", "--stdin")
-            .unwrap()
-            .set_default("formatter.format_on_save", true)
-            .unwrap()
-            .add_source(::config::File::from(user_settings).required(false))
-            .build()
+        // Per-field serde defaults merge partial files; a file that does not
+        // parse resets to defaults, matching the recent-items store.
+        std::fs::read_to_string(Self::user_settings_path())
             .ok()
-            .and_then(|cfg| cfg.try_deserialize::<EditorSettings>().ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default()
     }
 

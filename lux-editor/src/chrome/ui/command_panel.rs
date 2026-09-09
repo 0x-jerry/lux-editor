@@ -514,7 +514,7 @@ mod tests {
         CommandPanelAction, CommandPanelCommand, action_key, build_recent_commands,
         build_recent_used_commands, build_root_commands, fuzzy_score, rank_commands,
     };
-    use crate::settings::schema::RecentItem;
+    use crate::settings::types::RecentItem;
     use std::path::PathBuf;
 
     #[test]

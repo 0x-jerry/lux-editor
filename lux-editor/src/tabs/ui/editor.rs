@@ -96,11 +96,7 @@ impl Component for EditorView {
                     configuration
                         .render(
                             ui,
-                            ConfigurationViewInput {
-                                workspace_path,
-                                buffer,
-                                editor_config,
-                            },
+                            ConfigurationViewInput { editor_config },
                         )
                         .into_iter()
                         .map(CustomEvent::Configuration),

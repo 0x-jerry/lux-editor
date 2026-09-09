@@ -35,7 +35,7 @@ impl AppTheme {
         visuals.weak_text_color = Some(colors.weak);
         let palette = Palette {
             text: colors.text,
-            weak: colors.weak,
+            extreme_bg: colors.extreme_bg,
             border: colors.border,
             raised: colors.raised,
             hover: colors.hover,
@@ -49,7 +49,7 @@ impl AppTheme {
 #[derive(Clone, Copy)]
 struct Palette {
     text: Color32,
-    weak: Color32,
+    extreme_bg: Color32,
     border: Color32,
     raised: Color32,
     hover: Color32,
@@ -59,7 +59,7 @@ struct Palette {
 fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
     let Palette {
         text,
-        weak,
+        extreme_bg,
         border,
         raised,
         hover,
@@ -84,7 +84,7 @@ fn style_widgets(visuals: &mut Visuals, palette: &Palette) {
     };
     visuals.widgets.inactive = egui::style::WidgetVisuals {
         bg_fill: raised,
-        weak_bg_fill: weak,
+        weak_bg_fill: extreme_bg,
         ..flat
     };
     visuals.widgets.hovered = egui::style::WidgetVisuals {

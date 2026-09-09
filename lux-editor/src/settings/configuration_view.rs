@@ -206,32 +206,26 @@ fn control(ui: &mut egui::Ui, draft: &mut Value, row: &RowSchema) -> bool {
                 return false;
             };
             let current = current.clone();
-            // The popup rows keep the theme's selection highlight; only the
-            // button gets the input fill.
-            let popup_fill = ui.visuals().widgets.inactive.weak_bg_fill;
-            input_fill(ui, |ui| {
-                let mut row_changed = false;
-                let selected = options
-                    .iter()
-                    .find(|(_, value)| *value == current)
-                    .map(|(label, _)| *label)
-                    .unwrap_or(options[0].0);
-                egui::ComboBox::from_id_salt(row.path)
-                    .width(200.0)
-                    .selected_text(selected)
-                    .show_ui(ui, |ui| {
-                        ui.visuals_mut().widgets.inactive.weak_bg_fill = popup_fill;
-                        for &(label, value) in options {
-                            if ui
-                                .selectable_value(node, serde_json::json!(value), label)
-                                .changed()
-                            {
-                                row_changed = true;
-                            }
+            let mut row_changed = false;
+            let selected = options
+                .iter()
+                .find(|(_, value)| *value == current)
+                .map(|(label, _)| *label)
+                .unwrap_or(options[0].0);
+            egui::ComboBox::from_id_salt(row.path)
+                .width(200.0)
+                .selected_text(selected)
+                .show_ui(ui, |ui| {
+                    for &(label, value) in options {
+                        if ui
+                            .selectable_value(node, serde_json::json!(value), label)
+                            .changed()
+                        {
+                            row_changed = true;
                         }
-                    });
-                row_changed
-            })
+                    }
+                });
+            row_changed
         }
     }
 }
@@ -243,17 +237,6 @@ fn dot_path_mut<'a>(root: &'a mut Value, path: &str) -> Option<&'a mut Value> {
         node = node.as_object_mut()?.get_mut(segment)?;
     }
     Some(node)
-}
-
-/// Button-like widgets (ComboBox, DragValue) paint with the pale `weak` fill
-/// from the flat theme; scope them to the dark fill TextEdit frames use.
-fn input_fill<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
-    let fill = ui.visuals().extreme_bg_color;
-    ui.scope(|ui| {
-        ui.visuals_mut().widgets.inactive.weak_bg_fill = fill;
-        add(ui)
-    })
-    .inner
 }
 
 /// A flat section title with a weak description and a divider underneath.

@@ -1,3 +1,4 @@
+use crate::chrome::ui::widgets::file_type_icon;
 use crate::component::Component;
 use crate::events::{AppEvent, CustomEvent, WorkspaceEvent};
 use crate::workspace::{Entry, FileTree};
@@ -123,7 +124,7 @@ impl FileTreePanel {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.to_string_lossy().into_owned());
                 let is_active = context.active_file_path == Some(path.as_path());
-                let (icon, icon_color) = file_icon(ui.visuals().dark_mode, path);
+                let (icon, icon_color) = file_type_icon(ui.visuals().dark_mode, path);
                 // Widen deep rows by their indentation so nesting can overflow and scroll horizontally.
                 let (rect, response) = ui.allocate_exact_size(
                     egui::vec2(
@@ -365,27 +366,4 @@ fn row_fill_rect(ui: &Ui, rect: egui::Rect) -> egui::Rect {
         egui::pos2(rect.left(), rect.top()),
         egui::pos2(rect.right().max(ui.clip_rect().right()), rect.bottom()),
     )
-}
-
-/// Root file glyph for types the devicons table does not name.
-const GENERIC_FILE_GLYPH: char = '\u{e7b8}';
-
-/// Devicons glyph and brand color for a file row; unknown extensions get
-/// [`GENERIC_FILE_GLYPH`] — the crate's own fallback is a literal `'*'`,
-/// which the embedded symbols font does not contain.
-fn file_icon(dark_mode: bool, path: &Path) -> (char, egui::Color32) {
-    let theme = if dark_mode {
-        devicons::Theme::Dark
-    } else {
-        devicons::Theme::Light
-    };
-    let icon = devicons::icon_for_file(path, &Some(theme));
-    let glyph = if icon.icon == '*' {
-        GENERIC_FILE_GLYPH
-    } else {
-        icon.icon
-    };
-    let color = crate::theme::color::parse_color(icon.color)
-        .unwrap_or_else(|_| egui::Color32::from_rgb(0x7e, 0x8e, 0xa8));
-    (glyph, color)
 }

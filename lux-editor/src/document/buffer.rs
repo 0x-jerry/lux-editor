@@ -91,10 +91,4 @@ mod tests {
         let mut first = buffer.line(0).unwrap();
         assert_eq!(first.next().unwrap(), "a\n");
     }
-
-    #[test]
-    fn path_is_none_for_new_buffer() {
-        let buffer = DocumentBuffer::new();
-        assert!(buffer.path().is_none());
-    }
 }

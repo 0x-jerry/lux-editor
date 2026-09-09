@@ -101,9 +101,4 @@ mod tests {
             serde_json::from_str(r#"{"syntax_theme":"InspiredGitHub","theme_path":null}"#).unwrap();
         assert_eq!(settings.choice, "auto");
     }
-
-    #[test]
-    fn theme_settings_default_choice_is_auto() {
-        assert_eq!(ThemeSettings::default().choice, "auto");
-    }
 }

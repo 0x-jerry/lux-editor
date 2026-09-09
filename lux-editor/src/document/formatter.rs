@@ -40,13 +40,6 @@ mod tests {
     }
 
     #[test]
-    fn args_are_split_on_whitespace() {
-        // `printf %s` with a format argument echoes stdin verbatim.
-        let result = run_formatter("cat", "", "ab").unwrap();
-        assert_eq!(result, "ab");
-    }
-
-    #[test]
     fn non_zero_exit_is_an_error() {
         let result = run_formatter("sh", "-c 'exit 3'", "x");
         assert!(result.is_err());

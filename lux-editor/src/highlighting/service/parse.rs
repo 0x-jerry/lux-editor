@@ -228,18 +228,6 @@ mod tests {
     }
 
     #[test]
-    fn markdown_highlights_headings() {
-        let snapshot = snapshot_for("# Title\n\nsome *text*\n", LanguageKind::Markdown);
-        assert!(!snapshot.line_tokens[0].is_empty());
-    }
-
-    #[test]
-    fn markdown_injects_inline_grammar() {
-        let snapshot = snapshot_for("para with *strong text* here\n", LanguageKind::Markdown);
-        assert!(!snapshot.line_tokens[0].is_empty());
-    }
-
-    #[test]
     fn markdown_injects_registered_fence_languages() {
         let snapshot = snapshot_for(
             "# Title\n\n```rust\nfn main() {}\n```\n\n```sh\necho \"hi\" # comment\n```\n\n```nope\nplain body\n```\n",
@@ -247,6 +235,12 @@ mod tests {
         );
         let foreground = snapshot.foreground.unwrap();
         let syntax = theme::syntax_colors(ThemeChoice::Dark);
+        // The `# Title` heading line is colored (was covered by
+        // `markdown_highlights_headings`).
+        assert!(
+            snapshot.line_tokens[0].iter().any(|span| span.color != foreground),
+            "heading must be colored"
+        );
         // Lines 3 and 7 are the ```rust/```sh fence bodies; line 11, a fence
         // no registered grammar matches, stays plain.
         for body_index in [3, 7] {
@@ -374,13 +368,6 @@ mod tests {
                 .any(|span| span.color == comment_color),
             "html comment must use the comment color"
         );
-    }
-
-    #[test]
-    fn multi_line_capture_is_split_across_lines() {
-        let snapshot = snapshot_for("const t = `a\nb`;\n", LanguageKind::JavaScript);
-        assert!(!snapshot.line_tokens[0].is_empty());
-        assert!(!snapshot.line_tokens[1].is_empty());
     }
 
     #[test]

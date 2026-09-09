@@ -108,7 +108,7 @@ fn view_menu() -> Option<Submenu> {
     menu.append(&command_item(
         TitleBarMenu::CommandPalette,
         "Command Palette",
-        cmd(Code::KeyK),
+        cmd(Code::KeyP),
     ))
     .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;

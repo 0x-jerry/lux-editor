@@ -61,7 +61,7 @@ pub(crate) fn commands_from_event(event: egui::Event) -> Vec<EditorCommand> {
                 return match key {
                     egui::Key::A => vec![EditorCommand::SelectAll],
                     egui::Key::C => vec![EditorCommand::Copy],
-                    egui::Key::K => vec![EditorCommand::ToggleCommandPanel],
+                    egui::Key::P => vec![EditorCommand::ToggleCommandPanel],
                     egui::Key::X => vec![EditorCommand::Cut],
                     egui::Key::S => vec![EditorCommand::Save],
                     egui::Key::Z if modifiers.shift => vec![EditorCommand::Redo],

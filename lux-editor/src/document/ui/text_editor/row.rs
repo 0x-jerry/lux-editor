@@ -350,11 +350,11 @@ fn push_pointer_events(
             line_index,
             column: column_from(pointer).0,
         });
-    }
-
-    if response.clicked_by(egui::PointerButton::Primary)
+    } else if response.clicked_by(egui::PointerButton::Primary)
         && let Some(pointer) = response.interact_pointer_pos()
     {
+        // egui also reports a double-click as a click; the caret placement
+        // would collapse the word selection the branch above just made.
         let selecting = ui.input(|input| input.modifiers.shift);
         let add_cursor = ui.input(|input| input.modifiers.command || input.modifiers.ctrl);
         events.push(EditingEvent::SetCaretFromPointer {
@@ -436,4 +436,92 @@ fn push_pointer_events(
         });
     }
     events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::ui::text_editor::metrics::measure_text_editor;
+
+    fn render_row(
+        ctx: &egui::Context,
+        raw: egui::RawInput,
+        buffer: &DocumentBuffer,
+        events: &mut Vec<EditingEvent>,
+    ) {
+        let config = Config::default();
+        let snapshot = HighlightSnapshot::default();
+        let mut visible_rows = Vec::new();
+        // The frame allocates text textures; clear them so the context can drop.
+        let mut output = ctx.run_ui(raw, |ui| {
+            let metrics = measure_text_editor(ui, 1, &config);
+            let mut row = Row;
+            events.extend(row.render(
+                ui,
+                RowInput {
+                    line_index: 0,
+                    buffer,
+                    highlight_snapshot: &snapshot,
+                    editor_config: &config,
+                    carets: &[(1, 1)],
+                    selection_ranges: &[],
+                    active_caret_index: 0,
+                    caret_visible: true,
+                    metrics: &metrics,
+                    visible_rows: &mut visible_rows,
+                },
+            ));
+        });
+        output.textures_delta.clear();
+    }
+
+    fn click(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    #[test]
+    fn double_click_selects_word_and_skips_the_caret_placement() {
+        let ctx = egui::Context::default();
+        let mut buffer = DocumentBuffer::new();
+        buffer.insert(0, "hello world");
+        // The first row starts at the top-left of the viewport; click into it.
+        let pos = egui::pos2(40.0, 8.0);
+        let empty = || egui::RawInput {
+            events: vec![],
+            ..Default::default()
+        };
+        let click_frame = |time: f64| egui::RawInput {
+            time: Some(time),
+            events: vec![click(pos, true), click(pos, false)],
+            ..Default::default()
+        };
+
+        // egui hit-tests against the previous pass's widget rects, so a frame
+        // with no input must lay the rows out before a click can land.
+        let mut warmup = Vec::new();
+        render_row(&ctx, empty(), &buffer, &mut warmup);
+        assert!(warmup.is_empty());
+
+        // A single click places the caret.
+        let mut first = Vec::new();
+        render_row(&ctx, click_frame(0.05), &buffer, &mut first);
+        assert_eq!(first.len(), 1);
+        assert!(matches!(first[0], EditingEvent::SetCaretFromPointer { .. }));
+
+        // A second click inside the double-click window selects the word. The
+        // same release also counts as one more click, which would collapse the
+        // word selection, so no caret placement may follow it either.
+        let mut second = Vec::new();
+        render_row(&ctx, click_frame(0.1), &buffer, &mut second);
+        assert_eq!(second.len(), 1);
+        assert!(matches!(
+            second[0],
+            EditingEvent::SelectWordFromPointer { line_index: 0, .. }
+        ));
+    }
 }

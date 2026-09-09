@@ -49,3 +49,52 @@ impl OpenDocument {
         Some(line_start + column.min(line_len))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn document(text: &str) -> OpenDocument {
+        let mut document = OpenDocument::new_empty();
+        document.buffer.insert(0, text);
+        document
+    }
+
+    #[test]
+    fn selects_the_word_under_the_pointer() {
+        let mut document = document("alpha beta");
+        document.select_word_from_pointer(0, 2);
+        assert_eq!(document.caret_state.selection_range(), Some(0..5));
+        assert_eq!(document.caret_state.caret_char_at(0), 5);
+        assert_eq!(document.caret_state.len(), 1);
+    }
+
+    #[test]
+    fn does_not_cross_newlines() {
+        let mut document = document("foo\nbar");
+        document.select_word_from_pointer(0, 2);
+        assert_eq!(document.caret_state.selection_range(), Some(0..3));
+        document.select_word_from_pointer(1, 2);
+        assert_eq!(document.caret_state.selection_range(), Some(4..7));
+    }
+
+    #[test]
+    fn whitespace_click_leaves_no_selection_and_keeps_caret() {
+        let mut document = document("a b");
+        document.select_word_from_pointer(0, 1);
+        assert!(document.caret_state.selection_range().is_none());
+        assert_eq!(document.caret_state.caret_char_at(0), 0);
+        assert_eq!(document.caret_state.len(), 1);
+    }
+
+    #[test]
+    fn collapses_existing_multi_cursor_state() {
+        let mut document = document("alpha beta");
+        document.caret_state.set_caret_char(1, &document.buffer, false);
+        document.caret_state.add_cursor_at(6, &document.buffer);
+        assert_eq!(document.caret_state.len(), 2);
+        document.select_word_from_pointer(0, 2);
+        assert_eq!(document.caret_state.len(), 1);
+        assert_eq!(document.caret_state.selection_range(), Some(0..5));
+    }
+}

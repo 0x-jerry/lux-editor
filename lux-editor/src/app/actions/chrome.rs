@@ -93,8 +93,6 @@ impl Ctx<'_> {
                 self.execute_command(EditorCommand::SelectAll);
             }
             TitleBarMenu::CommandPalette => self.chrome.command_panel.toggle(),
-            TitleBarMenu::SwitchToEditor => self.switch_to_editor(),
-            TitleBarMenu::SwitchToConfiguration => self.switch_to_configuration(),
             TitleBarMenu::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
             TitleBarMenu::Hide => {
                 self.chrome.native.window_visible = false;

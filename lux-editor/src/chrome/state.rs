@@ -23,8 +23,6 @@ pub enum TitleBarMenu {
     SelectAll,
     // View
     CommandPalette,
-    SwitchToEditor,
-    SwitchToConfiguration,
     ToggleSidebar,
     // Window (native menubar/tray only)
     Hide,

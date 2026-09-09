@@ -112,14 +112,6 @@ fn view_menu() -> Option<Submenu> {
     ))
     .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
-    menu.append(&command_item(TitleBarMenu::SwitchToEditor, "Editor", None))
-        .ok()?;
-    menu.append(&command_item(
-        TitleBarMenu::SwitchToConfiguration,
-        "Configuration",
-        None,
-    ))
-    .ok()?;
     menu.append(&command_item(
         TitleBarMenu::ToggleSidebar,
         "Toggle Sidebar",

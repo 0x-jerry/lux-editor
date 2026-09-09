@@ -88,7 +88,7 @@ impl Ctx<'_> {
             if self.tabs.pending_loads > 0 {
                 self.frame.pending_configuration_restore = Some(workspace_path.to_path_buf());
             } else {
-                self.switch_to_configuration();
+                self.open_configuration_tab();
             }
         }
     }

@@ -35,7 +35,7 @@ impl Ctx<'_> {
                 self.frame.pending_configuration_restore = None;
                 self.on_files_loaded(entries, activate);
                 if restore_configuration {
-                    self.switch_to_configuration();
+                    self.open_configuration_tab();
                 }
             }
             DocumentEvent::FileSaved {
@@ -281,17 +281,8 @@ impl Ctx<'_> {
         self.refresh_language_intelligence();
     }
 
-    /// Focus the editor: leave the configuration tab back to the last text tab.
-    pub(crate) fn switch_to_editor(&mut self) {
-        if self.tabs.active_is_configuration() {
-            self.tabs.focus_previous_text();
-            self.tabs.touch_caret_blink();
-            self.update_window_title();
-        }
-    }
-
     /// Open (or focus) the configuration tab.
-    pub(crate) fn switch_to_configuration(&mut self) {
+    pub(crate) fn open_configuration_tab(&mut self) {
         self.tabs.open_configuration();
         self.tabs.touch_caret_blink();
         self.update_window_title();

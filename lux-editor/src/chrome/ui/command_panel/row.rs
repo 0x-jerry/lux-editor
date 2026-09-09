@@ -139,8 +139,12 @@ impl Component for CommandRow {
             messages.push(RowMessage::Clicked(input.item.command.target.clone()));
         }
         // Keyboard navigation wins over a parked pointer, so only adopt a row
-        // via hover when the pointer actually moved this frame.
-        if response.hovered() && ui.input(|i| i.pointer.motion().is_some()) {
+        // via hover when the pointer actually moved this frame. `motion()` is
+        // sticky in egui (Some(ZERO) forever after the first move), so a
+        // non-zero delta is the only reliable "moved this frame" signal.
+        if response.hovered()
+            && ui.input(|i| i.pointer.motion().is_some_and(|motion| motion != egui::Vec2::ZERO))
+        {
             messages.push(RowMessage::Hovered);
         }
 

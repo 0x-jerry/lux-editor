@@ -44,12 +44,15 @@ impl Ctx<'_> {
     }
 
     pub(crate) fn on_config_change(&mut self) {
+        // The watcher fires for our own autosave (and for recent.json), so only
+        // re-seed the draft when settings really changed on disk. Syncing on
+        // every event discards edits made since the save round-tripped.
         if self.settings.editor_config.reload_settings() {
             self.chrome.needs_style_refresh = true;
+            self.chrome
+                .shell
+                .sync_config_draft(&self.settings.editor_config.settings);
         }
-        self.chrome
-            .shell
-            .sync_config_draft(&self.settings.editor_config.settings);
     }
 
     /// Debounced recent-config flush: changes land at most one save per

@@ -208,27 +208,3 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod scratch {
-    #[test]
-    fn two_pastes_one_pass() {
-        let ctx = eframe::egui::Context::default();
-        let mut text = String::new();
-        let id = eframe::egui::Id::new("t");
-        let mut out = ctx.run_ui(eframe::egui::RawInput::default(), |ui| {
-            ui.add(eframe::egui::TextEdit::singleline(&mut text).id(id))
-                .request_focus();
-        });
-        out.textures_delta.clear();
-        let mut raw = eframe::egui::RawInput::default();
-        raw.events
-            .push(eframe::egui::Event::Paste("foo".to_string()));
-        raw.events
-            .push(eframe::egui::Event::Paste("bar".to_string()));
-        let mut out = ctx.run_ui(raw, |ui| {
-            ui.add(eframe::egui::TextEdit::singleline(&mut text).id(id));
-        });
-        out.textures_delta.clear();
-        assert_eq!(text, "foobar");
-    }
-}

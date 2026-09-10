@@ -152,9 +152,8 @@ impl Component for Shell {
                 .path()
                 .filter(|path| super::is_image_path(path))
                 .and_then(|path| {
-                    let id = super::file_image::ImageStatus::data_id(&super::file_image::file_uri(
-                        path,
-                    ));
+                    let id =
+                        super::file_image::ImageStatus::data_id(&super::file_image::file_uri(path));
                     ui.data(|data| data.get_temp(id))
                 })
         } else {

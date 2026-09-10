@@ -72,9 +72,7 @@ impl Component for FileImageView {
     fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<()> {
         let FileImageInput { path } = input;
         let uri = file_uri(path);
-        let image = egui::Image::new(egui::ImageSource::Uri(std::borrow::Cow::Owned(
-            uri.clone(),
-        )));
+        let image = egui::Image::new(egui::ImageSource::Uri(std::borrow::Cow::Owned(uri.clone())));
 
         // The area below the tab strip's cursor: painting and clipping stay
         // inside it, so a panned image never covers the tabs.

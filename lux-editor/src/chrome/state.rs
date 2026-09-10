@@ -40,8 +40,9 @@ pub(crate) struct Chrome {
     pub(crate) about_window: AboutWindow,
     pub(crate) close_prompt: ClosePrompt,
     pub(crate) native: NativeChrome,
-    /// Background font loader started before the window existed; taken once
-    /// the startup family resolves (or a different family is configured).
+    /// Background font loader for the configured editor family; kept once it
+    /// resolves so later style passes reuse the bytes instead of repeating the
+    /// system lookup.
     pub(crate) startup_font: Option<StartupFont>,
     /// Style (chrome visuals + fonts) must be re-pushed to egui on this `logic`
     /// pass; set by config reloads and by theme drift under `Auto`.

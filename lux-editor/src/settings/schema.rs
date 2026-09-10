@@ -149,10 +149,9 @@ pub(crate) const BUILTIN: SettingSchema = SettingSchema {
                 RowSchema {
                     path: "font.family",
                     title: "Font family",
-                    description: "Monospace font family used for code.",
-                    kind: RowType::Text {
-                        default: "JetBrains Mono",
-                    },
+                    description: "Monospace font family used for code; empty uses the \
+                                  system default.",
+                    kind: RowType::Text { default: "" },
                 },
                 RowSchema {
                     path: "font.size",

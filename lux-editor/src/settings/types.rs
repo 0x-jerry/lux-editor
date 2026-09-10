@@ -48,17 +48,14 @@ impl Default for ThemeSettings {
     }
 }
 
-fn default_font_family() -> String {
-    "JetBrains Mono".to_string()
-}
-
 fn default_font_size() -> f32 {
     14.0
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct FontSettings {
-    #[serde(default = "default_font_family")]
+    /// Empty means "no custom font": the system fallbacks egui ships.
+    #[serde(default)]
     pub family: String,
     #[serde(default = "default_font_size")]
     pub size: f32,
@@ -67,7 +64,7 @@ pub struct FontSettings {
 impl Default for FontSettings {
     fn default() -> Self {
         Self {
-            family: default_font_family(),
+            family: String::new(),
             size: default_font_size(),
         }
     }
@@ -154,7 +151,7 @@ mod tests {
     #[test]
     fn partial_config_missing_keys_take_defaults() {
         let settings: EditorSettings = serde_json::from_str(r#"{"font":{"size":20.0}}"#).unwrap();
-        assert_eq!(settings.font.family, "JetBrains Mono");
+        assert_eq!(settings.font.family, "");
         assert_eq!(settings.font.size, 20.0);
         assert_eq!(settings.theme.choice, "auto");
         assert_eq!(settings.formatter.args, "--stdin");

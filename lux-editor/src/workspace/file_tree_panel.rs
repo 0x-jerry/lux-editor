@@ -1,17 +1,17 @@
-use crate::chrome::ui::widgets::file_type_icon;
+use crate::chrome::ui::widgets::{file_type_icon, prompt_frame};
 use crate::component::Component;
 use crate::events::{AppEvent, CustomEvent, WorkspaceEvent};
 use crate::workspace::{Entry, FileTree};
 use eframe::egui;
 use eframe::egui::{TextEdit, Ui};
-use egui_phosphor::regular::{FOLDER, FOLDER_OPEN};
+use egui_phosphor::regular::{FOLDER, FOLDER_OPEN, WARNING_CIRCLE};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 /// Left sidebar file tree; emits navigation and file-system events. Owns the
 /// last active file it drew (revealing the tree when that file changes), the
-/// set of expanded directories (the app persists it per workspace) and the
-/// in-place rename state.
+/// set of expanded directories (the app persists it per workspace), the
+/// in-place rename state and the pending delete confirmation.
 #[derive(Default)]
 pub struct FileTreePanel {
     last_active_path: Option<PathBuf>,
@@ -19,6 +19,8 @@ pub struct FileTreePanel {
     expanded: HashSet<PathBuf>,
     /// Path currently being renamed in place, with the new-name draft.
     renaming: Option<(PathBuf, String)>,
+    /// Path a Delete click is waiting on; the confirmation modal decides.
+    confirm_delete: Option<PathBuf>,
 }
 
 pub struct FileTreePanelInput<'a> {
@@ -77,6 +79,7 @@ impl Component for FileTreePanel {
                     });
             });
 
+        events.extend(self.render_delete_confirm(ui));
         events
     }
 }
@@ -205,7 +208,7 @@ impl FileTreePanel {
                         ui.close();
                     }
                     if ui.button("Delete").clicked() {
-                        event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(path.clone())));
+                        self.confirm_delete = Some(path.clone());
                         ui.close();
                     }
                 });
@@ -298,13 +301,17 @@ impl FileTreePanel {
                         )));
                         ui.close();
                     }
-                    if ui.button("Rename").clicked() {
-                        self.start_renaming(path);
-                        ui.close();
-                    }
-                    if ui.button("Delete").clicked() {
-                        event = Some(CustomEvent::Workspace(WorkspaceEvent::Delete(path.clone())));
-                        ui.close();
+                    // The root row is the whole workspace: renaming or deleting
+                    // it is never what a click on the top line means.
+                    if depth > 0 {
+                        if ui.button("Rename").clicked() {
+                            self.start_renaming(path);
+                            ui.close();
+                        }
+                        if ui.button("Delete").clicked() {
+                            self.confirm_delete = Some(path.clone());
+                            ui.close();
+                        }
                     }
                 });
 
@@ -322,6 +329,89 @@ impl FileTreePanel {
                 event
             }
         }
+    }
+
+    /// Confirmation for a queued delete: the tree has no undo, so a directory
+    /// removal is one modal away from the click that asked for it.
+    fn render_delete_confirm(&mut self, ui: &mut Ui) -> Option<CustomEvent> {
+        let path = self.confirm_delete.clone()?;
+        if path.symlink_metadata().is_err() {
+            // It went away (or was replaced) since the menu was clicked.
+            self.confirm_delete = None;
+            return None;
+        }
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.to_string_lossy().into_owned());
+        let is_dir = path.is_dir();
+        let mut confirmed = false;
+
+        let modal = egui::Modal::new(egui::Id::new("file_tree_delete"))
+            .frame(prompt_frame(ui))
+            .show(ui.ctx(), |ui| {
+                ui.set_min_width(360.0);
+                ui.set_max_width(360.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(WARNING_CIRCLE)
+                            .size(20.0)
+                            .color(ui.visuals().error_fg_color),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(egui::RichText::new("Delete").size(16.0).strong());
+                });
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Delete {} \u{201c}{}\u{201d}?",
+                        if is_dir { "this folder" } else { "this file" },
+                        name
+                    ))
+                    .size(13.0),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(if is_dir {
+                        "Everything inside it goes too. This cannot be undone."
+                    } else {
+                        "This cannot be undone."
+                    })
+                    .size(12.0)
+                    .color(ui.visuals().weak_text_color()),
+                );
+                ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(12.0);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let delete = ui.add(
+                        egui::Button::new(
+                            egui::RichText::new("Delete").color(ui.visuals().error_fg_color),
+                        )
+                        .min_size(egui::vec2(88.0, 30.0)),
+                    );
+                    if delete.clicked() {
+                        confirmed = true;
+                    }
+                    if ui
+                        .add(egui::Button::new("Cancel").min_size(egui::vec2(88.0, 30.0)))
+                        .clicked()
+                    {
+                        self.confirm_delete = None;
+                    }
+                });
+            });
+
+        // Click-away and Escape cancel; Enter must not, it is the key that
+        // confirms things elsewhere.
+        if modal.should_close() {
+            self.confirm_delete = None;
+        }
+        if confirmed {
+            self.confirm_delete = None;
+            return Some(CustomEvent::Workspace(WorkspaceEvent::Delete(path)));
+        }
+        None
     }
 
     /// In-place rename editor for the row at `path`. Returns the rename event
@@ -364,10 +454,12 @@ impl FileTreePanel {
     }
 
     fn start_renaming(&mut self, path: &Path) {
-        self.renaming = Some((
-            path.to_path_buf(),
-            path.file_name().unwrap().to_string_lossy().to_string(),
-        ));
+        // A filesystem root has no file name; the row renders its full path.
+        let draft = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        self.renaming = Some((path.to_path_buf(), draft));
     }
 }
 
@@ -393,6 +485,71 @@ mod tests {
             }
             _ => {}
         }
+    }
+
+    /// The delete confirmation paints the target's name and removes nothing on
+    /// its own: the row menu only arms the modal.
+    #[test]
+    fn delete_confirmation_paints_the_target_and_asks_first() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("doomed.rs"), "").unwrap();
+
+        let mut tree = FileTree::new(root.path(), &[]);
+        let mut panel = FileTreePanel::default();
+        panel.set_expanded([root.path().to_path_buf()]);
+        panel.confirm_delete = Some(root.path().join("doomed.rs"));
+
+        let ctx = egui::Context::default();
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "devicons".into(),
+            egui::FontData::from_static(include_bytes!(
+                "../../assets/fonts/SymbolsNerdFontMono-Regular.ttf"
+            ))
+            .into(),
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name("devicons".into()),
+            vec!["devicons".into()],
+        );
+        ctx.set_fonts(fonts);
+
+        let mut events = Vec::new();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                events = panel.render(
+                    ui,
+                    FileTreePanelInput {
+                        tree: &mut tree,
+                        active_file_path: None,
+                    },
+                );
+            },
+        );
+        output.textures_delta.clear();
+
+        let mut rows = vec![];
+        output
+            .shapes
+            .iter()
+            .for_each(|clipped| painted(&clipped.shape, &mut rows));
+        assert!(
+            rows.iter().any(|(text, _)| text.contains("doomed.rs")),
+            "the confirmation names the file: {rows:?}"
+        );
+        assert!(events.is_empty(), "opening the prompt deletes nothing");
+        assert!(
+            panel.confirm_delete.is_some(),
+            "it stays armed until answered"
+        );
+        assert!(root.path().join("doomed.rs").exists());
     }
 
     /// One frame of the sidebar, painted headlessly: every row is a glyph run

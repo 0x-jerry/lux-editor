@@ -4,6 +4,7 @@
 //! refresh needs; this module only owns the state.
 
 use crate::highlighting::HighlightingService;
+use eframe::egui;
 use std::time::{Duration, Instant};
 
 pub(crate) struct Highlighting {
@@ -12,18 +13,16 @@ pub(crate) struct Highlighting {
     pub(crate) deadline: Option<Instant>,
 }
 
-impl Default for Highlighting {
-    fn default() -> Self {
+impl Highlighting {
+    pub(crate) const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(60);
+
+    pub(crate) fn new(wake: egui::Context) -> Self {
         Self {
-            service: HighlightingService::new(),
+            service: HighlightingService::new(wake),
             dirty: false,
             deadline: None,
         }
     }
-}
-
-impl Highlighting {
-    pub(crate) const HIGHLIGHT_DEBOUNCE: Duration = Duration::from_millis(60);
 
     pub(crate) fn schedule_refresh(&mut self) {
         self.dirty = true;
@@ -56,7 +55,7 @@ mod tests {
 
     #[test]
     fn service_round_trips_rope_snapshot() {
-        let mut service = HighlightingService::new();
+        let mut service = HighlightingService::new(egui::Context::default());
         service.request_parse(Rope::from_str("fn main() {}\n"), LanguageKind::Rust);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while service.snapshot().version == 0 && std::time::Instant::now() < deadline {

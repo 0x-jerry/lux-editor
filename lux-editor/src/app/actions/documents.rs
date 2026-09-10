@@ -52,12 +52,14 @@ impl Ctx<'_> {
                         if ok {
                             if document.edit_generation == generation {
                                 document.document_dirty = false;
+                                // Baseline against the bytes the save just wrote:
+                                // re-anchoring this while newer edits are in the
+                                // buffer would make those edits look saved.
+                                document.saved_text = document.buffer.text().clone();
                             }
-                            // Baseline against the bytes the save just wrote so the
-                            // watcher's own-save event skips the byte compare, and
-                            // re-anchor the dirty reference at the saved content.
+                            // The watcher's own-save event still needs the new
+                            // stat to skip its byte compare.
                             document.record_disk_stat();
-                            document.saved_text = document.buffer.text().clone();
                             document.document_status = Some(format!("Saved {}", path.display()));
                         } else {
                             document.document_status = Some("Failed to save file".to_string());
@@ -242,7 +244,7 @@ impl Ctx<'_> {
                     Err(err) => formatted_result = Some(Err(err)),
                 }
             }
-            let ok = std::fs::write(&save_path, to_write).is_ok();
+            let ok = crate::atomic::write(&save_path, to_write.as_bytes()).is_ok();
             let _ = event_tx.send(crate::events::CustomEvent::Document(
                 DocumentEvent::FileSaved {
                     path: save_path.clone(),

@@ -17,11 +17,7 @@ impl EframeApp for App {
     /// Pre-UI pass: process events/input and mutate editor state before the
     /// frame is rendered. Painting is not allowed here.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
-        #[cfg(target_os = "macos")]
-        if ctx.input(|input| input.viewport().close_requested()) {
-            self.settings.editor_config.flush_recent();
-            std::process::exit(0);
-        }
+        self.handle_close_request(ctx);
         self.ctx().frame_logic();
     }
 
@@ -35,8 +31,7 @@ impl EframeApp for App {
         let highlight_snapshot = self.highlighting.service.snapshot();
         let active_document = self
             .tabs
-            .active_text()
-            .or_else(|| self.tabs.first_text())
+            .highlight_target()
             .expect("a text tab always exists");
         let (carets, active_caret_index, selection_ranges) = {
             let caret_state = &active_document.caret_state;
@@ -124,6 +119,59 @@ impl EframeApp for App {
         if editor_focused {
             ctx.request_repaint_after(Duration::from_millis(500));
         }
+    }
+}
+
+/// Windows closed, edits unsaved: the gate between a close request and the
+/// process actually going away.
+impl App {
+    /// Hold a window close while any tab still has unsaved changes. The close
+    /// is cancelled and the prompt takes over; once the last dirty tab is
+    /// resolved the close is re-issued, so quitting never quietly drops edits.
+    /// macOS then exits the process directly (`panic = "abort"` builds have no
+    /// unwinding teardown); elsewhere eframe closes the window itself.
+    fn handle_close_request(&mut self, ctx: &egui::Context) {
+        if ctx.input(|input| input.viewport().close_requested()) {
+            self.frame.quit_pending = true;
+        }
+        if !self.frame.quit_pending {
+            return;
+        }
+
+        if let Some(id) = self.frame.quit_prompt_tab {
+            let resolved = !self.tabs.close_needs_confirmation(id);
+            if !resolved {
+                if self.chrome.close_prompt.is_open_for(id) {
+                    // The user has not answered the prompt yet.
+                    ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                    return;
+                }
+                if self.frame.pending_close_after_save != Some(id) {
+                    // Cancelled: the tab is still dirty and no save is running.
+                    self.frame.quit_prompt_tab = None;
+                    self.frame.quit_pending = false;
+                    return;
+                }
+                // The write is in flight; wait for it with the prompt closed.
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                return;
+            }
+            self.frame.quit_prompt_tab = None;
+        }
+
+        if let Some(id) = self.tabs.first_dirty_tab_id() {
+            self.frame.quit_prompt_tab = Some(id);
+            self.chrome.close_prompt.request(id);
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            return;
+        }
+
+        self.frame.quit_pending = false;
+        self.settings.editor_config.flush_recent();
+        #[cfg(target_os = "macos")]
+        std::process::exit(0);
+        #[cfg(not(target_os = "macos"))]
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 }
 

@@ -199,7 +199,6 @@ impl FileTree {
         walk(chain, path, is_dir, &mut verdict);
         verdict
     }
-
 }
 
 fn dir_gitignore(dir: &Path) -> Option<Gitignore> {

@@ -24,17 +24,22 @@ impl Ctx<'_> {
                 self.on_file_change();
             }
             WorkspaceEvent::Rename(old, new) => {
-                if std::fs::rename(&old, &new).is_ok() {
+                if is_rename_target(&old, &new) && std::fs::rename(&old, &new).is_ok() {
                     self.on_path_renamed(&old, &new);
                 }
                 self.on_file_change();
             }
             WorkspaceEvent::NewFile(parent) => {
-                std::fs::File::create(parent.join("new_file.txt")).ok();
+                let path = unused_child(&parent, "new_file.txt");
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .ok();
                 self.on_file_change();
             }
             WorkspaceEvent::NewFolder(parent) => {
-                std::fs::create_dir(parent.join("new_folder")).ok();
+                std::fs::create_dir(unused_child(&parent, "new_folder")).ok();
                 self.on_file_change();
             }
         }
@@ -42,7 +47,13 @@ impl Ctx<'_> {
 
     pub(crate) fn open_folder(&mut self, path: PathBuf) {
         let path = path.canonicalize().unwrap_or(path);
-        let exclude = self.settings.editor_config.settings.explorer.exclude.clone();
+        let exclude = self
+            .settings
+            .editor_config
+            .settings
+            .explorer
+            .exclude
+            .clone();
         let tree = FileTree::new(&path, &exclude);
         let root = tree.root().to_path_buf();
         self.workspace.path = Some(path.clone());
@@ -220,11 +231,13 @@ impl Ctx<'_> {
         self.runtime.spawn_blocking(move || {
             let results = checks
                 .into_iter()
-                .map(|(path, stat, text)| {
-                    let differs = std::fs::read(&path).is_ok_and(|bytes| bytes != text.as_bytes());
+                .map(|check| {
+                    let differs = std::fs::read(&check.path)
+                        .is_ok_and(|bytes| bytes != check.text.as_bytes());
                     ReconcileResult {
-                        path,
-                        stat,
+                        path: check.path,
+                        stat: check.stat,
+                        generation: check.generation,
                         differs,
                     }
                 })
@@ -234,5 +247,81 @@ impl Ctx<'_> {
             }));
             wake.request_repaint();
         });
+    }
+}
+
+/// Whether `new` is a rename `old` may be applied to: a plain name (no
+/// separator, so the file cannot leave its folder) in the same folder that
+/// nothing else already occupies. Renaming onto an existing path would
+/// silently overwrite it.
+fn is_rename_target(old: &Path, new: &Path) -> bool {
+    let plain_name = new.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        !name.contains(['/', '\\']) && name != "." && name != ".."
+    });
+    plain_name && old.parent() == new.parent() && new.symlink_metadata().is_err()
+}
+
+/// A path in `parent` that nothing occupies: `name`, or `name_2`, `name_3`…
+/// `new_file.txt` must never truncate an existing `new_file.txt`.
+fn unused_child(parent: &Path, name: &str) -> PathBuf {
+    let candidate = parent.join(name);
+    if candidate.symlink_metadata().is_err() {
+        return candidate;
+    }
+    let (stem, extension) = match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => (stem, format!(".{extension}")),
+        _ => (name, String::new()),
+    };
+    (2..)
+        .map(|index| parent.join(format!("{stem}_{index}{extension}")))
+        .find(|path| path.symlink_metadata().is_err())
+        .expect("a free name exists")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_rename_target, unused_child};
+
+    #[test]
+    fn new_entries_never_take_a_name_that_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        assert_eq!(
+            unused_child(root, "new_file.txt"),
+            root.join("new_file.txt")
+        );
+
+        std::fs::write(root.join("new_file.txt"), "").unwrap();
+        assert_eq!(
+            unused_child(root, "new_file.txt"),
+            root.join("new_file_2.txt")
+        );
+        std::fs::write(root.join("new_file_2.txt"), "").unwrap();
+        assert_eq!(
+            unused_child(root, "new_file.txt"),
+            root.join("new_file_3.txt")
+        );
+
+        std::fs::create_dir(root.join("new_folder")).unwrap();
+        assert_eq!(unused_child(root, "new_folder"), root.join("new_folder_2"));
+    }
+
+    #[test]
+    fn rename_targets_must_be_plain_free_names_in_the_same_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("src");
+        std::fs::create_dir(&folder).unwrap();
+        let old = folder.join("a.rs");
+        std::fs::write(&old, "").unwrap();
+        std::fs::write(folder.join("taken.rs"), "").unwrap();
+
+        assert!(is_rename_target(&old, &folder.join("b.rs")));
+        // An existing path would be overwritten.
+        assert!(!is_rename_target(&old, &folder.join("taken.rs")));
+        // A separator would move the file out of its folder.
+        assert!(!is_rename_target(&old, &folder.join("nested").join("b.rs")));
+        assert!(!is_rename_target(&old, &dir.path().join("b.rs")));
+        assert!(!is_rename_target(&old, &folder.join("..")));
     }
 }

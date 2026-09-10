@@ -11,6 +11,11 @@ pub(super) fn parse_rgba(value: &str) -> Result<[u8; 4], String> {
     let hex = value
         .strip_prefix('#')
         .ok_or_else(|| format!("'{value}' is missing a leading '#'"))?;
+    // Every index below is a byte offset; refuse non-ASCII up front rather than
+    // slicing a multi-byte character in half.
+    if !hex.is_ascii() {
+        return Err(format!("'{value}' has non-hex digits"));
+    }
     let digit = |index: usize| -> Result<u8, String> {
         u8::from_str_radix(&hex[index..index + 1], 16)
             .map(|nibble| nibble * 0x11)
@@ -54,7 +59,16 @@ mod tests {
 
     #[test]
     fn parse_color_rejects_malformed_values() {
-        for bad in ["white", "6aa1ff", "#ff", "#ffff", "#gg0000", "#ff0000ff00"] {
+        for bad in [
+            "white",
+            "6aa1ff",
+            "#ff",
+            "#ffff",
+            "#gg0000",
+            "#ff0000ff00",
+            "#€",
+            "#€€",
+        ] {
             assert!(parse_rgba(bad).is_err(), "{bad} must not parse");
         }
     }

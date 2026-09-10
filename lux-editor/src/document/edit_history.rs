@@ -37,6 +37,9 @@ impl EditHistory {
                 .inserted_text
                 .push_str(&transaction.edits[0].inserted_text);
             last.after = transaction.after;
+            // An undo can leave the coalescing pair's position current: the
+            // redo stack it filled no longer describes this buffer.
+            self.redo_stack.clear();
             return;
         }
         self.undo_stack.push(transaction);
@@ -165,6 +168,56 @@ mod tests {
         assert_eq!(buffer.text().to_string(), "");
         history.redo(&mut buffer);
         assert_eq!(buffer.text().to_string(), "abc");
+    }
+
+    #[test]
+    fn typing_after_an_undo_never_replays_a_stale_redo() {
+        let mut buffer = DocumentBuffer::new();
+        buffer.insert(0, "ab");
+        let mut history = EditHistory::default();
+        // Two transactions: type "c", then backspace it away.
+        history.push(EditTransaction {
+            edits: vec![SubEdit {
+                start_char: 2,
+                deleted_text: String::new(),
+                inserted_text: "c".to_string(),
+            }],
+            before: Default::default(),
+            after: Default::default(),
+        });
+        buffer.insert(2, "c");
+        history.push(EditTransaction {
+            edits: vec![SubEdit {
+                start_char: 2,
+                deleted_text: "c".to_string(),
+                inserted_text: String::new(),
+            }],
+            before: Default::default(),
+            after: Default::default(),
+        });
+        buffer.remove(2..3);
+
+        // Undo the backspace, then type again: the new keystroke continues the
+        // first transaction, which must invalidate the redo stack.
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "abc");
+        history.push(EditTransaction {
+            edits: vec![SubEdit {
+                start_char: 3,
+                deleted_text: String::new(),
+                inserted_text: "d".to_string(),
+            }],
+            before: Default::default(),
+            after: Default::default(),
+        });
+        buffer.insert(3, "d");
+        assert_eq!(buffer.text().to_string(), "abcd");
+
+        // Redo must not replay the undone backspace against this buffer.
+        assert!(history.redo(&mut buffer).is_none());
+        assert_eq!(buffer.text().to_string(), "abcd");
+        history.undo(&mut buffer);
+        assert_eq!(buffer.text().to_string(), "ab");
     }
 
     #[test]

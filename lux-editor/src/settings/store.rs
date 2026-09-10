@@ -126,17 +126,30 @@ impl Config {
             std::fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(settings)?;
-        std::fs::write(&path, content)?;
+        crate::atomic::write(&path, content.as_bytes())?;
         Ok(path)
     }
 
     pub(crate) fn load_settings() -> EditorSettings {
-        // Per-field serde defaults merge partial files; a file that does not
-        // parse resets to defaults, matching the recent-items store.
-        std::fs::read_to_string(Self::user_settings_path())
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        // Per-field serde defaults merge partial files. A file that does not
+        // parse is kept beside the original: the configuration tab's next
+        // autosave would otherwise overwrite the user's file with defaults,
+        // leaving nothing to repair by hand.
+        let path = Self::user_settings_path();
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return EditorSettings::default();
+        };
+        match serde_json::from_str(&text) {
+            Ok(settings) => settings,
+            Err(err) => {
+                log::warn!(
+                    "unreadable {}, keeping a copy beside it: {err}",
+                    path.display()
+                );
+                std::fs::rename(&path, path.with_extension("json.bak")).ok();
+                EditorSettings::default()
+            }
+        }
     }
 
     fn load_recent_config() -> RecentConfigFile {
@@ -173,7 +186,7 @@ impl Config {
             workspace_sessions: self.workspace_sessions.clone(),
         };
         match serde_json::to_string(&data) {
-            Ok(data) => std::fs::write(path, data).is_ok(),
+            Ok(data) => crate::atomic::write(&path, data.as_bytes()).is_ok(),
             Err(_) => false,
         }
     }

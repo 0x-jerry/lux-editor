@@ -134,6 +134,16 @@ pub(crate) fn openable_tab(tabs: &[Tab], path: &Path) -> Option<usize> {
         .filter(|&index| !tabs[index].content.as_text().is_some_and(|d| d.missing))
 }
 
+/// One tab planned for a disk re-check: where the file is, the stat the check
+/// short-circuited on, the buffer text to byte-compare and the edit generation
+/// that text belongs to.
+pub(crate) struct DiskCheck {
+    pub(crate) path: PathBuf,
+    pub(crate) stat: (u64, SystemTime),
+    pub(crate) text: String,
+    pub(crate) generation: u64,
+}
+
 pub(crate) struct TabManager {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active_tab: usize,
@@ -207,6 +217,14 @@ impl TabManager {
             .is_some_and(|tab| tab.content.is_dirty())
     }
 
+    /// The first tab with unsaved changes, if any; the quit prompt target.
+    pub(crate) fn first_dirty_tab_id(&self) -> Option<u64> {
+        self.tabs
+            .iter()
+            .find(|tab| tab.content.is_dirty())
+            .map(|tab| tab.id)
+    }
+
     /// Remove the tab at `index`. Last tab resets the strip to a fresh
     /// scratch text tab; any other close keeps the current tab when that is
     /// still valid and otherwise falls back to the last tab.
@@ -241,6 +259,15 @@ impl TabManager {
     /// tab), so the configuration page can name a buffer even while active.
     pub(crate) fn first_text(&self) -> Option<&OpenDocument> {
         self.tabs.iter().find_map(|tab| tab.content.as_text())
+    }
+
+    /// The document the editor chrome renders from: the active text tab, or the
+    /// first text tab while a non-text tab (configuration) holds focus. The
+    /// editor background — and so the tab strip, which sits on it — comes from
+    /// this document's highlight snapshot, so a theme change on the
+    /// configuration page has to keep highlighting one.
+    pub(crate) fn highlight_target(&self) -> Option<&OpenDocument> {
+        self.active_text().or_else(|| self.first_text())
     }
 
     pub(crate) fn active_text(&self) -> Option<&OpenDocument> {
@@ -376,9 +403,14 @@ impl TabManager {
             // better cheap signal on offer.
             document.last_disk_stat = Some(result.stat);
             if !result.differs {
-                if document.document_dirty {
+                // The bytes on disk are this buffer's bytes, so the comparison
+                // is the new saved reference — but only for the edit generation
+                // it was captured at: the user may have typed while the compare
+                // ran on its blocking thread.
+                if document.document_dirty && document.edit_generation == result.generation {
                     document.document_dirty = false;
                     document.document_status = None;
+                    document.saved_text = document.buffer.text().clone();
                 }
                 continue;
             }
@@ -428,12 +460,13 @@ impl TabManager {
         revived
     }
 
-    /// Plan a disk re-check of every open tab: (path, current stat, buffer
-    /// text). The stat short-circuit runs here, on the UI thread, so a swoop of
-    /// unrelated watcher events costs only metadata calls; only files that
-    /// actually moved are returned, and the caller reads + byte-compares those
-    /// on a blocking thread.
-    pub(crate) fn disk_change_plan(&self) -> Vec<(PathBuf, (u64, SystemTime), String)> {
+    /// Plan a disk re-check of every open tab: where the file is, its current
+    /// stat, the buffer text and the edit generation it was captured at. The
+    /// stat short-circuit runs here, on the UI thread, so a swoop of unrelated
+    /// watcher events costs only metadata calls; only files that actually moved
+    /// are returned, and the caller reads + byte-compares those on a blocking
+    /// thread.
+    pub(crate) fn disk_change_plan(&self) -> Vec<DiskCheck> {
         let mut checks = Vec::new();
         for tab in self.tabs.iter() {
             let Some(document) = tab.content.as_text() else {
@@ -457,7 +490,12 @@ impl TabManager {
             if document.last_disk_stat == Some(stat) {
                 continue;
             }
-            checks.push((path.clone(), stat, document.buffer.text().to_string()));
+            checks.push(DiskCheck {
+                path: path.clone(),
+                stat,
+                text: document.buffer.text().to_string(),
+                generation: document.edit_generation,
+            });
         }
         checks
     }
@@ -731,6 +769,7 @@ mod tests {
         let reload = manager.apply_reconcile_results(vec![ReconcileResult {
             path: path.clone(),
             stat: stat(&path),
+            generation: 0,
             differs: true,
         }]);
         assert_eq!(reload, vec![path.clone()]);
@@ -748,6 +787,7 @@ mod tests {
                 .apply_reconcile_results(vec![ReconcileResult {
                     path: path.clone(),
                     stat: stat(&path),
+                    generation: 0,
                     differs: true,
                 }])
                 .is_empty()
@@ -770,6 +810,7 @@ mod tests {
                 .apply_reconcile_results(vec![ReconcileResult {
                     path: path.clone(),
                     stat: stat(&path),
+                    generation: 0,
                     differs: false,
                 }])
                 .is_empty()

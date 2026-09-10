@@ -1,4 +1,5 @@
 mod app;
+mod atomic;
 mod chrome;
 mod component;
 mod document;
@@ -20,7 +21,8 @@ pub fn main() {
 
     // Start resolving/reading the configured editor font before the window
     // machinery spins up; the app folds the bytes in when they land.
-    let font_loader = theme::StartupFont::spawn(Config::load_settings().font.family);
+    let config = Config::load();
+    let font_loader = theme::StartupFont::spawn(config.settings.font.family.clone());
 
     // Platform adapter for the app-rendered title bar:
     // - macOS keeps the native title bar transparent (traffic lights stay
@@ -49,7 +51,7 @@ pub fn main() {
     if let Err(err) = eframe::run_native(
         "Lux Editor",
         native_options,
-        Box::new(move |cc| Ok(Box::new(App::new(cc.egui_ctx.clone(), font_loader)))),
+        Box::new(move |cc| Ok(Box::new(App::new(cc.egui_ctx.clone(), font_loader, config)))),
     ) {
         log::error!("failed to run Lux Editor: {err}");
     }

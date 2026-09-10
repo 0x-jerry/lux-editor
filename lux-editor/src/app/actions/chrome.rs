@@ -22,38 +22,35 @@ impl Ctx<'_> {
     /// Push a resolved theme's chrome visuals + fonts to egui.
     pub(crate) fn apply_style(&mut self, resolved: ThemeChoice) {
         self.chrome.runtime_theme = Some(resolved);
-        // The preloaded bytes only apply to the family they were spawned for;
-        // any other family falls back to the sync lookup. While the loader is
-        // still in flight the chrome renders with system fallbacks and the
-        // refresh stays armed, so the fold-in happens on a later pass.
-        let settings = &self.settings.editor_config.settings;
-        let mut font = CustomFont::Sync;
-        let loader_matches = self
+        let family = self.settings.editor_config.settings.font.family.clone();
+        // Any family the current loader does not hold is resolved on the same
+        // background path the startup font uses: the lookup initializes
+        // CoreText and reads a multi-MB file, which must not happen in a style
+        // pass. While it is in flight the chrome renders with system fallbacks
+        // and the refresh stays armed, so the fold-in happens on a later pass.
+        if self
             .chrome
             .startup_font
             .as_ref()
-            .is_some_and(|loader| loader.family == settings.font.family);
-        if loader_matches {
-            let polled = self
-                .chrome
-                .startup_font
-                .as_mut()
-                .and_then(StartupFont::poll);
-            match polled {
-                Some(bytes) => {
-                    font = CustomFont::Preloaded(bytes);
-                    self.chrome.startup_font = None;
-                }
-                None => {
-                    font = CustomFont::Pending;
-                    self.chrome.needs_style_refresh = true;
-                    self.egui_ctx()
-                        .request_repaint_after(Duration::from_millis(30));
-                }
-            }
-        } else {
-            self.chrome.startup_font = None;
+            .is_none_or(|loader| loader.family != family)
+        {
+            self.chrome.startup_font = Some(StartupFont::spawn(family));
         }
+        let loaded = self
+            .chrome
+            .startup_font
+            .as_mut()
+            .and_then(StartupFont::resolved);
+        let font = match loaded {
+            Some(bytes) => CustomFont::Loaded(bytes),
+            None => {
+                self.chrome.needs_style_refresh = true;
+                self.egui_ctx()
+                    .request_repaint_after(Duration::from_millis(30));
+                CustomFont::Pending
+            }
+        };
+        let settings = &self.settings.editor_config.settings;
         theme::apply_editor_settings(self.egui_ctx(), resolved, settings, font);
         crate::app::startup::stage_once!("first style applied");
     }
@@ -161,7 +158,10 @@ fn text_edit_event(command: &EditorCommand) -> Option<egui::Event> {
     Some(match command {
         EditorCommand::SelectAll => key(egui::Key::A, egui::Modifiers::COMMAND),
         EditorCommand::Undo => key(egui::Key::Z, egui::Modifiers::COMMAND),
-        EditorCommand::Redo => key(egui::Key::Z, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT),
+        EditorCommand::Redo => key(
+            egui::Key::Z,
+            egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
+        ),
         EditorCommand::Cut => egui::Event::Cut,
         EditorCommand::Copy => egui::Event::Copy,
         EditorCommand::Paste(text) => egui::Event::Paste(text.clone()),
@@ -212,4 +212,3 @@ mod tests {
         assert_eq!(text_edit_event(&EditorCommand::Save), None);
     }
 }
-

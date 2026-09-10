@@ -1,5 +1,6 @@
 //! Save/discard prompt shown before closing a tab with unsaved changes.
 
+use crate::chrome::ui::widgets::prompt_frame;
 use crate::component::Component;
 use crate::events::{CustomEvent, DocumentEvent};
 use crate::tabs::TabMeta;
@@ -23,6 +24,11 @@ impl ClosePrompt {
 
     pub(crate) fn is_open(&self) -> bool {
         self.target.is_some()
+    }
+
+    /// Whether the prompt is currently asking about `id`.
+    pub(crate) fn is_open_for(&self, id: u64) -> bool {
+        self.target == Some(id)
     }
 }
 
@@ -55,22 +61,7 @@ impl Component for ClosePrompt {
         let mut choice = None;
         let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
         let modal = egui::Modal::new(egui::Id::new("close_prompt"))
-            .frame(
-                egui::Frame::NONE
-                    .corner_radius(egui::CornerRadius::same(10))
-                    .fill(ui.visuals().window_fill)
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        ui.visuals().widgets.noninteractive.bg_stroke.color,
-                    ))
-                    .shadow(egui::Shadow {
-                        offset: [0, 8],
-                        blur: 32,
-                        spread: 0,
-                        color: egui::Color32::from_black_alpha(90),
-                    })
-                    .inner_margin(egui::Margin::same(20)),
-            )
+            .frame(prompt_frame(ui))
             .show(ui.ctx(), |ui| {
                 ui.set_min_width(CARD_WIDTH);
                 ui.set_max_width(CARD_WIDTH);
@@ -89,13 +80,21 @@ impl Component for ClosePrompt {
                 ui.add_space(10.0);
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
-                    ui.label(egui::RichText::new("Save changes to").size(13.0).color(weak));
+                    ui.label(
+                        egui::RichText::new("Save changes to")
+                            .size(13.0)
+                            .color(weak),
+                    );
                     ui.label(
                         egui::RichText::new(format!("\u{201c}{}\u{201d}", tab.title))
                             .size(13.0)
                             .strong(),
                     );
-                    ui.label(egui::RichText::new("before closing?").size(13.0).color(weak));
+                    ui.label(
+                        egui::RichText::new("before closing?")
+                            .size(13.0)
+                            .color(weak),
+                    );
                 });
                 ui.add_space(3.0);
                 ui.label(
@@ -113,7 +112,9 @@ impl Component for ClosePrompt {
                     let save = ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("Save").strong().color(contrasting_text(accent)),
+                                egui::RichText::new("Save")
+                                    .strong()
+                                    .color(contrasting_text(accent)),
                             )
                             .fill(accent)
                             .corner_radius(egui::CornerRadius::same(6))
@@ -127,8 +128,7 @@ impl Component for ClosePrompt {
                     let discard = ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("Discard")
-                                    .color(ui.visuals().error_fg_color),
+                                egui::RichText::new("Discard").color(ui.visuals().error_fg_color),
                             )
                             .corner_radius(egui::CornerRadius::same(6))
                             .min_size(egui::vec2(BUTTON_WIDTH, BUTTON_HEIGHT)),
@@ -163,7 +163,9 @@ impl Component for ClosePrompt {
         match choice {
             Some(CloseChoice::Save) => {
                 self.target = None;
-                events.push(CustomEvent::Document(DocumentEvent::SaveAndCloseTab(target)));
+                events.push(CustomEvent::Document(DocumentEvent::SaveAndCloseTab(
+                    target,
+                )));
             }
             Some(CloseChoice::Discard) => {
                 self.target = None;

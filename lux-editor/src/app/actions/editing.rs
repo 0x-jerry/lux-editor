@@ -9,6 +9,20 @@
 use crate::app::Ctx;
 use crate::document::{CommandOutcome, EditorCommand, commands_from_event};
 use crate::events::EditingEvent;
+use eframe::egui;
+
+/// Whether an egui input event can become an editor command; the mapping itself
+/// lives in [`commands_from_event`].
+fn is_editor_event(event: &egui::Event) -> bool {
+    matches!(
+        event,
+        egui::Event::Text(_)
+            | egui::Event::Paste(_)
+            | egui::Event::Copy
+            | egui::Event::Cut
+            | egui::Event::Key { .. }
+    )
+}
 
 impl Ctx<'_> {
     pub(crate) fn handle_editing_event(&mut self, event: EditingEvent) {
@@ -36,7 +50,16 @@ impl Ctx<'_> {
     /// changes happen through [`Ctx::execute_command`].
     pub(crate) fn handle_keyboard_input(&mut self) {
         let mut changed = false;
-        let events = self.egui_ctx().input(|input| input.events.clone());
+        // Only the events the editor maps to commands: cloning every pointer
+        // move egui reports each frame is pure waste.
+        let events = self.egui_ctx().input(|input| {
+            input
+                .events
+                .iter()
+                .filter(|event| is_editor_event(event))
+                .cloned()
+                .collect::<Vec<_>>()
+        });
         for event in events {
             for command in commands_from_event(event) {
                 if self.execute_command(command) {

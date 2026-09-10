@@ -52,8 +52,6 @@ fn range_of(caret: &Caret) -> Option<Range<usize>> {
 }
 
 impl CaretState {
-    // ---- snapshots --------------------------------------------------------
-
     pub fn snapshot(&self) -> CaretSnapshot {
         CaretSnapshot {
             carets: self.carets.clone(),
@@ -89,8 +87,6 @@ impl CaretState {
         self.active_index = 0;
         self.preferred_columns = vec![None];
     }
-
-    // ---- queries ----------------------------------------------------------
 
     /// Carets always number at least one; there is no empty state.
     #[allow(clippy::len_without_is_empty)]
@@ -141,8 +137,6 @@ impl CaretState {
             (caret, caret)
         }
     }
-
-    // ---- mutation ---------------------------------------------------------
 
     pub fn set_caret_char_at(
         &mut self,
@@ -201,8 +195,6 @@ impl CaretState {
         self.preferred_columns = vec![None];
     }
 
-    // ---- multi-cursor management ------------------------------------------
-
     /// Add a cursor at `char_idx`, or activate the existing one there.
     pub fn add_cursor_at(&mut self, char_idx: usize, buffer: &DocumentBuffer) {
         let char_idx = char_idx.min(buffer.text().len_chars());
@@ -241,8 +233,6 @@ impl CaretState {
         self.active_index = 0;
         self.preferred_columns = vec![None];
     }
-
-    // ---- movement (applies to every cursor) -------------------------------
 
     pub fn move_left(&mut self, buffer: &DocumentBuffer, selecting: bool) {
         for index in 0..self.carets.len() {
@@ -358,8 +348,6 @@ impl CaretState {
         self.preferred_columns[index] = Some(target_column);
     }
 }
-
-// ---- position helpers -------------------------------------------------------
 
 pub fn line_column(buffer: &DocumentBuffer, caret_char: usize) -> (usize, usize) {
     let line = current_line_index(buffer, caret_char);

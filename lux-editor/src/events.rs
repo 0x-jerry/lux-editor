@@ -39,11 +39,13 @@ pub enum LoadResult {
 
 /// One tab compared against its file's bytes after a watcher event.
 /// `stat` is the size+mtime the comparison observed, so the tab can baseline
-/// against it and skip a re-read until the file moves again.
+/// against it and skip a re-read until the file moves again; `generation` is
+/// the edit generation the compared text was captured at.
 #[derive(Debug)]
 pub struct ReconcileResult {
     pub path: PathBuf,
     pub stat: (u64, SystemTime),
+    pub generation: u64,
     /// The file's bytes differ from the buffer's text.
     pub differs: bool,
 }

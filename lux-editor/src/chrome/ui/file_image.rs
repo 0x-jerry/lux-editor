@@ -90,8 +90,15 @@ impl Component for FileImageView {
                 binary_view.render(ui, FileBinaryInput { path });
             }
             Ok(egui::load::TexturePoll::Ready { texture }) => {
-                let response = ui.allocate_rect(image_area, egui::Sense::click_and_drag());
-                self.render_image(ui, &image, &uri, &response, image_area, texture.size);
+                // A zero-sized texture turns every scale and rect below into
+                // NaN; the guide page is the honest fallback for it.
+                if texture.size.x <= 0.0 || texture.size.y <= 0.0 {
+                    let mut binary_view = FileBinaryView;
+                    binary_view.render(ui, FileBinaryInput { path });
+                } else {
+                    let response = ui.allocate_rect(image_area, egui::Sense::click_and_drag());
+                    self.render_image(ui, &image, &uri, &response, image_area, texture.size);
+                }
             }
         }
 

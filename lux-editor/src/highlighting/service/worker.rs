@@ -1,3 +1,4 @@
+use eframe::egui;
 use std::sync::mpsc::{Receiver, Sender};
 
 use super::client::{WorkerRequest, WorkerResponse};
@@ -7,6 +8,7 @@ use super::parse::parse_snapshot;
 pub(super) fn worker_loop(
     request_rx: Receiver<WorkerRequest>,
     response_tx: Sender<WorkerResponse>,
+    wake: egui::Context,
 ) {
     let mut engines = Engines::new();
 
@@ -39,6 +41,9 @@ pub(super) fn worker_loop(
 
                 let snapshot = parse_snapshot(&mut engines, &syntax, &text, language, version);
                 response_tx.send(WorkerResponse { version, snapshot }).ok();
+                // The snapshot is only painted once the UI thread drains the
+                // response, which it does on a pass: give it one.
+                wake.request_repaint();
             }
         }
     }

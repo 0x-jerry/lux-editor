@@ -52,17 +52,23 @@ pub(crate) struct FrameState {
     /// Tab id the close prompt asked to save before closing. The tab closes
     /// only when its save lands clean; a failed or superseded save clears it.
     pub(crate) pending_close_after_save: Option<u64>,
+    /// A window close is waiting for unsaved work to be resolved: whether the
+    /// close is pending, and the tab its prompt is asking about.
+    pub(crate) quit_pending: bool,
+    pub(crate) quit_prompt_tab: Option<u64>,
 }
 
 impl App {
-    pub fn new(ctx: egui::Context, font_loader: StartupFont) -> Self {
+    pub fn new(ctx: egui::Context, font_loader: StartupFont, editor_config: Config) -> Self {
         crate::app::startup::stage("window backend ready, app ctor");
         egui_extras::install_image_loaders(&ctx);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = std::sync::mpsc::channel();
-        let editor_config = Config::load();
         crate::app::startup::stage("config loaded");
         let mut app = Self {
+            // Built before `ctx` moves into the runtime: the highlight worker
+            // wakes the UI loop with it when a parse lands.
+            highlighting: Highlighting::new(ctx.clone()),
             runtime: Runtime {
                 rt,
                 event_tx,
@@ -75,7 +81,6 @@ impl App {
                 editor_config,
                 ..Default::default()
             },
-            highlighting: Highlighting::default(),
             chrome: Chrome {
                 needs_style_refresh: true,
                 startup_font: Some(font_loader),

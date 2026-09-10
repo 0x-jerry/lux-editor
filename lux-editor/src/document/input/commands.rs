@@ -1,4 +1,4 @@
-use crate::document::OpenDocument;
+use crate::document::{INDENT, OpenDocument};
 use eframe::egui;
 
 pub(crate) enum EditorCommand {
@@ -128,7 +128,7 @@ impl OpenDocument {
                 changed(self.insert_or_replace_selection(&text))
             }
             EditorCommand::InsertNewline => changed(self.insert_newline()),
-            EditorCommand::InsertTab => changed(self.insert_or_replace_selection("    ")),
+            EditorCommand::InsertTab => changed(self.insert_or_replace_selection(INDENT)),
             EditorCommand::Backspace => changed(self.delete_backward()),
             EditorCommand::Delete => changed(self.delete_forward()),
             EditorCommand::DeleteWordBackward => changed(self.delete_word_backward()),

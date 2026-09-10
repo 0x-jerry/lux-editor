@@ -124,15 +124,17 @@ impl OpenDocument {
         let cursor_count = self.caret_state.len();
         let active_index = self.caret_state.active_index();
         let mut edits = Vec::with_capacity(cursor_count);
+        let mut texts = Vec::with_capacity(cursor_count);
         for index in 0..cursor_count {
             if index == active_index {
                 edits.push((start, end));
+                texts.push(inserted_text.to_string());
             } else {
                 let caret = self.caret_state.caret_char_at(index);
                 edits.push((caret, caret));
+                texts.push(String::new());
             }
         }
-        let texts = vec![inserted_text.to_string(); cursor_count];
         self.apply_multi_edits(edits, texts)
     }
 
@@ -178,9 +180,21 @@ impl OpenDocument {
         let caret_chars_before = self.caret_state.caret_chars_snapshot();
 
         // Deduplicate identical targets (two cursors landing on the same
-        // position must not double-insert).
+        // position must not double-insert) and drop targets overlapping an
+        // already-kept one: the second edit would be applied in coordinates the
+        // first one has already moved.
         plan.sort_by_key(|&(cursor_index, start, end)| (start, end, cursor_index));
         plan.dedup_by(|left, right| left.1 == right.1 && left.2 == right.2);
+        let mut kept: Vec<(usize, usize)> = Vec::new();
+        plan.retain(|&(_, start, end)| {
+            let overlaps = kept
+                .iter()
+                .any(|&(kept_start, kept_end)| kept_start < end && start < kept_end);
+            if !overlaps {
+                kept.push((start, end));
+            }
+            !overlaps
+        });
 
         // items: (cursor_index, start, end, delta) sorted by start descending.
         let mut items: Vec<(usize, usize, usize, isize)> = plan
@@ -225,23 +239,21 @@ impl OpenDocument {
         }
 
         // Final caret positions: edited cursors land after their inserted
-        // text; skipped cursors are shifted by inserts below them.
+        // text; skipped cursors are mapped through every edit.
         {
             let mut positions = caret_chars_before.clone();
             for (cursor_index, next_caret) in &edited_position {
                 positions[*cursor_index] = *next_caret;
             }
+            let ranges = items
+                .iter()
+                .map(|&(_, start, end, delta)| (start, end, delta))
+                .collect::<Vec<_>>();
             for index in 0..cursor_count {
                 if edited_position.iter().any(|(i, _)| *i == index) {
                     continue;
                 }
-                let original = caret_chars_before[index];
-                let shift: isize = items
-                    .iter()
-                    .filter(|(_, start, _, delta)| *start <= original && *delta > 0)
-                    .map(|(_, _, _, delta)| *delta)
-                    .sum();
-                positions[index] = (original as isize + shift).max(0) as usize;
+                positions[index] = mapped_position(caret_chars_before[index], &ranges);
             }
             self.caret_state
                 .set_all_caret_chars(&positions, &self.buffer);
@@ -268,5 +280,69 @@ impl OpenDocument {
         } else {
             None
         };
+    }
+}
+
+/// Final position of an untouched position after every planned edit: positions
+/// after an edit shift by its delta, positions inside a replaced range land at
+/// its start. `items` holds (start, end, delta) in original-buffer coordinates,
+/// sorted by start descending as they are applied.
+fn mapped_position(original: usize, items: &[(usize, usize, isize)]) -> usize {
+    let mut shift: isize = 0;
+    for &(start, end, delta) in items.iter().rev() {
+        if original < start {
+            break;
+        }
+        if original < end {
+            return (start as isize + shift).max(0) as usize;
+        }
+        shift += delta;
+    }
+    (original as isize + shift).max(0) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::document::{DocumentBuffer, OpenDocument};
+
+    fn document(text: &str) -> OpenDocument {
+        let mut buffer = DocumentBuffer::new();
+        buffer.insert(0, text);
+        OpenDocument::from_buffer(buffer)
+    }
+
+    #[test]
+    fn apply_edit_replaces_only_the_active_cursors_target() {
+        let mut doc = document("abc");
+        doc.caret_state.set_caret_char(3, &doc.buffer, false);
+        doc.caret_state.add_cursor_at(1, &doc.buffer);
+        assert_eq!(doc.caret_state.active_index(), 1);
+
+        assert!(doc.apply_edit(0, 3, "FORMATTED"));
+        assert_eq!(doc.buffer.text().to_string(), "FORMATTED");
+    }
+
+    #[test]
+    fn skipped_cursor_follows_a_deletion_before_it() {
+        let mut doc = document("0123456789");
+        doc.caret_state.set_caret_char(8, &doc.buffer, false);
+        doc.caret_state.add_cursor_at(0, &doc.buffer);
+        doc.caret_state.set_caret_char(3, &doc.buffer, true);
+        assert_eq!(doc.caret_state.selection_range(), Some(0..3));
+
+        assert_eq!(doc.cut_selection().as_deref(), Some("012"));
+        assert_eq!(doc.buffer.text().to_string(), "3456789");
+        assert_eq!(doc.caret_state.caret_char_at(0), 5);
+        assert_eq!(doc.caret_state.caret_char_at(1), 0);
+    }
+
+    #[test]
+    fn overlapping_multi_cursor_targets_do_not_apply_twice() {
+        let mut doc = document("0123456789");
+        doc.caret_state.set_caret_char(5, &doc.buffer, true);
+        doc.caret_state.add_cursor_at(3, &doc.buffer);
+
+        assert!(doc.insert_or_replace_selection("X"));
+        assert_eq!(doc.buffer.text().to_string(), "X56789");
     }
 }

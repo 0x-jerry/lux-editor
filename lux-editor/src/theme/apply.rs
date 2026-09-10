@@ -10,11 +10,12 @@ use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
-/// Background-started load of the startup font family. System font lookup
-/// initializes CoreText on first call and reads a multi-MB font file — too
-/// much to sit on the UI thread before the first frame, so `main` starts the
-/// loader thread before the window exists and the app folds the bytes in
-/// once they land (falling back to system fonts until then).
+/// Background-started load of a font family. System font lookup initializes
+/// CoreText on first call and reads a multi-MB font file — too much to sit on
+/// the UI thread before the first frame, so `main` starts the loader thread
+/// before the window exists and the app folds the bytes in once they land
+/// (falling back to system fonts until then). A later family change goes
+/// through the same path instead of blocking the style pass.
 pub struct StartupFont {
     pub family: String,
     rx: Option<Receiver<Option<Vec<u8>>>>,
@@ -23,6 +24,15 @@ pub struct StartupFont {
 
 impl StartupFont {
     pub fn spawn(family: String) -> Self {
+        // An empty family asks for no custom font at all (the system default),
+        // so there is nothing to look up and no thread to start.
+        if family.is_empty() {
+            return Self {
+                family,
+                rx: None,
+                resolved: Some(None),
+            };
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         let loader_family = family.clone();
         std::thread::spawn(move || {
@@ -36,35 +46,33 @@ impl StartupFont {
     }
 
     /// `None` while the loader thread is still working; `Some(bytes-or-none)`
-    /// once, taking ownership of the resolved bytes out of the loader.
-    pub fn poll(&mut self) -> Option<Option<Vec<u8>>> {
+    /// once it is done. The result is kept, so every later style pass reuses it
+    /// instead of paying the lookup again.
+    pub fn resolved(&mut self) -> Option<Option<Vec<u8>>> {
         if self.resolved.is_none() {
-            match self.rx.as_ref().map(Receiver::try_recv) {
+            self.resolved = match self.rx.as_ref().map(Receiver::try_recv) {
                 Some(Ok(bytes)) => {
                     self.rx = None;
-                    self.resolved = Some(bytes);
+                    Some(bytes)
                 }
                 Some(Err(TryRecvError::Disconnected)) => {
                     self.rx = None;
-                    self.resolved = Some(None);
+                    Some(None)
                 }
                 _ => return None,
-            }
+            };
         }
-        self.resolved.take()
+        self.resolved.clone()
     }
 }
 
 /// How `apply_editor_settings` obtains the custom editor font.
 pub enum CustomFont {
-    /// The startup loader hasn't landed yet: render with system fallbacks;
-    /// the caller re-applies once it does.
+    /// The loader hasn't landed yet: render with system fallbacks; the caller
+    /// re-applies once it does.
     Pending,
-    /// Preloaded on the background thread (`None` = definitively not installed).
-    Preloaded(Option<Vec<u8>>),
-    /// No preload applies (e.g. a config switch to another family): do the
-    /// synchronous lookup.
-    Sync,
+    /// Loaded on the background thread (`None` = definitively not installed).
+    Loaded(Option<Vec<u8>>),
 }
 
 /// Applies a resolved chrome theme and the configured fonts to the egui
@@ -102,11 +110,10 @@ pub fn apply_editor_settings(
     );
     let custom_font = match font {
         CustomFont::Pending => None,
-        CustomFont::Preloaded(bytes) => {
+        CustomFont::Loaded(bytes) => {
             crate::app::startup::stage_once!("startup font folded in");
             bytes.map(egui::FontData::from_owned)
         }
-        CustomFont::Sync => load_custom_font(&settings.font.family).map(egui::FontData::from_owned),
     };
     if let Some(custom_font) = custom_font {
         fonts
@@ -155,5 +162,19 @@ fn load_custom_font(font_family: &str) -> Option<Vec<u8>> {
     match handle {
         Handle::Path { path, .. } => std::fs::read(path).ok(),
         Handle::Memory { bytes, .. } => Some(bytes.to_vec()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StartupFont;
+
+    #[test]
+    fn an_empty_family_resolves_to_no_custom_font() {
+        // No system lookup and no loader thread: the answer is known up front,
+        // and stays known on every later style pass.
+        let mut loader = StartupFont::spawn(String::new());
+        assert_eq!(loader.resolved(), Some(None));
+        assert_eq!(loader.resolved(), Some(None));
     }
 }

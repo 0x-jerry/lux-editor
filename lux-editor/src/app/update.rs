@@ -92,6 +92,7 @@ impl EframeApp for App {
                     document_dirty: active_document.document_dirty,
                     document_missing: active_document.missing,
                     document_binary: active_document.binary,
+                    document_file_size: active_document.last_disk_stat.map(|(len, _)| len),
                     active_is_markdown,
                 },
             )

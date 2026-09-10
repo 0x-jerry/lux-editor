@@ -54,6 +54,7 @@ pub(crate) struct FrameState {
 impl App {
     pub fn new(ctx: egui::Context, font_loader: StartupFont) -> Self {
         crate::app::startup::stage("window backend ready, app ctor");
+        egui_extras::install_image_loaders(&ctx);
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (event_tx, event_rx) = std::sync::mpsc::channel();
         let editor_config = Config::load();

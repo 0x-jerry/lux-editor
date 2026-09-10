@@ -39,6 +39,8 @@ pub struct AppViewInput<'a> {
     pub document_dirty: bool,
     pub document_missing: bool,
     pub document_binary: bool,
+    /// Size of the active tab's file on disk as last loaded or saved.
+    pub document_file_size: Option<u64>,
     /// The active tab is a markdown document (and not the configuration tab).
     pub active_is_markdown: bool,
 }
@@ -73,6 +75,7 @@ impl Component for AppView {
             document_dirty,
             document_missing,
             document_binary,
+            document_file_size,
             active_is_markdown,
         } = input;
 
@@ -96,6 +99,7 @@ impl Component for AppView {
                 document_dirty,
                 document_missing,
                 document_binary,
+                document_file_size,
                 active_is_markdown,
             },
         );

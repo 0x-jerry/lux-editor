@@ -39,6 +39,8 @@ pub struct ShellInput<'a> {
     pub document_dirty: bool,
     pub document_missing: bool,
     pub document_binary: bool,
+    /// Size of the active tab's file on disk as last loaded or saved.
+    pub document_file_size: Option<u64>,
     /// The active tab is a markdown document (and not the configuration tab).
     pub active_is_markdown: bool,
 }
@@ -121,6 +123,7 @@ impl Component for Shell {
             document_dirty,
             document_missing,
             document_binary,
+            document_file_size,
             active_is_markdown,
         } = state;
 
@@ -133,16 +136,33 @@ impl Component for Shell {
             .map(|range| range.end - range.start)
             .sum();
         let (caret_line, caret_column) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
+        // The image view publishes its geometry each frame; the status bar
+        // reads last frame's, close enough for a readout.
+        let image_status = if document_binary {
+            buffer
+                .path()
+                .filter(|path| super::is_image_path(path))
+                .and_then(|path| {
+                    let id = super::file_image::ImageStatus::data_id(&super::file_image::file_uri(
+                        path,
+                    ));
+                    ui.data(|data| data.get_temp(id))
+                })
+        } else {
+            None
+        };
         events.extend(self.status_bar.render(
             ui,
             StatusBarData {
                 sidebar_active: self.sidebar_visible,
-                cursor: if active_is_configuration {
+                cursor: if active_is_configuration || image_status.is_some() {
                     None
                 } else {
                     Some((caret_line, caret_column, selection_len))
                 },
                 markdown_preview: active_is_markdown.then_some(self.markdown_preview_visible),
+                file_size: document_file_size,
+                image_status,
             },
         ));
 

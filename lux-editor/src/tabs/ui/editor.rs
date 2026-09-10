@@ -1,7 +1,7 @@
 use crate::chrome::ui::welcome::WelcomeView;
 use crate::chrome::ui::{
-    FileBinaryInput, FileBinaryView, FileMissingInput, FileMissingView, WorkspaceStartInput,
-    WorkspaceStartView,
+    FileBinaryInput, FileBinaryView, FileImageInput, FileImageView, FileMissingInput,
+    FileMissingView, WorkspaceStartInput, WorkspaceStartView, is_image_path,
 };
 use crate::component::Component;
 use crate::document::DocumentBuffer;
@@ -146,11 +146,18 @@ impl Component for EditorView {
         }
 
         // A binary file is not editable, so a guide page replaces the text
-        // area; the tab is a real file though, never struck through.
+        // area; the tab is a real file though, never struck through. Images are
+        // the one binary kind with something to show: a viewer replaces the
+        // guide page.
         if document_binary {
             if let Some(path) = buffer.path() {
-                let mut binary_view = FileBinaryView;
-                binary_view.render(ui, FileBinaryInput { path });
+                if is_image_path(path) {
+                    let mut image_view = FileImageView;
+                    image_view.render(ui, FileImageInput { path });
+                } else {
+                    let mut binary_view = FileBinaryView;
+                    binary_view.render(ui, FileBinaryInput { path });
+                }
             }
             return events;
         }

@@ -290,6 +290,15 @@ impl Ctx<'_> {
         for (path, _) in &entries {
             self.track_file_open(path);
         }
+        // A reloaded image tab must not show the previous bytes: the egui
+        // loaders cache by URI forever, so drop the entry whenever the file is
+        // re-read (a no-op on first open).
+        let ctx = self.egui_ctx();
+        for (path, result) in &entries {
+            if matches!(result, LoadResult::Binary) && crate::chrome::ui::is_image_path(path) {
+                ctx.forget_image(&crate::chrome::ui::file_image::file_uri(path));
+            }
+        }
         self.tabs.apply_loaded(entries, activate);
         self.tabs.touch_caret_blink();
         self.update_window_title();

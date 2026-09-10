@@ -46,6 +46,23 @@ tree-sitter-html = "0.23.2"
 tree-sitter-xml = "0.7.0"
 tree-sitter-python = "0.25"
 egui_commonmark = "0.25"
+# Image-tab viewer: file:// bytes loader plus the `image`-crate decoder.
+egui_extras = { version = "0.36", default-features = false, features = [
+    "file",
+    "image",
+    "gif",
+    "webp",
+] }
+# Feature unification only: turns on the decoders egui_extras gates on
+# `ImageFormat::reading_enabled()`; no direct use of this crate.
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+    "ico",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

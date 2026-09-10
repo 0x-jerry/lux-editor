@@ -10,8 +10,9 @@ use egui_phosphor::regular::{EYE, SIDEBAR};
 
 /// Everything the status bar needs to render itself.
 pub struct StatusBarData {
-    /// Sidebar open: the toggle icon is accented.
-    pub sidebar_active: bool,
+    /// `None` when there is no sidebar to toggle (no workspace open);
+    /// otherwise whether it is open (the toggle icon is accented).
+    pub sidebar: Option<bool>,
     /// (line, column, selection length); `None` while the active tab has no
     /// text cursor (e.g. the configuration tab).
     pub cursor: Option<(usize, usize, usize)>,
@@ -45,9 +46,10 @@ impl Component for StatusBar {
             )
             .show(ui, |ui| {
                 ui.horizontal_centered(|ui| {
-                    if super::icon_button(ui, SIDEBAR, data.sidebar_active)
-                        .on_hover_text("Toggle sidebar")
-                        .clicked()
+                    if let Some(sidebar_active) = data.sidebar
+                        && super::icon_button(ui, SIDEBAR, sidebar_active)
+                            .on_hover_text("Toggle sidebar")
+                            .clicked()
                     {
                         events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
                     }

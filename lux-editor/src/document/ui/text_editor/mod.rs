@@ -4,6 +4,7 @@ mod row;
 
 use crate::component::Component;
 use crate::document::DocumentBuffer;
+use crate::document::ui::ScrollSync;
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::settings::Config;
@@ -23,6 +24,9 @@ pub struct TextEditorState<'a> {
     pub selection_ranges: &'a [Range<usize>],
     pub active_caret_index: usize,
     pub caret_visible: bool,
+    /// Scroll mirroring with a second pane showing the same document (the
+    /// markdown preview); `None` when the text area scrolls alone.
+    pub scroll_sync: Option<&'a mut ScrollSync>,
 }
 
 /// Scrollable text area: a gutter box and the virtualized rows sit side by
@@ -42,6 +46,7 @@ impl Component for TextEditor {
             selection_ranges,
             active_caret_index,
             caret_visible,
+            scroll_sync,
         } = state;
         let mut events = Vec::new();
 
@@ -80,6 +85,7 @@ impl Component for TextEditor {
                     caret_visible,
                     metrics: &metrics,
                     total_lines,
+                    scroll_sync,
                 },
             ));
         });

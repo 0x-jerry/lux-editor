@@ -1,6 +1,7 @@
 use super::metrics::TextEditorMetrics;
 use crate::component::Component;
 use crate::document::DocumentBuffer;
+use crate::document::ui::{ScrollPane, ScrollSync};
 use crate::events::EditingEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::build_highlighted_line_job;
@@ -31,6 +32,8 @@ pub struct RowsInput<'a> {
     pub caret_visible: bool,
     pub metrics: &'a TextEditorMetrics,
     pub total_lines: usize,
+    /// Scroll mirroring with the markdown preview; `None` when it is closed.
+    pub scroll_sync: Option<&'a mut ScrollSync>,
 }
 
 /// The scrollable text area: virtualizes rows via a scroll area and tracks the
@@ -118,8 +121,19 @@ impl Component for Rows {
             .id_salt(("editor_text_editor_scroll", document_salt))
             .scroll_source(egui::scroll_area::ScrollSource::MOUSE_WHEEL)
             .auto_shrink([false, false]);
+        // Revealing the caret outranks mirroring the preview.
+        let follow_offset = if reveal.target_offset.is_some() {
+            None
+        } else {
+            input
+                .scroll_sync
+                .as_ref()
+                .and_then(|sync| sync.follow_offset(ScrollPane::Editor))
+        };
         if let Some(target) = reveal.target_offset {
             scroll_area = scroll_area.vertical_scroll_offset(target);
+        } else if let Some(offset) = follow_offset {
+            scroll_area = scroll_area.vertical_scroll_offset(offset);
         }
 
         self.visible_rows.clear();
@@ -150,6 +164,17 @@ impl Component for Rows {
         );
 
         reveal.offset = scroll_output.state.offset.y;
+        if let Some(sync) = input.scroll_sync {
+            if reveal.target_offset.is_some() {
+                sync.claim(ScrollPane::Editor);
+            }
+            sync.report(
+                ScrollPane::Editor,
+                reveal.offset,
+                scroll_output.inner_rect,
+                scroll_output.content_size,
+            );
+        }
         reveal.target_offset = None;
         ui.data_mut(|data| data.insert_temp(reveal_id, reveal));
 

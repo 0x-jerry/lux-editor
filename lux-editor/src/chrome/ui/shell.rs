@@ -5,12 +5,13 @@
 use super::widgets::{StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle};
 use crate::component::Component;
 use crate::document::DocumentBuffer;
+use crate::document::ui::ScrollSync;
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::settings::{Config, EditorSettings};
-use crate::tabs::{EditorView, EditorViewState};
+use crate::tabs::{EditorView, EditorViewState, MarkdownPreview};
 use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
@@ -53,6 +54,8 @@ pub struct Shell {
     markdown_preview_visible: bool,
     /// egui_commonmark's inter-frame cache (images, scroll state).
     markdown_cache: CommonMarkCache,
+    /// Scroll mirroring between the text editor and the markdown preview.
+    markdown_scroll: ScrollSync,
     title_bar: TitleBar,
     status_bar: StatusBar,
     file_tree_panel: FileTreePanel,
@@ -66,6 +69,7 @@ impl Default for Shell {
             sidebar_visible: true,
             markdown_preview_visible: false,
             markdown_cache: CommonMarkCache::default(),
+            markdown_scroll: ScrollSync::default(),
             title_bar: TitleBar,
             status_bar: StatusBar,
             file_tree_panel: FileTreePanel::default(),
@@ -82,6 +86,11 @@ impl Shell {
 
     pub fn toggle_markdown_preview(&mut self) {
         self.markdown_preview_visible = !self.markdown_preview_visible;
+        if self.markdown_preview_visible {
+            // Mirror from where the editor is now, not from the fraction a
+            // closed preview left behind.
+            self.markdown_scroll = ScrollSync::default();
+        }
     }
 
     /// Seed the tree's expanded folders (workspace restore / first open).
@@ -154,7 +163,9 @@ impl Component for Shell {
         events.extend(self.status_bar.render(
             ui,
             StatusBarData {
-                sidebar_active: self.sidebar_visible,
+                // Without a workspace there is no file tree, so the toggle
+                // would be dead chrome.
+                sidebar: file_tree.is_some().then_some(self.sidebar_visible),
                 cursor: if active_is_configuration || image_status.is_some() {
                     None
                 } else {
@@ -190,7 +201,10 @@ impl Component for Shell {
             && self.markdown_preview_visible
             && !document_missing
             && !document_binary)
-            .then_some(&mut self.markdown_cache);
+            .then_some(MarkdownPreview {
+                cache: &mut self.markdown_cache,
+                scroll: &mut self.markdown_scroll,
+            });
 
         let central_fill = if active_is_configuration {
             ui.visuals().panel_fill

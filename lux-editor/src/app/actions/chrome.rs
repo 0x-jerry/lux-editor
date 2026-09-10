@@ -73,26 +73,16 @@ impl Ctx<'_> {
             TitleBarMenu::SaveFile => {
                 self.save_current_buffer();
             }
-            TitleBarMenu::Undo => {
-                self.execute_command(EditorCommand::Undo);
-            }
-            TitleBarMenu::Redo => {
-                self.execute_command(EditorCommand::Redo);
-            }
-            TitleBarMenu::Cut => {
-                self.execute_command(EditorCommand::Cut);
-            }
-            TitleBarMenu::Copy => {
-                self.execute_command(EditorCommand::Copy);
-            }
+            TitleBarMenu::Undo => self.edit_action(EditorCommand::Undo),
+            TitleBarMenu::Redo => self.edit_action(EditorCommand::Redo),
+            TitleBarMenu::Cut => self.edit_action(EditorCommand::Cut),
+            TitleBarMenu::Copy => self.edit_action(EditorCommand::Copy),
             TitleBarMenu::Paste => {
                 if let Some(text) = clipboard_text() {
-                    self.execute_command(EditorCommand::Paste(text));
+                    self.edit_action(EditorCommand::Paste(text));
                 }
             }
-            TitleBarMenu::SelectAll => {
-                self.execute_command(EditorCommand::SelectAll);
-            }
+            TitleBarMenu::SelectAll => self.edit_action(EditorCommand::SelectAll),
             TitleBarMenu::CommandPalette => self.chrome.command_panel.toggle(),
             TitleBarMenu::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
             TitleBarMenu::Hide => {
@@ -121,6 +111,21 @@ impl Ctx<'_> {
         }
     }
 
+    /// Send an edit action to whatever owns the keyboard. The code editor
+    /// consumes [`EditorCommand`]s; a focused egui text input only reacts to
+    /// input events, and the native menu swallowed the key before egui saw it,
+    /// so the equivalent event is synthesized for the current pass.
+    fn edit_action(&mut self, command: EditorCommand) {
+        let egui = self.egui_ctx().clone();
+        if egui.text_edit_focused()
+            && let Some(event) = text_edit_event(&command)
+        {
+            egui.input_mut(|input| input.events.push(event));
+            return;
+        }
+        self.execute_command(command);
+    }
+
     /// One pass of the native menubar/tray: install once, reflect the tray
     /// label, then route any pending native commands through the same pipeline
     /// as the rendered chrome.
@@ -137,4 +142,93 @@ impl Ctx<'_> {
 
 fn clipboard_text() -> Option<String> {
     arboard::Clipboard::new().ok()?.get_text().ok()
+}
+
+/// The egui input event a focused [`egui::TextEdit`] handles for `command`.
+fn text_edit_event(command: &EditorCommand) -> Option<egui::Event> {
+    let key = |key: egui::Key, modifiers: egui::Modifiers| egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers,
+    };
+    Some(match command {
+        EditorCommand::SelectAll => key(egui::Key::A, egui::Modifiers::COMMAND),
+        EditorCommand::Undo => key(egui::Key::Z, egui::Modifiers::COMMAND),
+        EditorCommand::Redo => key(egui::Key::Z, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT),
+        EditorCommand::Cut => egui::Event::Cut,
+        EditorCommand::Copy => egui::Event::Copy,
+        EditorCommand::Paste(text) => egui::Event::Paste(text.clone()),
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(key: egui::Key, modifiers: egui::Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    #[test]
+    fn edit_commands_map_to_the_events_a_text_edit_handles() {
+        assert_eq!(
+            text_edit_event(&EditorCommand::SelectAll),
+            Some(key(egui::Key::A, egui::Modifiers::COMMAND))
+        );
+        assert_eq!(
+            text_edit_event(&EditorCommand::Undo),
+            Some(key(egui::Key::Z, egui::Modifiers::COMMAND))
+        );
+        assert_eq!(
+            text_edit_event(&EditorCommand::Redo),
+            Some(key(
+                egui::Key::Z,
+                egui::Modifiers::COMMAND | egui::Modifiers::SHIFT
+            ))
+        );
+        assert_eq!(text_edit_event(&EditorCommand::Cut), Some(egui::Event::Cut));
+        assert_eq!(
+            text_edit_event(&EditorCommand::Copy),
+            Some(egui::Event::Copy)
+        );
+        assert_eq!(
+            text_edit_event(&EditorCommand::Paste("x".to_string())),
+            Some(egui::Event::Paste("x".to_string()))
+        );
+        assert_eq!(text_edit_event(&EditorCommand::Save), None);
+    }
+}
+
+#[cfg(test)]
+mod scratch {
+    #[test]
+    fn two_pastes_one_pass() {
+        let ctx = eframe::egui::Context::default();
+        let mut text = String::new();
+        let id = eframe::egui::Id::new("t");
+        let mut out = ctx.run_ui(eframe::egui::RawInput::default(), |ui| {
+            ui.add(eframe::egui::TextEdit::singleline(&mut text).id(id))
+                .request_focus();
+        });
+        out.textures_delta.clear();
+        let mut raw = eframe::egui::RawInput::default();
+        raw.events
+            .push(eframe::egui::Event::Paste("foo".to_string()));
+        raw.events
+            .push(eframe::egui::Event::Paste("bar".to_string()));
+        let mut out = ctx.run_ui(raw, |ui| {
+            ui.add(eframe::egui::TextEdit::singleline(&mut text).id(id));
+        });
+        out.textures_delta.clear();
+        assert_eq!(text, "foobar");
+    }
 }

@@ -2,63 +2,51 @@
 //! active view. Owns the shell chrome state (sidebar, configuration session)
 //! and its child components.
 
+use super::frame_input::{CaretInput, DocumentInput, SidebarInput, TabsInput, WorkspaceInput};
 use super::widgets::{StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle};
 use crate::component::Component;
-use crate::document::DocumentBuffer;
 use crate::document::ui::ScrollSync;
 use crate::events::CustomEvent;
-use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::settings::{Config, EditorSettings};
 use crate::tabs::{EditorView, EditorViewState, MarkdownPreview};
-use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
 use egui_commonmark::CommonMarkCache;
 use std::collections::HashSet;
-use std::ops::Range;
 use std::path::PathBuf;
 
 /// The document-model snapshot the shell renders from each frame.
 pub struct ShellInput<'a> {
-    pub file_tree: Option<&'a mut FileTree>,
-    pub workspace_path: Option<&'a PathBuf>,
-    pub buffer: &'a DocumentBuffer,
-    pub tabs: &'a [crate::tabs::TabMeta],
-    pub active_tab_id: u64,
-    pub active_is_configuration: bool,
-    pub highlight_snapshot: &'a HighlightSnapshot,
+    pub sidebar: SidebarInput<'a>,
+    pub workspace: WorkspaceInput<'a>,
+    pub tabs: TabsInput<'a>,
+    pub document: DocumentInput<'a>,
+    pub caret: CaretInput<'a>,
     pub editor_config: &'a Config,
-    pub document_status: Option<&'a str>,
-    pub restoring_session: bool,
-    /// All cursor positions as 1-based (line, column).
-    pub carets: Vec<(usize, usize)>,
-    pub selection_ranges: Vec<Range<usize>>,
-    pub active_caret_index: usize,
-    pub caret_visible: bool,
-    pub document_dirty: bool,
-    pub document_missing: bool,
-    pub document_binary: bool,
-    /// Size of the active tab's file on disk as last loaded or saved.
-    pub document_file_size: Option<u64>,
-    /// The active tab is a markdown document (and not the configuration tab).
-    pub active_is_markdown: bool,
 }
 
 /// The app shell: chrome (title/status bars), sidebar and the active view.
 /// Owns the shell chrome state and its child components; the configuration
 /// session exists only while a configuration tab is open.
 pub struct Shell {
+    // Chrome bars.
+    title_bar: TitleBar,
+    status_bar: StatusBar,
+
+    // Sidebar.
     sidebar_visible: bool,
+    file_tree_panel: FileTreePanel,
+
+    // Markdown preview.
     markdown_preview_visible: bool,
     /// egui_commonmark's inter-frame cache (images, scroll state).
     markdown_cache: CommonMarkCache,
     /// Scroll mirroring between the text editor and the markdown preview.
     markdown_scroll: ScrollSync,
-    title_bar: TitleBar,
-    status_bar: StatusBar,
-    file_tree_panel: FileTreePanel,
+
+    // Central views.
     editor_view: EditorView,
     pub(crate) configuration_view: Option<ConfigurationView>,
 }
@@ -66,13 +54,13 @@ pub struct Shell {
 impl Default for Shell {
     fn default() -> Self {
         Self {
+            title_bar: TitleBar,
+            status_bar: StatusBar,
             sidebar_visible: true,
+            file_tree_panel: FileTreePanel::default(),
             markdown_preview_visible: false,
             markdown_cache: CommonMarkCache::default(),
             markdown_scroll: ScrollSync::default(),
-            title_bar: TitleBar,
-            status_bar: StatusBar,
-            file_tree_panel: FileTreePanel::default(),
             editor_view: EditorView,
             configuration_view: None,
         }
@@ -115,40 +103,33 @@ impl Component for Shell {
 
     fn render(&mut self, ui: &mut egui::Ui, state: Self::Input<'_>) -> Vec<CustomEvent> {
         let ShellInput {
-            file_tree,
-            workspace_path,
-            buffer,
+            sidebar,
+            workspace,
             tabs,
-            active_tab_id,
-            active_is_configuration,
-            highlight_snapshot,
+            document,
+            caret,
             editor_config,
-            document_status,
-            restoring_session,
-            carets,
-            selection_ranges,
-            active_caret_index,
-            caret_visible,
-            document_dirty,
-            document_missing,
-            document_binary,
-            document_file_size,
-            active_is_markdown,
         } = state;
 
         let mut events = Vec::new();
 
         self.title_bar.render(ui, TitleBarData { app_title: "Lux" });
 
-        let selection_len: usize = selection_ranges
+        let selection_len: usize = caret
+            .selection_ranges
             .iter()
             .map(|range| range.end - range.start)
             .sum();
-        let (caret_line, caret_column) = carets.get(active_caret_index).copied().unwrap_or((1, 1));
+        let (caret_line, caret_column) = caret
+            .carets
+            .get(caret.active_index)
+            .copied()
+            .unwrap_or((1, 1));
         // The image view publishes its geometry each frame; the status bar
         // reads last frame's, close enough for a readout.
-        let image_status = if document_binary {
-            buffer
+        let image_status = if document.binary {
+            document
+                .buffer
                 .path()
                 .filter(|path| super::is_image_path(path))
                 .and_then(|path| {
@@ -159,25 +140,29 @@ impl Component for Shell {
         } else {
             None
         };
-        events.extend(self.status_bar.render(
-            ui,
-            StatusBarData {
-                // Without a workspace there is no file tree, so the toggle
-                // would be dead chrome.
-                sidebar: file_tree.is_some().then_some(self.sidebar_visible),
-                cursor: if active_is_configuration || image_status.is_some() {
-                    None
-                } else {
-                    Some((caret_line, caret_column, selection_len))
+        events.extend(
+            self.status_bar.render(
+                ui,
+                StatusBarData {
+                    // Without a workspace there is no file tree, so the toggle
+                    // would be dead chrome.
+                    sidebar: sidebar.file_tree.is_some().then_some(self.sidebar_visible),
+                    cursor: if tabs.active_is_configuration || image_status.is_some() {
+                        None
+                    } else {
+                        Some((caret_line, caret_column, selection_len))
+                    },
+                    markdown_preview: tabs
+                        .active_is_markdown
+                        .then_some(self.markdown_preview_visible),
+                    file_size: document.file_size,
+                    image_status,
                 },
-                markdown_preview: active_is_markdown.then_some(self.markdown_preview_visible),
-                file_size: document_file_size,
-                image_status,
-            },
-        ));
+            ),
+        );
 
         if self.sidebar_visible
-            && let Some(tree) = file_tree
+            && let Some(tree) = sidebar.file_tree
         {
             events.extend(self.file_tree_panel.render(
                 ui,
@@ -185,10 +170,10 @@ impl Component for Shell {
                     tree,
                     // Only a file tab's path belongs in the tree; the
                     // configuration tab (or any non-file tab) selects nothing.
-                    active_file_path: if active_is_configuration {
+                    active_file_path: if tabs.active_is_configuration {
                         None
                     } else {
-                        buffer.path().map(|path| path.as_path())
+                        document.buffer.path().map(|path| path.as_path())
                     },
                 },
             ));
@@ -196,19 +181,22 @@ impl Component for Shell {
 
         // Markdown preview: the tab content view renders it right of the
         // editor, only while the active tab is an editable markdown document.
-        let markdown_preview = (active_is_markdown
+        let markdown_preview = (tabs.active_is_markdown
             && self.markdown_preview_visible
-            && !document_missing
-            && !document_binary)
+            && !document.missing
+            && !document.binary)
             .then_some(MarkdownPreview {
                 cache: &mut self.markdown_cache,
                 scroll: &mut self.markdown_scroll,
             });
 
-        let central_fill = if active_is_configuration {
+        let central_fill = if tabs.active_is_configuration {
             ui.visuals().panel_fill
         } else {
-            snapshot_color(highlight_snapshot.background, ui.visuals().code_bg_color)
+            snapshot_color(
+                document.highlight_snapshot.background,
+                ui.visuals().code_bg_color,
+            )
         };
         egui::CentralPanel::default()
             .frame(
@@ -220,24 +208,13 @@ impl Component for Shell {
                 events.extend(self.editor_view.render(
                     ui,
                     EditorViewState {
-                        workspace_path,
-                        buffer,
+                        workspace,
                         tabs,
-                        active_tab_id,
-                        active_is_configuration,
+                        document,
+                        caret,
                         configuration: self.configuration_view.as_mut(),
-                        highlight_snapshot,
                         editor_config,
-                        carets: &carets,
-                        selection_ranges: &selection_ranges,
-                        active_caret_index,
-                        caret_visible,
                         sidebar_visible: self.sidebar_visible,
-                        document_dirty,
-                        document_status,
-                        document_missing,
-                        document_binary,
-                        restoring_session,
                         markdown_preview,
                     },
                 ));

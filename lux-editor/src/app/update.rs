@@ -6,6 +6,7 @@
 use super::Ctx;
 use crate::app::App;
 use crate::chrome;
+use crate::chrome::ui::{CaretInput, DocumentInput, SidebarInput, TabsInput, WorkspaceInput};
 use crate::component::Component;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::theme::{self, ThemeChoice};
@@ -75,25 +76,35 @@ impl EframeApp for App {
                     shell: &mut self.chrome.shell,
                     command_panel: &mut self.chrome.command_panel,
                     about_window: &mut self.chrome.about_window,
-                    file_tree: self.workspace.file_tree.as_mut(),
-                    workspace_path: self.workspace.path.as_ref(),
-                    buffer: &active_document.buffer,
-                    tabs: &tabs,
-                    active_tab_id,
-                    active_is_configuration: self.tabs.active_is_configuration(),
-                    highlight_snapshot,
+                    sidebar: SidebarInput {
+                        file_tree: self.workspace.file_tree.as_mut(),
+                    },
+                    workspace: WorkspaceInput {
+                        path: self.workspace.path.as_ref(),
+                        restoring_session: self.tabs.pending_loads > 0,
+                    },
+                    tabs: TabsInput {
+                        tabs: &tabs,
+                        active_id: active_tab_id,
+                        active_is_configuration: self.tabs.active_is_configuration(),
+                        active_is_markdown,
+                    },
+                    document: DocumentInput {
+                        buffer: &active_document.buffer,
+                        highlight_snapshot,
+                        status: active_document.document_status.as_deref(),
+                        dirty: active_document.document_dirty,
+                        missing: active_document.missing,
+                        binary: active_document.binary,
+                        file_size: active_document.last_disk_stat.map(|(len, _)| len),
+                    },
+                    caret: CaretInput {
+                        carets: &carets,
+                        selection_ranges: &selection_ranges,
+                        active_index: active_caret_index,
+                        visible: caret_visible,
+                    },
                     editor_config: &self.settings.editor_config,
-                    document_status: active_document.document_status.as_deref(),
-                    restoring_session: self.tabs.pending_loads > 0,
-                    carets,
-                    selection_ranges,
-                    active_caret_index,
-                    caret_visible,
-                    document_dirty: active_document.document_dirty,
-                    document_missing: active_document.missing,
-                    document_binary: active_document.binary,
-                    document_file_size: active_document.last_disk_stat.map(|(len, _)| len),
-                    active_is_markdown,
                 },
             )
         };

@@ -38,7 +38,13 @@ impl Component for CommandGroup {
         for (offset, ranked) in input.group.commands.iter().enumerate() {
             let index = input.base_index + offset;
             let selected = index == input.selected;
-            for message in row.render(ui, RowInput { item: ranked, selected }) {
+            for message in row.render(
+                ui,
+                RowInput {
+                    item: ranked,
+                    selected,
+                },
+            ) {
                 match message {
                     RowMessage::Clicked(target) => messages.push(GroupMessage::Clicked(target)),
                     RowMessage::Hovered => messages.push(GroupMessage::Hovered(index)),

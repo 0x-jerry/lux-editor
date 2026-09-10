@@ -56,10 +56,7 @@ impl OpenDocument {
                         (range.start, range.end)
                     } else {
                         let caret = self.caret_state.caret_char_at(index);
-                        (
-                            previous_word_boundary(&self.buffer, caret),
-                            caret,
-                        )
+                        (previous_word_boundary(&self.buffer, caret), caret)
                     }
                 })
                 .collect::<Vec<_>>()
@@ -252,12 +249,11 @@ impl OpenDocument {
 
         sub_edits.sort_by_key(|edit| edit.start_char);
         let after = self.caret_state.snapshot();
-        self.edit_history
-            .push(EditTransaction {
-                edits: sub_edits,
-                before,
-                after,
-            });
+        self.edit_history.push(EditTransaction {
+            edits: sub_edits,
+            before,
+            after,
+        });
         self.mark_dirty();
         true
     }

@@ -314,7 +314,8 @@ impl TabManager {
     }
 
     pub(crate) fn caret_blink_visible(&self) -> bool {
-        self.active_text().is_none_or(|document| document.caret_blink_visible())
+        self.active_text()
+            .is_none_or(|document| document.caret_blink_visible())
     }
 
     pub(crate) fn touch_caret_blink(&mut self) {
@@ -480,10 +481,7 @@ mod tests {
             tab_with_path(&manager.tabs, Path::new("/ws/gone.rs")),
             Some(1)
         );
-        assert_eq!(
-            openable_tab(&manager.tabs, Path::new("/ws/gone.rs")),
-            None
-        );
+        assert_eq!(openable_tab(&manager.tabs, Path::new("/ws/gone.rs")), None);
         manager.apply_loaded(
             vec![(
                 PathBuf::from("/ws/gone.rs"),
@@ -657,7 +655,11 @@ mod tests {
 
         // An edited tab whose file differs keeps the buffer and reports the
         // conflict; it is not reloaded (that would clobber the edits).
-        manager.tabs[0].content.as_text_mut().unwrap().document_dirty = true;
+        manager.tabs[0]
+            .content
+            .as_text_mut()
+            .unwrap()
+            .document_dirty = true;
         assert!(
             manager
                 .apply_reconcile_results(vec![ReconcileResult {

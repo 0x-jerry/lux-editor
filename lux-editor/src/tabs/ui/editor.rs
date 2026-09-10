@@ -6,12 +6,12 @@ use crate::chrome::ui::{
 use crate::component::Component;
 use crate::document::DocumentBuffer;
 use crate::document::ui::{TextEditor, TextEditorState};
-use crate::settings::configuration_view::{ConfigurationView, ConfigurationViewInput};
-use crate::tabs::{TabMeta, TabStripInput, TabStripView};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::Config;
+use crate::settings::configuration_view::{ConfigurationView, ConfigurationViewInput};
+use crate::tabs::{TabMeta, TabStripInput, TabStripView};
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use std::ops::Range;
@@ -99,10 +99,7 @@ impl Component for EditorView {
             if let Some(configuration) = configuration {
                 events.extend(
                     configuration
-                        .render(
-                            ui,
-                            ConfigurationViewInput { editor_config },
-                        )
+                        .render(ui, ConfigurationViewInput { editor_config })
                         .into_iter()
                         .map(CustomEvent::Configuration),
                 );
@@ -170,10 +167,7 @@ impl Component for EditorView {
                 .resizable(true)
                 .default_size(420.0)
                 .size_range(max_width.min(200.0)..=max_width)
-                .frame(
-                    egui::Frame::side_top_panel(ui.style())
-                        .inner_margin(egui::Margin::same(12)),
-                )
+                .frame(egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::same(12)))
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])

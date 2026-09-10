@@ -150,9 +150,21 @@ mod tests {
     fn split_by_lines_overlaps_are_normalized() {
         // Simulate an upstream grammar emitting overlapping ranges on one line.
         let spans = vec![
-            RawSpan { start: 0, end: 4, color: [1, 2, 3, 255] },
-            RawSpan { start: 2, end: 8, color: [4, 5, 6, 255] },
-            RawSpan { start: 6, end: 10, color: [7, 8, 9, 255] },
+            RawSpan {
+                start: 0,
+                end: 4,
+                color: [1, 2, 3, 255],
+            },
+            RawSpan {
+                start: 2,
+                end: 8,
+                color: [4, 5, 6, 255],
+            },
+            RawSpan {
+                start: 6,
+                end: 10,
+                color: [7, 8, 9, 255],
+            },
         ];
         // One line of 10 bytes.
         let starts = vec![0];
@@ -163,9 +175,15 @@ mod tests {
         // Disjoint, ordered, cover 0..10 exactly, no duplicates.
         let mut cursor = 0usize;
         for t in tokens {
-            assert!(t.start_col >= cursor, "token must not overlap the previous: {t:?}");
+            assert!(
+                t.start_col >= cursor,
+                "token must not overlap the previous: {t:?}"
+            );
             assert!(t.start_col < t.end_col, "zero-width token: {t:?}");
-            assert_eq!(t.start_col, cursor, "token should start where the previous left off: {t:?}");
+            assert_eq!(
+                t.start_col, cursor,
+                "token should start where the previous left off: {t:?}"
+            );
             cursor = t.end_col;
         }
         assert_eq!(cursor, 10, "tokens must cover the whole line");
@@ -186,13 +204,12 @@ mod tests {
         for line_index in 0..snapshot.line_tokens.len() {
             let raw = rope.line(line_index).to_string();
             let trimmed = raw.trim_end_matches(['\r', '\n']);
-            let tokens = snapshot.line_tokens.get(line_index).map(Vec::as_slice).unwrap_or(&[]);
-            let job = build_highlighted_line_job(
-                trimmed,
-                tokens,
-                12.0,
-                egui::Color32::GRAY,
-            );
+            let tokens = snapshot
+                .line_tokens
+                .get(line_index)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let job = build_highlighted_line_job(trimmed, tokens, 12.0, egui::Color32::GRAY);
             assert_eq!(
                 job.text, trimmed,
                 "line {line_index} painted output must equal the trimmed source (no duplication)"
@@ -238,7 +255,9 @@ mod tests {
         // The `# Title` heading line is colored (was covered by
         // `markdown_highlights_headings`).
         assert!(
-            snapshot.line_tokens[0].iter().any(|span| span.color != foreground),
+            snapshot.line_tokens[0]
+                .iter()
+                .any(|span| span.color != foreground),
             "heading must be colored"
         );
         // Lines 3 and 7 are the ```rust/```sh fence bodies; line 11, a fence
@@ -267,12 +286,24 @@ mod tests {
             LanguageKind::Markdown,
         );
         let syntax = theme::syntax_colors(ThemeChoice::Dark);
-        assert_eq!(color_at(&snapshot, 1, 0), syntax.tokens["variable"], "console");
+        assert_eq!(
+            color_at(&snapshot, 1, 0),
+            syntax.tokens["variable"],
+            "console"
+        );
         assert_eq!(color_at(&snapshot, 1, 8), syntax.tokens["function"], "log");
-        assert_eq!(color_at(&snapshot, 1, 12), syntax.tokens["string"], "'hello'");
+        assert_eq!(
+            color_at(&snapshot, 1, 12),
+            syntax.tokens["string"],
+            "'hello'"
+        );
         assert_eq!(color_at(&snapshot, 5, 0), syntax.tokens["keyword"], "fn");
         assert_eq!(color_at(&snapshot, 5, 3), syntax.tokens["function"], "main");
-        assert_eq!(color_at(&snapshot, 6, 13), syntax.tokens["string"], "\"hello\"");
+        assert_eq!(
+            color_at(&snapshot, 6, 13),
+            syntax.tokens["string"],
+            "\"hello\""
+        );
     }
 
     #[test]

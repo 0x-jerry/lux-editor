@@ -1,6 +1,6 @@
 use crate::component::Component;
 use crate::events::ConfigurationEvent;
-use crate::settings::schema::{RowSchema, RowType, SectionSchema, BUILTIN};
+use crate::settings::schema::{BUILTIN, RowSchema, RowType, SectionSchema};
 use crate::settings::{Config, EditorSettings};
 use eframe::egui;
 use egui_phosphor::regular::MAGNIFYING_GLASS;
@@ -93,9 +93,7 @@ impl Component for ConfigurationView {
                         let mut any_visible = false;
 
                         ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new("Configuration").size(24.0).strong(),
-                            );
+                            ui.label(egui::RichText::new("Configuration").size(24.0).strong());
                             if let Some(status) = self.status.as_deref() {
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
@@ -105,9 +103,7 @@ impl Component for ConfigurationView {
                                         } else {
                                             ui.visuals().weak_text_color()
                                         };
-                                        ui.label(
-                                            egui::RichText::new(status).small().color(color),
-                                        );
+                                        ui.label(egui::RichText::new(status).small().color(color));
                                     },
                                 );
                             }

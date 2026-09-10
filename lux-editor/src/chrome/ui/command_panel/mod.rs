@@ -13,11 +13,11 @@ use crate::component::Component;
 use crate::events::{AppEvent, CustomEvent};
 use crate::settings::Config;
 use bar::{CommandFooter, CommandHeader, FooterHint, FooterInput, HeaderInput};
-use commands::{Command, CommandKind, PaletteItem, PaletteTarget};
 pub(crate) use commands::PaletteContext;
+use commands::{Command, CommandKind, PaletteItem, PaletteTarget};
 use eframe::egui;
 use group::{CommandGroup, GroupInput, GroupMessage};
-use rank::{rank_commands, Group, RankedCommand};
+use rank::{Group, RankedCommand, rank_commands};
 
 /// Vertical offset of the card's top edge below the window top. The title bar
 /// is 32px tall; 40px leaves an 8px gap.
@@ -254,8 +254,8 @@ impl Component for CommandPanel {
                             });
                             ui.add_space(12.0);
                         } else {
-                            let max_list = (10.0 * ROW_HEIGHT)
-                                .min(ctx.content_rect().height() * 0.6);
+                            let max_list =
+                                (10.0 * ROW_HEIGHT).min(ctx.content_rect().height() * 0.6);
                             egui::ScrollArea::vertical()
                                 .max_height(max_list)
                                 .show(ui, |ui| {
@@ -371,7 +371,7 @@ impl Component for CommandPanel {
 
 #[cfg(test)]
 mod tests {
-    use super::{commands, CommandKind, CommandPanel, PaletteTarget};
+    use super::{CommandKind, CommandPanel, PaletteTarget, commands};
     use std::path::PathBuf;
 
     #[test]

@@ -3,12 +3,14 @@
 
 use super::commands::PaletteItem;
 
+type MatchSpans = Option<Vec<(usize, usize)>>;
+
 #[derive(Clone)]
 pub(super) struct RankedCommand {
     pub(super) command: PaletteItem,
     pub(super) score: i32,
     /// Char-index ranges within `title` that matched the query (emphasis).
-    pub(super) match_spans: Option<Vec<(usize, usize)>>,
+    pub(super) match_spans: MatchSpans,
 }
 
 /// A run of commands rendered under an optional group header.
@@ -38,10 +40,7 @@ pub(super) fn rank_commands(query: &str, commands: Vec<PaletteItem>) -> Vec<Rank
     ranked
 }
 
-fn score_command(
-    query: &str,
-    command: &PaletteItem,
-) -> Option<(i32, Option<Vec<(usize, usize)>>)> {
+fn score_command(query: &str, command: &PaletteItem) -> Option<(i32, MatchSpans)> {
     let normalized = query.trim();
     if normalized.is_empty() {
         return Some((0, None));

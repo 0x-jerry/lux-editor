@@ -89,10 +89,15 @@ impl RowSchema {
         if query.is_empty() {
             return true;
         }
-        [section.title, section.description, self.title, self.description]
-            .into_iter()
-            .chain(self.kind.control_label())
-            .any(|haystack| haystack.to_lowercase().contains(&query))
+        [
+            section.title,
+            section.description,
+            self.title,
+            self.description,
+        ]
+        .into_iter()
+        .chain(self.kind.control_label())
+        .any(|haystack| haystack.to_lowercase().contains(&query))
     }
 }
 
@@ -130,11 +135,7 @@ pub(crate) const BUILTIN: SettingSchema = SettingSchema {
                     title: "Theme",
                     description: "App theme; Auto follows the operating system.",
                     kind: RowType::TextChoice {
-                        options: &[
-                            ("Auto", "auto"),
-                            ("Dark", "dark"),
-                            ("Light", "light"),
-                        ],
+                        options: &[("Auto", "auto"), ("Dark", "dark"), ("Light", "light")],
                         default: "auto",
                     },
                 },
@@ -192,8 +193,8 @@ pub(crate) const BUILTIN: SettingSchema = SettingSchema {
 
 #[cfg(test)]
 mod tests {
+    use super::{BUILTIN, RowSchema};
     use crate::settings::types::EditorSettings;
-    use super::{RowSchema, BUILTIN};
 
     fn all_rows() -> impl Iterator<Item = &'static RowSchema> {
         BUILTIN
@@ -211,9 +212,17 @@ mod tests {
         assert_eq!(formatting.rows.len(), 3);
 
         assert_eq!(appearance.visible_rows("").len(), 3);
-        let family: Vec<&str> = appearance.visible_rows("family").iter().map(|row| row.path).collect();
+        let family: Vec<&str> = appearance
+            .visible_rows("family")
+            .iter()
+            .map(|row| row.path)
+            .collect();
         assert_eq!(family, vec!["font.family"]);
-        let size: Vec<&str> = appearance.visible_rows("size").iter().map(|row| row.path).collect();
+        let size: Vec<&str> = appearance
+            .visible_rows("size")
+            .iter()
+            .map(|row| row.path)
+            .collect();
         assert_eq!(size, vec!["font.size"]);
         assert!(appearance.visible_rows("xyz").is_empty());
 

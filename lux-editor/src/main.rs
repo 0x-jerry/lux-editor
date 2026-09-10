@@ -2,11 +2,11 @@ mod app;
 mod chrome;
 mod component;
 mod document;
-mod tabs;
 mod events;
 mod highlighting;
 mod native;
 mod settings;
+mod tabs;
 mod theme;
 mod workspace;
 

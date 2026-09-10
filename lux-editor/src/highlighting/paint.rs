@@ -49,7 +49,12 @@ pub fn build_highlighted_line_job(
             continue;
         };
         if paint_start > cursor {
-            append_default(&mut job, &line[cursor..paint_start], font_size, default_color);
+            append_default(
+                &mut job,
+                &line[cursor..paint_start],
+                font_size,
+                default_color,
+            );
         }
         job.append(
             &line[paint_start..paint_end],
@@ -81,11 +86,7 @@ pub fn build_highlighted_line_job(
 /// This is the single source of truth for the "first token wins a shared
 /// column" clipping rule, shared with the line-token normalizer in
 /// `service::parse` so the two layers cannot drift.
-pub(crate) fn clip_to_cursor(
-    start: usize,
-    end: usize,
-    cursor: usize,
-) -> Option<(usize, usize)> {
+pub(crate) fn clip_to_cursor(start: usize, end: usize, cursor: usize) -> Option<(usize, usize)> {
     let paint_start = start.max(cursor);
     (end > paint_start).then_some((paint_start, end))
 }
@@ -125,10 +126,22 @@ mod tests {
         let line = "```";
         let color = [1, 2, 3, 255];
         let tokens = [
-            HighlightSpan { start_col: 0, end_col: 3, color },
-            HighlightSpan { start_col: 1, end_col: 3, color },
+            HighlightSpan {
+                start_col: 0,
+                end_col: 3,
+                color,
+            },
+            HighlightSpan {
+                start_col: 1,
+                end_col: 3,
+                color,
+            },
         ];
-        assert_eq!(paint(line, &tokens), line, "overlapping tokens duplicated text");
+        assert_eq!(
+            paint(line, &tokens),
+            line,
+            "overlapping tokens duplicated text"
+        );
     }
 
     #[test]
@@ -155,8 +168,16 @@ mod tests {
         let line = "abcde";
         let color = [1, 2, 3, 255];
         let tokens = [
-            HighlightSpan { start_col: 0, end_col: 2, color },
-            HighlightSpan { start_col: 1, end_col: 5, color },
+            HighlightSpan {
+                start_col: 0,
+                end_col: 2,
+                color,
+            },
+            HighlightSpan {
+                start_col: 1,
+                end_col: 5,
+                color,
+            },
         ];
         assert_eq!(paint(line, &tokens), line);
     }
@@ -165,9 +186,21 @@ mod tests {
     fn disjoint_tokens_still_paint_correctly() {
         let line = "let x = 1;";
         let tokens = [
-            HighlightSpan { start_col: 0, end_col: 3, color: [1, 2, 3, 255] },
-            HighlightSpan { start_col: 4, end_col: 5, color: [4, 5, 6, 255] },
-            HighlightSpan { start_col: 6, end_col: 11, color: [7, 8, 9, 255] },
+            HighlightSpan {
+                start_col: 0,
+                end_col: 3,
+                color: [1, 2, 3, 255],
+            },
+            HighlightSpan {
+                start_col: 4,
+                end_col: 5,
+                color: [4, 5, 6, 255],
+            },
+            HighlightSpan {
+                start_col: 6,
+                end_col: 11,
+                color: [7, 8, 9, 255],
+            },
         ];
         assert_eq!(paint(line, &tokens), line);
     }

@@ -1,9 +1,9 @@
 //! Command row component: paints one two-line result row (selection, icon,
 //! emphasized title, subtitle) and reports pointer interaction as messages.
 
+use super::ROW_HEIGHT;
 use super::commands::{CommandIcon, PaletteTarget};
 use super::rank::RankedCommand;
-use super::ROW_HEIGHT;
 use crate::chrome::ui::widgets::file_type_icon;
 use crate::component::Component;
 use eframe::egui;
@@ -82,8 +82,7 @@ impl Component for CommandRow {
         let title_bottom = title_top + galley.size().y;
 
         // Icon column: vertically centered on the first (title) line.
-        let icon_center =
-            egui::pos2(rect.left() + 6.0 + 12.0, title_top + galley.size().y * 0.5);
+        let icon_center = egui::pos2(rect.left() + 6.0 + 12.0, title_top + galley.size().y * 0.5);
         match &input.item.command.icon {
             CommandIcon::Phosphor(glyph) => {
                 let color = if input.selected { accent } else { weak };
@@ -117,7 +116,11 @@ impl Component for CommandRow {
             }
         }
 
-        ui.painter().galley(egui::pos2(text_left, title_top), galley.clone(), title_color);
+        ui.painter().galley(
+            egui::pos2(text_left, title_top),
+            galley.clone(),
+            title_color,
+        );
 
         if let Some(subtitle) = &input.item.command.subtitle {
             let subtitle_font = egui::TextStyle::Small.resolve(ui.style());
@@ -143,7 +146,11 @@ impl Component for CommandRow {
         // sticky in egui (Some(ZERO) forever after the first move), so a
         // non-zero delta is the only reliable "moved this frame" signal.
         if response.hovered()
-            && ui.input(|i| i.pointer.motion().is_some_and(|motion| motion != egui::Vec2::ZERO))
+            && ui.input(|i| {
+                i.pointer
+                    .motion()
+                    .is_some_and(|motion| motion != egui::Vec2::ZERO)
+            })
         {
             messages.push(RowMessage::Hovered);
         }
@@ -160,11 +167,14 @@ fn title_layout_job(
     base_color: egui::Color32,
     accent: egui::Color32,
 ) -> LayoutJob {
-    let mut job = LayoutJob::default();
-    job.halign = egui::Align::LEFT;
+    let mut job = LayoutJob {
+        halign: egui::Align::LEFT,
+        ..Default::default()
+    };
     let chars: Vec<char> = title.chars().collect();
-    let is_matched =
-        |i: usize| spans.is_some_and(|spans| spans.iter().any(|&(start, end)| i >= start && i < end));
+    let is_matched = |i: usize| {
+        spans.is_some_and(|spans| spans.iter().any(|&(start, end)| i >= start && i < end))
+    };
 
     let base = TextFormat::simple(font.clone(), base_color);
     let highlighted = TextFormat::simple(font, accent);
@@ -189,14 +199,6 @@ fn title_layout_job(
         }
     }
     let segment: String = chars[run_start..].iter().collect();
-    job.append(
-        &segment,
-        0.0,
-        if run_matched {
-            highlighted
-        } else {
-            base
-        },
-    );
+    job.append(&segment, 0.0, if run_matched { highlighted } else { base });
     job
 }

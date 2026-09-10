@@ -6,9 +6,9 @@
 use super::state::{App, FrameState};
 use crate::app::Runtime;
 use crate::chrome::Chrome;
-use crate::tabs::TabManager;
 use crate::highlighting::Highlighting;
 use crate::settings::SettingsState;
+use crate::tabs::TabManager;
 use crate::workspace::Workspace;
 use eframe::egui;
 

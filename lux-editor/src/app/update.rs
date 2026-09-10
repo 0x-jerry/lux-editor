@@ -56,7 +56,12 @@ impl EframeApp for App {
         } else {
             false // hide the caret entirely while the editor isn't focused
         };
-        let tabs = self.tabs.tabs.iter().map(|tab| tab.meta()).collect::<Vec<_>>();
+        let tabs = self
+            .tabs
+            .tabs
+            .iter()
+            .map(|tab| tab.meta())
+            .collect::<Vec<_>>();
         let active_tab_id = self.tabs.tabs[self.tabs.active_tab].id;
         let active_is_markdown = !self.tabs.active_is_configuration()
             && crate::highlighting::LanguageKind::from_path(

@@ -7,6 +7,6 @@ mod state;
 mod strip;
 pub(crate) mod ui;
 
-pub(crate) use state::{openable_tab, tab_with_path, TabManager, TabMeta};
+pub(crate) use state::{TabManager, TabMeta, openable_tab, tab_with_path};
 pub(crate) use strip::{TabStripInput, TabStripView};
 pub use ui::{EditorView, EditorViewState};

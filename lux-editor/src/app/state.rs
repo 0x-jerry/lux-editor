@@ -11,9 +11,9 @@
 
 use crate::app::Runtime;
 use crate::chrome::Chrome;
-use crate::tabs::TabManager;
 use crate::highlighting::Highlighting;
 use crate::settings::{Config, SettingsState};
+use crate::tabs::TabManager;
 use crate::theme::StartupFont;
 use crate::workspace::Workspace;
 use eframe::egui;

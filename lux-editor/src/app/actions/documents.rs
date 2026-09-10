@@ -5,8 +5,8 @@
 
 use crate::app::Ctx;
 use crate::document::run_formatter;
-use crate::tabs::{openable_tab, tab_with_path};
 use crate::events::{DocumentEvent, LoadResult};
+use crate::tabs::{openable_tab, tab_with_path};
 use eframe::egui;
 use std::path::{Path, PathBuf};
 
@@ -57,11 +57,9 @@ impl Ctx<'_> {
                         // re-anchor the dirty reference at the saved content.
                         document.record_disk_stat();
                         document.saved_text = document.buffer.text().clone();
-                        document.document_status =
-                            Some(format!("Saved {}", path.display()));
+                        document.document_status = Some(format!("Saved {}", path.display()));
                     } else {
-                        document.document_status =
-                            Some("Failed to save file".to_string());
+                        document.document_status = Some("Failed to save file".to_string());
                     }
                 }
                 self.update_window_title();
@@ -270,8 +268,7 @@ impl Ctx<'_> {
         if let Some(document) = self.tabs.tabs[index].content.as_text_mut()
             && document.document_dirty
         {
-            document.document_status =
-                Some("Unsaved changes — save before closing".to_string());
+            document.document_status = Some("Unsaved changes — save before closing".to_string());
             return;
         }
 

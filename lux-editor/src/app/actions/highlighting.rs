@@ -26,9 +26,7 @@ impl Ctx<'_> {
         let text = active_document.buffer.text().clone();
         let colors = self.syntax_colors();
         self.highlighting.service.set_syntax(colors);
-        self.highlighting
-            .service
-            .request_parse(text, language);
+        self.highlighting.service.request_parse(text, language);
     }
 
     /// The syntax palette the current config asks for.

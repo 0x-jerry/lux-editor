@@ -165,7 +165,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             available: |context| context.active_is_markdown,
             run: |events| {
                 events.push(CustomEvent::Shell(ShellEvent::ToggleMarkdownPreview));
-            }
+            },
         },
         Command {
             id: "clear-recent-items",
@@ -185,7 +185,11 @@ impl Command {
         PaletteItem {
             title: self.title.to_string(),
             subtitle: Some(self.category.to_string()),
-            keywords: self.keywords.iter().map(|keyword| keyword.to_string()).collect(),
+            keywords: self
+                .keywords
+                .iter()
+                .map(|keyword| keyword.to_string())
+                .collect(),
             icon: CommandIcon::Phosphor(self.icon),
             target: PaletteTarget::Registered(self),
         }
@@ -198,10 +202,7 @@ pub(crate) fn by_id(id: &str) -> Option<&'static Command> {
 
 /// "Recently used" rows: stored ids resolve back through the registry. Dynamic
 /// recents are never stored, so every id here resolves to a static command.
-pub(crate) fn items_from_ids(
-    ids: &[&'static str],
-    context: &PaletteContext,
-) -> Vec<PaletteItem> {
+pub(crate) fn items_from_ids(ids: &[&'static str], context: &PaletteContext) -> Vec<PaletteItem> {
     ids.iter()
         .filter_map(|id| by_id(id))
         .filter(|command| (command.available)(context))
@@ -257,7 +258,7 @@ pub(crate) fn recent_items(config: &Config) -> Vec<PaletteItem> {
 
 #[cfg(test)]
 mod tests {
-    use super::{recent_items, Command, CommandIcon, CommandKind, PaletteContext, PaletteTarget};
+    use super::{Command, CommandIcon, CommandKind, PaletteContext, PaletteTarget, recent_items};
     use crate::settings::types::RecentItem;
     use std::path::PathBuf;
 
@@ -305,13 +306,24 @@ mod tests {
     #[test]
     fn markdown_preview_command_needs_a_markdown_document() {
         let command = super::by_id("toggle-markdown-preview").unwrap();
-        let markdown = PaletteContext { active_is_markdown: true };
-        let other = PaletteContext { active_is_markdown: false };
+        let markdown = PaletteContext {
+            active_is_markdown: true,
+        };
+        let other = PaletteContext {
+            active_is_markdown: false,
+        };
         assert!((command.available)(&markdown));
         assert!(!(command.available)(&other));
         // Every other command is context-independent.
-        for command in super::COMMANDS.iter().filter(|c| c.id != "toggle-markdown-preview") {
-            assert!((command.available)(&other), "{} hides without context", command.id);
+        for command in super::COMMANDS
+            .iter()
+            .filter(|c| c.id != "toggle-markdown-preview")
+        {
+            assert!(
+                (command.available)(&other),
+                "{} hides without context",
+                command.id
+            );
         }
     }
 

@@ -90,7 +90,9 @@ mod tests {
     #[test]
     fn collapses_existing_multi_cursor_state() {
         let mut document = document("alpha beta");
-        document.caret_state.set_caret_char(1, &document.buffer, false);
+        document
+            .caret_state
+            .set_caret_char(1, &document.buffer, false);
         document.caret_state.add_cursor_at(6, &document.buffer);
         assert_eq!(document.caret_state.len(), 2);
         document.select_word_from_pointer(0, 2);

@@ -55,9 +55,7 @@ impl Component for StatusBar {
                             events.push(CustomEvent::Shell(ShellEvent::ToggleMarkdownPreview));
                         }
                         if let Some((line, column, selection_len)) = data.cursor {
-                            ui.label(format!(
-                                "Ln {line}, Col {column}  Sel {selection_len}"
-                            ));
+                            ui.label(format!("Ln {line}, Col {column}  Sel {selection_len}"));
                         }
                     });
                 });

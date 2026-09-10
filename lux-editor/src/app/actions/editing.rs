@@ -20,12 +20,8 @@ impl Ctx<'_> {
                 add_cursor,
             } => {
                 if let Some(active_document) = self.tabs.active_text_mut() {
-                    active_document.set_caret_from_pointer(
-                        line_index,
-                        column,
-                        selecting,
-                        add_cursor,
-                    );
+                    active_document
+                        .set_caret_from_pointer(line_index, column, selecting, add_cursor);
                 }
             }
             EditingEvent::SelectWordFromPointer { line_index, column } => {

@@ -2,17 +2,15 @@
 //! active view. Owns the shell chrome state (sidebar, configuration session)
 //! and its child components.
 
-use super::widgets::{
-    StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle,
-};
+use super::widgets::{StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle};
 use crate::component::Component;
 use crate::document::DocumentBuffer;
-use crate::tabs::{EditorView, EditorViewState};
 use crate::events::CustomEvent;
 use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::settings::{Config, EditorSettings};
+use crate::tabs::{EditorView, EditorViewState};
 use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;

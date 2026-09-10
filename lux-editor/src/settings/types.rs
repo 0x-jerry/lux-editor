@@ -131,8 +131,7 @@ mod tests {
 
     #[test]
     fn partial_config_missing_keys_take_defaults() {
-        let settings: EditorSettings =
-            serde_json::from_str(r#"{"font":{"size":20.0}}"#).unwrap();
+        let settings: EditorSettings = serde_json::from_str(r#"{"font":{"size":20.0}}"#).unwrap();
         assert_eq!(settings.font.family, "JetBrains Mono");
         assert_eq!(settings.font.size, 20.0);
         assert_eq!(settings.theme.choice, "auto");

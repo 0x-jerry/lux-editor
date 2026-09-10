@@ -3,7 +3,7 @@
 use crate::component::Component;
 use eframe::egui;
 use egui_phosphor::regular::{
-    ARROWS_DOWN_UP, ARROW_ELBOW_DOWN_RIGHT, ARROW_LEFT, MAGNIFYING_GLASS, X,
+    ARROW_ELBOW_DOWN_RIGHT, ARROW_LEFT, ARROWS_DOWN_UP, MAGNIFYING_GLASS, X,
 };
 
 /// Top bar: the search field that filters the command list in place.
@@ -84,10 +84,12 @@ fn hint(ui: &mut egui::Ui, glyph: &str, text: &str) {
     let weak = ui.visuals().weak_text_color();
     let mut job = egui::text::LayoutJob::default();
     for piece in [glyph, &format!("  {text}")] {
-        egui::RichText::new(piece)
-            .small()
-            .color(weak)
-            .append_to(&mut job, ui.style(), egui::FontSelection::Default, egui::Align::LEFT);
+        egui::RichText::new(piece).small().color(weak).append_to(
+            &mut job,
+            ui.style(),
+            egui::FontSelection::Default,
+            egui::Align::LEFT,
+        );
     }
     ui.label(job);
 }

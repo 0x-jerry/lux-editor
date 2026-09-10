@@ -20,10 +20,11 @@ pub(crate) struct Workspace {
 impl Workspace {
     pub(crate) fn start_watcher(
         workspace_path: &Path,
+        exclude: &[String],
         event_tx: Sender<CustomEvent>,
         wake: egui::Context,
     ) -> Option<RecommendedWatcher> {
-        if let Ok((watcher, rx)) = watch(workspace_path) {
+        if let Ok((watcher, rx)) = watch(workspace_path, exclude) {
             std::thread::spawn(move || {
                 let debounce = Duration::from_millis(120);
                 while let Ok(result) = rx.recv() {

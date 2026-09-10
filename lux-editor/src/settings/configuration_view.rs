@@ -1,9 +1,10 @@
+use crate::chrome::ui::widgets::icon_button;
 use crate::component::Component;
 use crate::events::ConfigurationEvent;
 use crate::settings::schema::{BUILTIN, RowSchema, RowType, SectionSchema};
 use crate::settings::{Config, EditorSettings};
 use eframe::egui;
-use egui_phosphor::regular::MAGNIFYING_GLASS;
+use egui_phosphor::regular::{MAGNIFYING_GLASS, PLUS, X};
 use serde_json::Value;
 use std::time::{Duration, Instant};
 
@@ -197,6 +198,10 @@ fn control(ui: &mut egui::Ui, draft: &mut Value, row: &RowSchema) -> bool {
             Value::Bool(b) => ui.checkbox(b, label).changed(),
             _ => false,
         },
+        RowType::TextList { .. } => match node {
+            Value::Array(items) => text_list(ui, row.path, items),
+            _ => false,
+        },
         RowType::TextChoice { options, .. } => {
             let Value::String(current) = &*node else {
                 return false;
@@ -224,6 +229,39 @@ fn control(ui: &mut egui::Ui, draft: &mut Value, row: &RowSchema) -> bool {
             row_changed
         }
     }
+}
+
+/// One editable row per string item plus an add button. Blank rows stay in the
+/// draft (pruning them would fight the caret); consumers ignore them.
+fn text_list(ui: &mut egui::Ui, path: &str, items: &mut Vec<Value>) -> bool {
+    let mut changed = false;
+    let mut remove = None;
+    for (index, item) in items.iter_mut().enumerate() {
+        let Value::String(text) = item else {
+            continue;
+        };
+        ui.horizontal(|ui| {
+            changed |= ui
+                .add(
+                    egui::TextEdit::singleline(text)
+                        .id_salt((path, index))
+                        .desired_width(FIELD_WIDTH),
+                )
+                .changed();
+            if icon_button(ui, X, false).clicked() {
+                remove = Some(index);
+            }
+        });
+    }
+    if let Some(index) = remove {
+        items.remove(index);
+        changed = true;
+    }
+    if ui.button(format!("{PLUS} Add")).clicked() {
+        items.push(Value::String(String::new()));
+        changed = true;
+    }
+    changed
 }
 
 /// Resolve a dot-separated key (e.g. "font.size") to a mutable value node.

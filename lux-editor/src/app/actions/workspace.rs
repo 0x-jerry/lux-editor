@@ -42,13 +42,15 @@ impl Ctx<'_> {
 
     pub(crate) fn open_folder(&mut self, path: PathBuf) {
         let path = path.canonicalize().unwrap_or(path);
-        let tree = FileTree::new(&path);
+        let exclude = self.settings.editor_config.settings.explorer.exclude.clone();
+        let tree = FileTree::new(&path, &exclude);
         let root = tree.root().to_path_buf();
         self.workspace.path = Some(path.clone());
         self.workspace.file_tree = Some(tree);
         self.settings.editor_config.add_recent(path.clone(), true);
         self.workspace.watcher = Workspace::start_watcher(
             &path,
+            &exclude,
             self.runtime.event_tx.clone(),
             self.egui_ctx().clone(),
         );
@@ -91,6 +93,31 @@ impl Ctx<'_> {
                 self.open_configuration_tab();
             }
         }
+    }
+
+    /// Push the configured exclude patterns into the open tree. `set_excluded`
+    /// is a no-op while they are unchanged, so this can run every logic pass
+    /// and still catch an autosave, an external config edit and a restore.
+    /// A real change rebuilds the watcher too: it filters events with the
+    /// patterns it captured when the folder opened, so dropping one would
+    /// otherwise leave the newly visible paths stale.
+    pub(crate) fn sync_tree_exclude(&mut self) {
+        let exclude = &self.settings.editor_config.settings.explorer.exclude;
+        let Some(tree) = &mut self.workspace.file_tree else {
+            return;
+        };
+        if !tree.set_excluded(exclude) {
+            return;
+        }
+        let Some(root) = self.workspace.path.clone() else {
+            return;
+        };
+        self.workspace.watcher = Workspace::start_watcher(
+            &root,
+            exclude,
+            self.runtime.event_tx.clone(),
+            self.egui_ctx().clone(),
+        );
     }
 
     /// Snapshot the live tabs and tree expansion into the workspace's session;

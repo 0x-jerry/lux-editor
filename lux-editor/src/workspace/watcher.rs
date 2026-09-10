@@ -3,11 +3,14 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc::Receiver;
 
+use super::tree::normalize_patterns;
+
 pub fn watch<P: AsRef<Path>>(
     path: P,
+    exclude: &[String],
 ) -> notify::Result<(RecommendedWatcher, Receiver<notify::Result<Event>>)> {
     let root_path = path.as_ref().to_path_buf();
-    let ignored = build_gitignore(&root_path);
+    let ignored = build_gitignore(&root_path, exclude);
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut watcher = RecommendedWatcher::new(
@@ -32,11 +35,18 @@ pub fn watch<P: AsRef<Path>>(
     Ok((watcher, rx))
 }
 
-fn build_gitignore(workspace_root: &Path) -> Gitignore {
+/// The workspace `.gitignore` plus the configured exclude patterns, so churn
+/// in a hidden directory (`.git` on every status/commit) never wakes the tree.
+/// Patterns are normalized exactly like the tree's matcher, so the two agree.
+fn build_gitignore(workspace_root: &Path, exclude: &[String]) -> Gitignore {
     let mut builder = GitignoreBuilder::new(workspace_root);
     let gitignore_path = workspace_root.join(".gitignore");
     if gitignore_path.exists() {
         builder.add(gitignore_path);
+    }
+    for pattern in normalize_patterns(exclude) {
+        // Invalid patterns are already reported where the tree builds them.
+        builder.add_line(None, &pattern).ok();
     }
     builder.build().unwrap_or_else(|_| {
         let fallback = GitignoreBuilder::new(workspace_root);
@@ -78,10 +88,22 @@ mod tests {
         fs::write(dir.path().join("debug.log"), "x").unwrap();
         fs::write(dir.path().join("src/main.rs"), "fn main() {}").unwrap();
 
-        let ignored = build_gitignore(dir.path());
+        let ignored = build_gitignore(dir.path(), &[".git".to_string()]);
         assert!(is_ignored(&dir.path().join("target/main.rs"), &ignored));
         assert!(is_ignored(&dir.path().join("debug.log"), &ignored));
         assert!(!is_ignored(&dir.path().join("src/main.rs"), &ignored));
+        // Exclude patterns reach nested paths, like the tree's matcher does,
+        // and are trimmed the same way (' .git ' hides `.git` in both).
+        assert!(is_ignored(&dir.path().join(".git/objects/pack"), &ignored));
+        assert!(is_ignored(
+            &dir.path().join(".git/index"),
+            &build_gitignore(dir.path(), &[" .git ".to_string()])
+        ));
+        // Without one, `.git` churn would wake the tree.
+        assert!(!is_ignored(
+            &dir.path().join(".git/index"),
+            &build_gitignore(dir.path(), &[])
+        ));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! Workspace file-tree model: a gitignore-aware, lazily loaded snapshot of
 //! the directory tree. Only directories the UI has asked for (root at open,
-//! expanded folders after that) are read from disk. Pure data only —
+//! expanded folders after that) are read from disk. Gitignore-matched entries
+//! stay in the snapshot flagged `ignored` so the panel can dim them; entries
+//! matched by the configured exclude patterns are dropped. Pure data only —
 //! rendering lives in the `FileTreePanel` component (`workspace::file_tree_panel`).
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -10,8 +12,19 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum Entry {
-    File(PathBuf),
-    Directory(PathBuf),
+    File { path: PathBuf, ignored: bool },
+    Directory { path: PathBuf, ignored: bool },
+}
+
+impl Entry {
+    fn name(&self) -> String {
+        let path = match self {
+            Entry::File { path, .. } | Entry::Directory { path, .. } => path,
+        };
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
 }
 
 /// One level of `.gitignore` rules plus the parent level, so a directory's
@@ -25,14 +38,25 @@ pub struct FileTree {
     root: PathBuf,
     dirs: HashMap<PathBuf, Arc<Vec<Entry>>>,
     chains: HashMap<PathBuf, Arc<IgnoreChain>>,
+    /// The configured exclude patterns as one matcher; entries it matches are
+    /// left out of the snapshot entirely (never dimmed, never scanned).
+    exclude: Gitignore,
+    exclude_patterns: Vec<String>,
+    /// The patterns as configured, so an unchanged list short-circuits before
+    /// `normalize_patterns` allocates on every logic pass.
+    exclude_raw: Vec<String>,
 }
 
 impl FileTree {
-    pub fn new(path: &Path) -> Self {
+    pub fn new(path: &Path, exclude: &[String]) -> Self {
+        let exclude_patterns = normalize_patterns(exclude);
         let mut tree = Self {
             root: path.to_path_buf(),
             dirs: HashMap::new(),
             chains: HashMap::new(),
+            exclude: exclude_matcher(path, &exclude_patterns),
+            exclude_patterns,
+            exclude_raw: exclude.to_vec(),
         };
         tree.load_dir(path);
         tree
@@ -40,6 +64,25 @@ impl FileTree {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// Point the tree at a new exclude list; a no-op while the patterns are
+    /// unchanged, so the app can call it every frame. Returns whether the
+    /// visible tree changed, so the caller can rebuild a watcher that captured
+    /// the old patterns.
+    pub fn set_excluded(&mut self, patterns: &[String]) -> bool {
+        if self.exclude_raw == patterns {
+            return false;
+        }
+        self.exclude_raw = patterns.to_vec();
+        let normalized = normalize_patterns(patterns);
+        if normalized == self.exclude_patterns {
+            return false;
+        }
+        self.exclude = exclude_matcher(&self.root, &normalized);
+        self.exclude_patterns = normalized;
+        self.refresh();
+        true
     }
 
     /// Sorted children of `dir`, loaded from disk on first request.
@@ -72,6 +115,7 @@ impl FileTree {
     /// so a transient error is retried on the next request.
     fn load_dir(&mut self, dir: &Path) -> bool {
         let chain = self.chain_for(dir);
+        let dir_ignored = self.dir_ignored(dir);
         let Ok(read) = std::fs::read_dir(dir) else {
             return false;
         };
@@ -79,23 +123,26 @@ impl FileTree {
         for entry in read.flatten() {
             let path = entry.path();
             let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
-            if Self::ignored(&chain, &path, is_dir) {
+            if self.exclude.matched(&path, is_dir).is_ignore() {
                 continue;
             }
+            // Everything below an ignored directory is ignored: git never
+            // descends into one, so a nested whitelist cannot rescue it.
+            let ignored = dir_ignored || Self::ignored(&chain, &path, is_dir);
             entries.push(if is_dir {
-                Entry::Directory(path)
+                Entry::Directory { path, ignored }
             } else {
-                Entry::File(path)
+                Entry::File { path, ignored }
             });
         }
         entries.sort_by(|a, b| {
-            let a_is_dir = matches!(a, Entry::Directory(_));
-            let b_is_dir = matches!(b, Entry::Directory(_));
+            let a_is_dir = matches!(a, Entry::Directory { .. });
+            let b_is_dir = matches!(b, Entry::Directory { .. });
             if a_is_dir != b_is_dir {
                 return b_is_dir.cmp(&a_is_dir);
             }
-            let a_name = Self::entry_name(a).to_lowercase();
-            let b_name = Self::entry_name(b).to_lowercase();
+            let a_name = a.name().to_lowercase();
+            let b_name = b.name().to_lowercase();
             a_name.cmp(&b_name)
         });
         self.dirs.insert(dir.to_path_buf(), Arc::new(entries));
@@ -121,6 +168,17 @@ impl FileTree {
         chain
     }
 
+    /// Whether `dir` itself is gitignored, decided by its ancestors' matchers
+    /// only — a directory's own `.gitignore` cannot whitelist itself.
+    fn dir_ignored(&mut self, dir: &Path) -> bool {
+        let inside_root = |parent: &Path| parent == self.root || parent.starts_with(&self.root);
+        let Some(parent) = dir.parent().filter(|parent| inside_root(parent)) else {
+            return false;
+        };
+        let chain = self.chain_for(parent);
+        Self::ignored(&chain, dir, true)
+    }
+
     /// Deepest `.gitignore` wins (git semantics): walk root→leaf, the last
     /// matcher with an opinion (ignore or whitelist) decides.
     fn ignored(chain: &IgnoreChain, path: &Path, is_dir: bool) -> bool {
@@ -142,14 +200,6 @@ impl FileTree {
         verdict
     }
 
-    fn entry_name(entry: &Entry) -> String {
-        let path = match entry {
-            Entry::File(path) | Entry::Directory(path) => path,
-        };
-        path.file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
 }
 
 fn dir_gitignore(dir: &Path) -> Option<Gitignore> {
@@ -162,23 +212,52 @@ fn dir_gitignore(dir: &Path) -> Option<Gitignore> {
     builder.build().ok()
 }
 
+/// Blank patterns are the list editor's empty rows; dropping them keeps a
+/// no-op edit from rebuilding the matcher and rescanning the tree.
+pub(super) fn normalize_patterns(patterns: &[String]) -> Vec<String> {
+    patterns
+        .iter()
+        .map(|pattern| pattern.trim())
+        .filter(|pattern| !pattern.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The exclude patterns with gitignore semantics rooted at the workspace, so
+/// `.git` matches at any depth and `/*.git` only the root.
+fn exclude_matcher(root: &Path, patterns: &[String]) -> Gitignore {
+    let mut builder = GitignoreBuilder::new(root);
+    for pattern in patterns {
+        if let Err(err) = builder.add_line(None, pattern) {
+            log::warn!("skipping exclude pattern {pattern:?}: {err}");
+        }
+    }
+    // `add_line` already rejected every glob that fails to parse.
+    builder.build().unwrap_or_else(|_| Gitignore::empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn names(children: &[Entry]) -> Vec<String> {
+    /// `(name, ignored)` per row, in tree order.
+    fn rows(children: &[Entry]) -> Vec<(String, bool)> {
         children
             .iter()
             .map(|entry| match entry {
-                Entry::File(path) | Entry::Directory(path) => {
-                    path.file_name().unwrap().to_string_lossy().into_owned()
+                Entry::File { ignored, .. } | Entry::Directory { ignored, .. } => {
+                    (entry.name(), *ignored)
                 }
             })
             .collect()
     }
 
+    fn row(name: &str, ignored: bool) -> (String, bool) {
+        (name.to_string(), ignored)
+    }
+
     #[test]
-    fn lazy_tree_honors_nested_gitignore_and_dirs_first() {
+    fn lazy_tree_flags_nested_gitignore_and_keeps_dirs_first() {
         let root = tempfile::tempdir().unwrap();
         let root_path = root.path();
         std::fs::write(root_path.join(".gitignore"), "node_modules\nz.rs\n*.txt\n").unwrap();
@@ -196,20 +275,37 @@ mod tests {
         std::fs::write(root_path.join("sub/secret.txt"), "").unwrap();
         std::fs::write(root_path.join("sub/visible.txt"), "").unwrap();
 
-        let mut tree = FileTree::new(root_path);
-        // Dirs sort before files, case-insensitively; root-level ignores apply
-        // (notes.txt falls to `*.txt`).
+        let mut tree = FileTree::new(root_path, &[]);
+        // Dirs sort before files, case-insensitively; gitignored entries stay
+        // in the snapshot flagged, so the panel can dim them.
         assert_eq!(
-            names(&tree.children(root_path)),
-            vec!["sub", ".gitignore", "a.rs"]
+            rows(&tree.children(root_path)),
+            vec![
+                row("node_modules", true),
+                row("sub", false),
+                row(".gitignore", false),
+                row("a.rs", false),
+                row("notes.txt", true),
+                row("z.rs", true),
+            ]
         );
         // Only the root was scanned until a directory is asked for.
         assert!(!tree.dirs.contains_key(&root_path.join("sub")));
         // Deepest gitignore wins: the root ignores `*.txt`, sub re-includes
-        // `visible.txt` while still hiding `secret.txt`.
+        // `visible.txt` while still flagging `secret.txt`.
         assert_eq!(
-            names(&tree.children(&root_path.join("sub"))),
-            vec![".gitignore", "visible.txt"]
+            rows(&tree.children(&root_path.join("sub"))),
+            vec![
+                row(".gitignore", false),
+                row("secret.txt", true),
+                row("visible.txt", false),
+            ]
+        );
+        // Below an ignored directory every entry inherits the flag, even with
+        // no matcher naming it.
+        assert_eq!(
+            rows(&tree.children(&root_path.join("node_modules"))),
+            vec![row("lib.js", true)]
         );
 
         // refresh() re-reads the cached levels and picks up new files.
@@ -217,8 +313,54 @@ mod tests {
         std::fs::remove_file(root_path.join("a.rs")).unwrap();
         tree.refresh();
         assert_eq!(
-            names(&tree.children(root_path)),
-            vec!["sub", ".gitignore", "b.rs"]
+            rows(&tree.children(root_path)),
+            vec![
+                row("node_modules", true),
+                row("sub", false),
+                row(".gitignore", false),
+                row("b.rs", false),
+                row("notes.txt", true),
+                row("z.rs", true),
+            ]
         );
+    }
+
+    #[test]
+    fn exclude_patterns_hide_entries_at_any_depth_until_changed() {
+        let root = tempfile::tempdir().unwrap();
+        let root_path = root.path();
+        std::fs::create_dir(root_path.join(".git")).unwrap();
+        std::fs::write(root_path.join(".git/index"), "").unwrap();
+        std::fs::create_dir_all(root_path.join("sub/.git")).unwrap();
+        std::fs::write(root_path.join("keep.rs"), "").unwrap();
+
+        let mut tree = FileTree::new(root_path, &[".git".to_string()]);
+        assert_eq!(
+            rows(&tree.children(root_path)),
+            vec![row("sub", false), row("keep.rs", false)]
+        );
+        // An excluded directory is never scanned.
+        assert!(!tree.dirs.contains_key(&root_path.join(".git")));
+
+        assert!(tree.set_excluded(&[]));
+        assert_eq!(
+            rows(&tree.children(root_path)),
+            vec![row(".git", false), row("sub", false), row("keep.rs", false)]
+        );
+        assert_eq!(
+            rows(&tree.children(&root_path.join("sub"))),
+            vec![row(".git", false)]
+        );
+
+        // A blank pattern (the list editor's empty row) hides nothing, and a
+        // bare name reaches nested repositories too.
+        assert!(tree.set_excluded(&[String::new(), ".git".to_string()]));
+        // A respelled but equivalent list is a no-op, so no rescan happens.
+        assert!(!tree.set_excluded(&[" .git ".to_string()]));
+        assert_eq!(
+            rows(&tree.children(root_path)),
+            vec![row("sub", false), row("keep.rs", false)]
+        );
+        assert_eq!(rows(&tree.children(&root_path.join("sub"))), vec![]);
     }
 }

@@ -163,6 +163,7 @@ impl Ctx<'_> {
         } else if !has_configuration_tab && self.chrome.shell.configuration_view.is_some() {
             self.chrome.shell.configuration_view = None;
         }
+        self.sync_tree_exclude();
         self.sync_workspace_session();
         self.flush_recent_config();
 

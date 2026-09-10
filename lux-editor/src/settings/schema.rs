@@ -50,6 +50,12 @@ pub(crate) enum RowType {
         #[cfg_attr(not(test), allow(dead_code))]
         default: bool,
     },
+    /// list of strings → an editable row per item plus an "add" button.
+    TextList {
+        /// Builtin value; only the guard test reads it.
+        #[cfg_attr(not(test), allow(dead_code))]
+        default: &'static [&'static str],
+    },
 }
 
 impl RowType {
@@ -61,6 +67,7 @@ impl RowType {
             RowType::TextChoice { default, .. } => serde_json::json!(default),
             RowType::Number { default, .. } => serde_json::json!(default),
             RowType::Bool { default, .. } => serde_json::json!(default),
+            RowType::TextList { default } => serde_json::json!(default),
         }
     }
 
@@ -188,6 +195,18 @@ pub(crate) const BUILTIN: SettingSchema = SettingSchema {
                 },
             ],
         },
+        SectionSchema {
+            title: "Explorer",
+            description: "What the file tree shows.",
+            rows: &[RowSchema {
+                path: "explorer.exclude",
+                title: "Exclude patterns",
+                description: "Gitignore-style patterns left out of the file tree entirely; \
+                              a bare name matches at any depth (`/.git` only the root). \
+                              Gitignored entries are never excluded, they are dimmed.",
+                kind: RowType::TextList { default: &[".git"] },
+            }],
+        },
     ],
 };
 
@@ -205,11 +224,12 @@ mod tests {
 
     #[test]
     fn section_search_filters_its_rows() {
-        let [appearance, formatting] = BUILTIN.sections else {
-            panic!("expected the two declared sections");
+        let [appearance, formatting, explorer] = BUILTIN.sections else {
+            panic!("expected the three declared sections");
         };
         assert_eq!(appearance.rows.len(), 3);
         assert_eq!(formatting.rows.len(), 3);
+        assert_eq!(explorer.rows.len(), 1);
 
         assert_eq!(appearance.visible_rows("").len(), 3);
         let family: Vec<&str> = appearance
@@ -232,12 +252,14 @@ mod tests {
         let rows = formatting.visible_rows("writing");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].path, "formatter.format_on_save");
+        assert_eq!(explorer.visible_rows("EXCLUDE")[0].path, "explorer.exclude");
+        assert!(explorer.visible_rows("font").is_empty());
     }
 
     #[test]
     fn rows_are_unique_and_non_empty() {
         let rows: Vec<&RowSchema> = all_rows().collect();
-        assert_eq!(rows.len(), 6);
+        assert_eq!(rows.len(), 7);
         for row in &rows {
             assert_eq!(
                 rows.iter().filter(|other| other.path == row.path).count(),

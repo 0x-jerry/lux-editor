@@ -108,6 +108,26 @@ impl Default for FormatterSettings {
     }
 }
 
+fn default_explorer_exclude() -> Vec<String> {
+    vec![".git".to_string()]
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct ExplorerSettings {
+    /// Gitignore-style patterns dropped from the file tree entirely, matched
+    /// against the workspace root (`.git` reaches any depth, `/*.git` does not).
+    #[serde(default = "default_explorer_exclude")]
+    pub exclude: Vec<String>,
+}
+
+impl Default for ExplorerSettings {
+    fn default() -> Self {
+        Self {
+            exclude: default_explorer_exclude(),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct EditorSettings {
     #[serde(default)]
@@ -116,6 +136,8 @@ pub struct EditorSettings {
     pub font: FontSettings,
     #[serde(default)]
     pub formatter: FormatterSettings,
+    #[serde(default)]
+    pub explorer: ExplorerSettings,
 }
 
 #[cfg(test)]
@@ -136,6 +158,14 @@ mod tests {
         assert_eq!(settings.font.size, 20.0);
         assert_eq!(settings.theme.choice, "auto");
         assert_eq!(settings.formatter.args, "--stdin");
+        assert_eq!(settings.explorer.exclude, vec![".git".to_string()]);
+    }
+
+    #[test]
+    fn an_explicit_empty_exclude_list_clears_the_default() {
+        let settings: EditorSettings =
+            serde_json::from_str(r#"{"explorer":{"exclude":[]}}"#).unwrap();
+        assert!(settings.explorer.exclude.is_empty());
     }
 
     #[test]

@@ -5,7 +5,7 @@
 use crate::component::Component;
 use crate::events::{CustomEvent, ShellEvent};
 use eframe::egui;
-use egui_phosphor::regular::SIDEBAR;
+use egui_phosphor::regular::{EYE, SIDEBAR};
 
 /// Everything the status bar needs to render itself.
 pub struct StatusBarData {
@@ -14,6 +14,9 @@ pub struct StatusBarData {
     /// (line, column, selection length); `None` while the active tab has no
     /// text cursor (e.g. the configuration tab).
     pub cursor: Option<(usize, usize, usize)>,
+    /// `None` when the active tab is not a markdown document (no icon);
+    /// otherwise whether the preview panel is open (icon accented).
+    pub markdown_preview: Option<bool>,
 }
 
 /// Bottom status bar: sidebar toggle plus the active tab's cursor position.
@@ -44,6 +47,13 @@ impl Component for StatusBar {
                         events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some(preview_active) = data.markdown_preview
+                            && super::icon_button(ui, EYE, preview_active)
+                                .on_hover_text("Toggle markdown preview")
+                                .clicked()
+                        {
+                            events.push(CustomEvent::Shell(ShellEvent::ToggleMarkdownPreview));
+                        }
                         if let Some((line, column, selection_len)) = data.cursor {
                             ui.label(format!(
                                 "Ln {line}, Col {column}  Sel {selection_len}"

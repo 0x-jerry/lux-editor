@@ -15,6 +15,7 @@ impl Ctx<'_> {
         match event {
             ShellEvent::ToggleSidebar => self.chrome.shell.toggle_sidebar(),
             ShellEvent::ToggleCommandPanel => self.chrome.command_panel.toggle(),
+            ShellEvent::ToggleMarkdownPreview => self.chrome.shell.toggle_markdown_preview(),
         }
     }
 

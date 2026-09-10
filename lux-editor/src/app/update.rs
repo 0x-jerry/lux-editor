@@ -58,6 +58,10 @@ impl EframeApp for App {
         };
         let tabs = self.tabs.tabs.iter().map(|tab| tab.meta()).collect::<Vec<_>>();
         let active_tab_id = self.tabs.tabs[self.tabs.active_tab].id;
+        let active_is_markdown = !self.tabs.active_is_configuration()
+            && crate::highlighting::LanguageKind::from_path(
+                active_document.buffer.path().map(|path| &**path),
+            ) == crate::highlighting::LanguageKind::Markdown;
         let events = {
             let mut view = chrome::AppView;
             view.render(
@@ -83,6 +87,7 @@ impl EframeApp for App {
                     document_dirty: active_document.document_dirty,
                     document_missing: active_document.missing,
                     document_binary: active_document.binary,
+                    active_is_markdown,
                 },
             )
         };

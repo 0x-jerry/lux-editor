@@ -2,7 +2,7 @@
 //! palette, about dialog) and reports every effect they requested as events.
 
 use super::about::AboutWindow;
-use super::command_panel::CommandPanel;
+use super::command_panel::{CommandPanel, CommandPanelInput, PaletteContext};
 use super::shell::{Shell, ShellInput};
 use crate::component::Component;
 use crate::document::DocumentBuffer;
@@ -39,6 +39,8 @@ pub struct AppViewInput<'a> {
     pub document_dirty: bool,
     pub document_missing: bool,
     pub document_binary: bool,
+    /// The active tab is a markdown document (and not the configuration tab).
+    pub active_is_markdown: bool,
 }
 
 /// The app's view root. Owns no state itself; the shell and overlay
@@ -71,6 +73,7 @@ impl Component for AppView {
             document_dirty,
             document_missing,
             document_binary,
+            active_is_markdown,
         } = input;
 
         let mut events = shell.render(
@@ -93,11 +96,18 @@ impl Component for AppView {
                 document_dirty,
                 document_missing,
                 document_binary,
+                active_is_markdown,
             },
         );
 
         // Overlays render after the main layout so they stay on top.
-        events.extend(command_panel.render(ui, editor_config));
+        events.extend(command_panel.render(
+            ui,
+            CommandPanelInput {
+                config: editor_config,
+                context: PaletteContext { active_is_markdown },
+            },
+        ));
         about_window.render(ui, ());
 
         events

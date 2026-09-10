@@ -16,6 +16,7 @@ use crate::settings::{Config, EditorSettings};
 use crate::workspace::FileTree;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
+use egui_commonmark::CommonMarkCache;
 use std::collections::HashSet;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -40,6 +41,8 @@ pub struct ShellInput<'a> {
     pub document_dirty: bool,
     pub document_missing: bool,
     pub document_binary: bool,
+    /// The active tab is a markdown document (and not the configuration tab).
+    pub active_is_markdown: bool,
 }
 
 /// The app shell: chrome (title/status bars), sidebar and the active view.
@@ -47,6 +50,9 @@ pub struct ShellInput<'a> {
 /// session exists only while a configuration tab is open.
 pub struct Shell {
     sidebar_visible: bool,
+    markdown_preview_visible: bool,
+    /// egui_commonmark's inter-frame cache (images, scroll state).
+    markdown_cache: CommonMarkCache,
     title_bar: TitleBar,
     status_bar: StatusBar,
     file_tree_panel: FileTreePanel,
@@ -58,6 +64,8 @@ impl Default for Shell {
     fn default() -> Self {
         Self {
             sidebar_visible: true,
+            markdown_preview_visible: false,
+            markdown_cache: CommonMarkCache::default(),
             title_bar: TitleBar,
             status_bar: StatusBar,
             file_tree_panel: FileTreePanel::default(),
@@ -70,6 +78,10 @@ impl Default for Shell {
 impl Shell {
     pub fn toggle_sidebar(&mut self) {
         self.sidebar_visible = !self.sidebar_visible;
+    }
+
+    pub fn toggle_markdown_preview(&mut self) {
+        self.markdown_preview_visible = !self.markdown_preview_visible;
     }
 
     /// Seed the tree's expanded folders (workspace restore / first open).
@@ -111,6 +123,7 @@ impl Component for Shell {
             document_dirty,
             document_missing,
             document_binary,
+            active_is_markdown,
         } = state;
 
         let mut events = Vec::new();
@@ -131,6 +144,7 @@ impl Component for Shell {
                 } else {
                     Some((caret_line, caret_column, selection_len))
                 },
+                markdown_preview: active_is_markdown.then_some(self.markdown_preview_visible),
             },
         ));
 
@@ -151,6 +165,14 @@ impl Component for Shell {
                 },
             ));
         }
+
+        // Markdown preview: the tab content view renders it right of the
+        // editor, only while the active tab is an editable markdown document.
+        let markdown_preview = (active_is_markdown
+            && self.markdown_preview_visible
+            && !document_missing
+            && !document_binary)
+            .then_some(&mut self.markdown_cache);
 
         let central_fill = if active_is_configuration {
             ui.visuals().panel_fill
@@ -185,6 +207,7 @@ impl Component for Shell {
                         document_missing,
                         document_binary,
                         restoring_session,
+                        markdown_preview,
                     },
                 ));
             });

@@ -13,6 +13,7 @@ use crate::highlighting::HighlightSnapshot;
 use crate::highlighting::snapshot_color;
 use crate::settings::Config;
 use eframe::egui;
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -42,6 +43,9 @@ pub struct EditorViewState<'a> {
     pub document_missing: bool,
     pub document_binary: bool,
     pub restoring_session: bool,
+    /// `Some` while the markdown preview panel should render right of the
+    /// text editor; holds the shell-owned inter-frame renderer cache.
+    pub markdown_preview: Option<&'a mut CommonMarkCache>,
 }
 
 impl Component for EditorView {
@@ -68,6 +72,7 @@ impl Component for EditorView {
             document_missing,
             document_binary,
             restoring_session,
+            markdown_preview,
         } = state;
         let mut events = Vec::new();
 
@@ -151,6 +156,32 @@ impl Component for EditorView {
                 binary_view.render(ui, FileBinaryInput { path });
             }
             return events;
+        }
+
+        if let Some(cache) = markdown_preview {
+            // Rope -> String every frame keeps the preview live while typing.
+            // Ceiling: huge documents pay a per-frame copy + re-parse; cache
+            // by `edit_generation` if that ever shows up in a profile.
+            let markdown = buffer.text().to_string();
+            // Never wider than 80% of the tab content view, so the editor
+            // always keeps a usable column beside the preview.
+            let max_width: f32 = ui.available_width() * 0.8;
+            egui::Panel::right("markdown_preview")
+                .resizable(true)
+                .default_size(420.0)
+                .size_range(max_width.min(200.0)..=max_width)
+                .frame(
+                    egui::Frame::side_top_panel(ui.style())
+                        .inner_margin(egui::Margin::same(12)),
+                )
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            CommonMarkViewer::new().show(ui, cache, &markdown);
+                        });
+                });
         }
 
         let mut text_editor = TextEditor;

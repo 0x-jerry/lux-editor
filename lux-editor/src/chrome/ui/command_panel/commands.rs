@@ -8,11 +8,18 @@
 use crate::events::{AppEvent, CustomEvent, DocumentEvent, ShellEvent};
 use crate::settings::Config;
 use egui_phosphor::regular::{
-    CLOCK_COUNTER_CLOCKWISE, FILES, FLOPPY_DISK, FOLDER_SIMPLE, GEAR_SIX, SIDEBAR_SIMPLE,
+    CLOCK_COUNTER_CLOCKWISE, EYE, FILES, FLOPPY_DISK, FOLDER_SIMPLE, GEAR_SIX, SIDEBAR_SIMPLE,
     TEXT_ALIGN_LEFT, TRASH,
 };
 use std::path::PathBuf;
 use std::sync::LazyLock;
+
+/// Frame context commands can gate their visibility on.
+#[derive(Clone, Copy)]
+pub(crate) struct PaletteContext {
+    /// The active tab is a markdown document.
+    pub active_is_markdown: bool,
+}
 
 /// One registered palette command.
 pub(crate) struct Command {
@@ -25,6 +32,8 @@ pub(crate) struct Command {
     /// egui-phosphor glyph.
     pub icon: &'static str,
     pub kind: CommandKind,
+    /// Whether the command is listed this frame.
+    pub available: fn(&PaletteContext) -> bool,
     /// Push the command's effect(s); the host forwards them to the app.
     pub run: fn(&mut Vec<CustomEvent>),
 }
@@ -75,6 +84,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["save", "write", "file", "persist"],
             icon: FLOPPY_DISK,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| events.push(CustomEvent::Document(DocumentEvent::SaveFile)),
         },
         Command {
@@ -84,6 +94,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["format", "formatter", "style", "pretty"],
             icon: TEXT_ALIGN_LEFT,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| events.push(CustomEvent::Document(DocumentEvent::FormatFile)),
         },
         Command {
@@ -93,6 +104,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["file", "open", "load"],
             icon: FILES,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| {
                 if let Some(path) = rfd::FileDialog::new().pick_file() {
                     events.push(CustomEvent::App(AppEvent::OpenFile(path)));
@@ -106,6 +118,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["recent", "recently", "history", "open"],
             icon: CLOCK_COUNTER_CLOCKWISE,
             kind: CommandKind::ShowRecents,
+            available: |_| true,
             run: |_| {},
         },
         Command {
@@ -115,6 +128,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["folder", "workspace", "open"],
             icon: FOLDER_SIMPLE,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     events.push(CustomEvent::App(AppEvent::OpenFolder(path)));
@@ -128,6 +142,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["config", "settings", "preferences", "view"],
             icon: GEAR_SIX,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| events.push(CustomEvent::App(AppEvent::OpenConfiguration)),
         },
         Command {
@@ -137,7 +152,20 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["sidebar", "panel", "tree", "toggle"],
             icon: SIDEBAR_SIMPLE,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| events.push(CustomEvent::Shell(ShellEvent::ToggleSidebar)),
+        },
+        Command {
+            id: "toggle-markdown-preview",
+            title: "Toggle Markdown Preview",
+            category: "View",
+            keywords: &["markdown", "preview", "toggle", "view", "render"],
+            icon: EYE,
+            kind: CommandKind::RunAndClose,
+            available: |context| context.active_is_markdown,
+            run: |events| {
+                events.push(CustomEvent::Shell(ShellEvent::ToggleMarkdownPreview));
+            }
         },
         Command {
             id: "clear-recent-items",
@@ -146,6 +174,7 @@ pub(crate) static COMMANDS: LazyLock<Vec<Command>> = LazyLock::new(|| {
             keywords: &["recent", "clear", "history"],
             icon: TRASH,
             kind: CommandKind::RunAndClose,
+            available: |_| true,
             run: |events| events.push(CustomEvent::App(AppEvent::ClearRecentItems)),
         },
     ]
@@ -169,9 +198,13 @@ pub(crate) fn by_id(id: &str) -> Option<&'static Command> {
 
 /// "Recently used" rows: stored ids resolve back through the registry. Dynamic
 /// recents are never stored, so every id here resolves to a static command.
-pub(crate) fn items_from_ids(ids: &[&'static str]) -> Vec<PaletteItem> {
+pub(crate) fn items_from_ids(
+    ids: &[&'static str],
+    context: &PaletteContext,
+) -> Vec<PaletteItem> {
     ids.iter()
         .filter_map(|id| by_id(id))
+        .filter(|command| (command.available)(context))
         .map(Command::palette_item)
         .collect()
 }
@@ -224,7 +257,7 @@ pub(crate) fn recent_items(config: &Config) -> Vec<PaletteItem> {
 
 #[cfg(test)]
 mod tests {
-    use super::{recent_items, Command, CommandIcon, CommandKind, PaletteTarget};
+    use super::{recent_items, Command, CommandIcon, CommandKind, PaletteContext, PaletteTarget};
     use crate::settings::types::RecentItem;
     use std::path::PathBuf;
 
@@ -259,13 +292,27 @@ mod tests {
             ("Open Folder", "File"),
             ("Switch To Configuration", "View"),
             ("Toggle Sidebar", "View"),
+            ("Toggle Markdown Preview", "View"),
             ("Clear Recent Items", "Workspace"),
         ];
         expected.sort();
         let mut actual = entries.clone();
         actual.sort();
         assert_eq!(actual, expected);
-        assert_eq!(entries.len(), 8);
+        assert_eq!(entries.len(), 9);
+    }
+
+    #[test]
+    fn markdown_preview_command_needs_a_markdown_document() {
+        let command = super::by_id("toggle-markdown-preview").unwrap();
+        let markdown = PaletteContext { active_is_markdown: true };
+        let other = PaletteContext { active_is_markdown: false };
+        assert!((command.available)(&markdown));
+        assert!(!(command.available)(&other));
+        // Every other command is context-independent.
+        for command in super::COMMANDS.iter().filter(|c| c.id != "toggle-markdown-preview") {
+            assert!((command.available)(&other), "{} hides without context", command.id);
+        }
     }
 
     #[test]

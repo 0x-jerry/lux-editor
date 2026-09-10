@@ -14,6 +14,7 @@ use crate::events::{AppEvent, CustomEvent};
 use crate::settings::Config;
 use bar::{CommandFooter, CommandHeader, FooterHint, FooterInput, HeaderInput};
 use commands::{Command, CommandKind, PaletteItem, PaletteTarget};
+pub(crate) use commands::PaletteContext;
 use eframe::egui;
 use group::{CommandGroup, GroupInput, GroupMessage};
 use rank::{rank_commands, Group, RankedCommand};
@@ -30,6 +31,13 @@ const PANEL_WIDTH: f32 = 640.0;
 #[derive(Default)]
 pub struct CommandPanel {
     state: CommandPanelState,
+}
+
+/// Everything the palette needs this frame.
+pub struct CommandPanelInput<'a> {
+    pub config: &'a Config,
+    /// Frame context that gates command visibility.
+    pub context: PaletteContext,
 }
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
@@ -77,18 +85,18 @@ impl CommandPanel {
         self.state.selected = 0;
     }
 
-    fn display_commands(&self, config: &Config) -> Vec<Group> {
+    fn display_commands(&self, input: &CommandPanelInput<'_>) -> Vec<Group> {
         if self.state.mode == CommandPanelMode::RecentList {
-            let ranked = rank_commands(&self.state.query, commands::recent_items(config));
+            let ranked = rank_commands(&self.state.query, commands::recent_items(input.config));
             return vec![Group {
                 title: Some("Recent items"),
                 commands: ranked,
             }];
         }
 
-        let ranked = rank_commands(&self.state.query, self.root_commands());
+        let ranked = rank_commands(&self.state.query, self.root_commands(&input.context));
         if self.show_recent_used_section() {
-            let recent = commands::items_from_ids(&self.state.recent_used)
+            let recent = commands::items_from_ids(&self.state.recent_used, &input.context)
                 .into_iter()
                 .map(|command| RankedCommand {
                     command,
@@ -129,8 +137,12 @@ impl CommandPanel {
             && !self.state.recent_used.is_empty()
     }
 
-    fn root_commands(&self) -> Vec<PaletteItem> {
-        commands::COMMANDS.iter().map(Command::palette_item).collect()
+    fn root_commands(&self, context: &PaletteContext) -> Vec<PaletteItem> {
+        commands::COMMANDS
+            .iter()
+            .filter(|command| (command.available)(context))
+            .map(Command::palette_item)
+            .collect()
     }
 
     fn query_hint(&self) -> &'static str {
@@ -165,9 +177,9 @@ impl CommandPanel {
 
 impl Component for CommandPanel {
     type Message = CustomEvent;
-    type Input<'a> = &'a Config;
+    type Input<'a> = CommandPanelInput<'a>;
 
-    fn render(&mut self, ui: &mut egui::Ui, config: Self::Input<'_>) -> Vec<CustomEvent> {
+    fn render(&mut self, ui: &mut egui::Ui, input: Self::Input<'_>) -> Vec<CustomEvent> {
         if !self.state.open {
             return Vec::new();
         }
@@ -177,7 +189,7 @@ impl Component for CommandPanel {
         let mut pending_target: Option<PaletteTarget> = None;
         let query_hint = self.query_hint();
         let footer_hint = self.footer_hint();
-        let groups = self.display_commands(config);
+        let groups = self.display_commands(&input);
 
         // Flat concatenation drives keyboard navigation and the empty check.
         let flat: Vec<&RankedCommand> = groups

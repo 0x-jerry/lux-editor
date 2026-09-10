@@ -101,9 +101,12 @@ pub enum AppEvent {
 /// Shell & navigation: sidebar, command palette and title-bar menus. View
 /// switching lives in the tab domain (`DocumentEvent`) now.
 #[derive(Debug)]
+// Every shell action is a toggle; the shared prefix is the convention.
+#[allow(clippy::enum_variant_names)]
 pub enum ShellEvent {
     ToggleSidebar,
     ToggleCommandPanel,
+    ToggleMarkdownPreview,
 }
 
 /// Configuration: the configuration view autosaving its draft.

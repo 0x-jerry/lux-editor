@@ -136,6 +136,7 @@ pub(crate) fn command_id(command: TitleBarMenu) -> &'static str {
     match command {
         TitleBarMenu::OpenFile => "open-file",
         TitleBarMenu::OpenFolder => "open-folder",
+        TitleBarMenu::CloseTab => "close-tab",
         TitleBarMenu::SaveFile => "save",
         TitleBarMenu::Undo => "undo",
         TitleBarMenu::Redo => "redo",
@@ -156,6 +157,7 @@ fn command_for_id(id: &str) -> Option<TitleBarMenu> {
     Some(match id {
         "open-file" => TitleBarMenu::OpenFile,
         "open-folder" => TitleBarMenu::OpenFolder,
+        "close-tab" => TitleBarMenu::CloseTab,
         "save" => TitleBarMenu::SaveFile,
         "undo" => TitleBarMenu::Undo,
         "redo" => TitleBarMenu::Redo,

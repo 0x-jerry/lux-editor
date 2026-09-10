@@ -2,6 +2,7 @@
 //! palette, about dialog) and reports every effect they requested as events.
 
 use super::about::AboutWindow;
+use super::close_prompt::ClosePrompt;
 use super::command_panel::{CommandPanel, CommandPanelInput, PaletteContext};
 use super::frame_input::{CaretInput, DocumentInput, SidebarInput, TabsInput, WorkspaceInput};
 use super::shell::{Shell, ShellInput};
@@ -16,6 +17,7 @@ pub struct AppViewInput<'a> {
     pub shell: &'a mut Shell,
     pub command_panel: &'a mut CommandPanel,
     pub about_window: &'a mut AboutWindow,
+    pub close_prompt: &'a mut ClosePrompt,
     pub sidebar: SidebarInput<'a>,
     pub workspace: WorkspaceInput<'a>,
     pub tabs: TabsInput<'a>,
@@ -37,6 +39,7 @@ impl Component for AppView {
             shell,
             command_panel,
             about_window,
+            close_prompt,
             sidebar,
             workspace,
             tabs,
@@ -46,6 +49,7 @@ impl Component for AppView {
         } = input;
 
         let active_is_markdown = tabs.active_is_markdown;
+        let tab_metas = tabs.tabs;
         let mut events = shell.render(
             ui,
             ShellInput {
@@ -67,6 +71,7 @@ impl Component for AppView {
             },
         ));
         about_window.render(ui, ());
+        events.extend(close_prompt.render(ui, tab_metas));
 
         events
     }

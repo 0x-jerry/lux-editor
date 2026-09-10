@@ -52,7 +52,10 @@ impl Ctx<'_> {
 
     pub(crate) fn execute_command(&mut self, command: EditorCommand) -> bool {
         if matches!(&command, EditorCommand::ToggleCommandPanel) {
-            self.chrome.command_panel.toggle();
+            // The close prompt is modal: nothing behind it may take focus.
+            if !self.chrome.close_prompt.is_open() {
+                self.chrome.command_panel.toggle();
+            }
             return false;
         }
 
@@ -94,6 +97,10 @@ impl Ctx<'_> {
             return false;
         }
 
+        if self.chrome.close_prompt.is_open() {
+            return true;
+        }
+
         let egui = self.egui_ctx().clone();
         let active_text = self.tabs.active_text();
         self.chrome.command_panel.open()
@@ -114,7 +121,19 @@ impl Ctx<'_> {
             document.edit_area_focused && !document.missing && !document.binary
         }) && egui.input(|i| i.focused)
             && !self.chrome.command_panel.open()
+            && !self.chrome.close_prompt.is_open()
             && !self.tabs.active_is_configuration()
+            && !egui.egui_wants_keyboard_input()
+    }
+
+    /// Whether the content area owns the keyboard: the window is focused and no
+    /// overlay or text field has taken it. Gates ⌘W, which must still work on
+    /// non-editable tabs (configuration, binary, missing).
+    pub(crate) fn content_owns_keyboard(&self) -> bool {
+        let egui = self.egui_ctx().clone();
+        egui.input(|i| i.focused)
+            && !self.chrome.command_panel.open()
+            && !self.chrome.close_prompt.is_open()
             && !egui.egui_wants_keyboard_input()
     }
 }

@@ -49,6 +49,9 @@ pub(crate) struct FrameState {
     /// workspace's file batch lands (it activates the remembered file first,
     /// so returning to the editor from configuration finds that file focused).
     pub(crate) pending_configuration_restore: Option<PathBuf>,
+    /// Tab id the close prompt asked to save before closing. The tab closes
+    /// only when its save lands clean; a failed or superseded save clears it.
+    pub(crate) pending_close_after_save: Option<u64>,
 }
 
 impl App {

@@ -76,6 +76,7 @@ impl EframeApp for App {
                     shell: &mut self.chrome.shell,
                     command_panel: &mut self.chrome.command_panel,
                     about_window: &mut self.chrome.about_window,
+                    close_prompt: &mut self.chrome.close_prompt,
                     sidebar: SidebarInput {
                         file_tree: self.workspace.file_tree.as_mut(),
                     },
@@ -183,6 +184,16 @@ impl Ctx<'_> {
         });
         if toggle_sidebar {
             self.chrome.shell.toggle_sidebar();
+        }
+
+        let close_tab = self.egui_ctx().input_mut(|input| {
+            input.consume_shortcut(&egui::KeyboardShortcut::new(
+                egui::Modifiers::COMMAND,
+                egui::Key::W,
+            ))
+        });
+        if close_tab && self.content_owns_keyboard() {
+            self.close_active_tab();
         }
 
         // Live `Auto` following: whatever the config plus the OS report resolve to

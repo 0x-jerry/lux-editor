@@ -261,9 +261,11 @@ impl FileTreePanel {
                     egui::pos2(left + 10.0, rect.top()),
                     egui::vec2(20.0, row_height),
                 );
-                let text_color = (*ignored)
-                    .then(|| ui.visuals().weak_text_color())
-                    .unwrap_or_else(|| ui.style().interact(&response).text_color());
+                let text_color = if *ignored {
+                    ui.visuals().weak_text_color()
+                } else {
+                    ui.style().interact(&response).text_color()
+                };
                 ui.painter().text(
                     icon_rect.center(),
                     egui::Align2::CENTER_CENTER,

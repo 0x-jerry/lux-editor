@@ -46,6 +46,12 @@ impl Component for TabStripView {
                             let mut tab_view = TabView;
                             for index in 0..input.tabs.len() {
                                 let tab = &input.tabs[index];
+                                // The pristine scratch tab is the welcome page's
+                                // placeholder, not a document; hide it while a
+                                // real tab holds focus.
+                                if tab.provisional && tab.id != input.active_id {
+                                    continue;
+                                }
                                 events.extend(tab_view.render(
                                     ui,
                                     TabInput {

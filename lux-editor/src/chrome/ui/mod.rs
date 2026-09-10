@@ -6,6 +6,7 @@ pub(crate) mod widgets;
 
 mod about;
 mod app_view;
+mod close_prompt;
 mod command_panel;
 mod file_binary;
 pub(crate) mod file_image;
@@ -17,6 +18,7 @@ mod workspace_start;
 
 pub use about::AboutWindow;
 pub use app_view::{AppView, AppViewInput};
+pub(crate) use close_prompt::ClosePrompt;
 pub use command_panel::CommandPanel;
 pub use file_binary::{FileBinaryInput, FileBinaryView};
 pub use file_image::{FileImageInput, FileImageView, is_image_path};

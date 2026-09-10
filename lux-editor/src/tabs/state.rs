@@ -30,6 +30,7 @@ impl Tab {
             title: self.content.title(),
             dirty: self.content.is_dirty(),
             closable: true,
+            provisional: self.content.is_provisional(),
             state: self.content.tab_state(),
         }
     }
@@ -80,6 +81,20 @@ impl TabContent {
             _ => TabState::Normal,
         }
     }
+
+    /// A pristine scratch tab: no file, no edits, no text. It is only ever the
+    /// placeholder the editor starts on, never a document the user made, so the
+    /// strip hides it while a real tab is active.
+    fn is_provisional(&self) -> bool {
+        match self {
+            TabContent::Text(document) => {
+                document.buffer.path().is_none()
+                    && !document.document_dirty
+                    && document.buffer.text().len_chars() == 0
+            }
+            TabContent::Configuration => false,
+        }
+    }
 }
 
 /// Content-agnostic tab metadata for the strip.
@@ -88,6 +103,9 @@ pub struct TabMeta {
     pub title: String,
     pub dirty: bool,
     pub closable: bool,
+    /// Placeholder content with nothing in it (the pristine scratch tab); the
+    /// strip only renders it while it is the active tab.
+    pub provisional: bool,
     pub state: TabState,
 }
 
@@ -135,6 +153,10 @@ impl TabManager {
         }
     }
 
+    pub(crate) fn active_id(&self) -> u64 {
+        self.tabs[self.active_tab].id
+    }
+
     pub(crate) fn active_is_configuration(&self) -> bool {
         matches!(
             self.tabs.get(self.active_tab).map(|tab| &tab.content),
@@ -174,6 +196,15 @@ impl TabManager {
         };
         self.active_tab = index;
         true
+    }
+
+    /// Whether closing `id` has to go through the save/discard prompt. Only
+    /// text content can be dirty; configuration autosaves and closes freely.
+    pub(crate) fn close_needs_confirmation(&self, id: u64) -> bool {
+        self.tabs
+            .iter()
+            .find(|tab| tab.id == id)
+            .is_some_and(|tab| tab.content.is_dirty())
     }
 
     /// Remove the tab at `index`. Last tab resets the strip to a fresh
@@ -222,10 +253,6 @@ impl TabManager {
         self.tabs
             .get_mut(self.active_tab)
             .and_then(|tab| tab.content.as_text_mut())
-    }
-
-    pub(crate) fn active_document(&self) -> &OpenDocument {
-        self.active_text().expect("active tab must be a text tab")
     }
 
     /// The window title the active tab asks for: its path with a dirty prefix,
@@ -307,10 +334,7 @@ impl TabManager {
         if self.tabs.len() != 1 || self.active_tab != 0 {
             return false;
         }
-        let active_document = self.active_document();
-        active_document.buffer.path().is_none()
-            && !active_document.document_dirty
-            && active_document.buffer.text().len_chars() == 0
+        self.tabs[0].content.is_provisional()
     }
 
     pub(crate) fn caret_blink_visible(&self) -> bool {
@@ -502,6 +526,65 @@ mod tests {
             openable_tab(&manager.tabs, Path::new("/ws/img.png")),
             Some(2)
         );
+    }
+
+    #[test]
+    fn only_dirty_text_tabs_need_close_confirmation() {
+        let mut manager = TabManager::with_empty_document();
+        let scratch = manager.tabs[0].id;
+        assert!(!manager.close_needs_confirmation(scratch));
+        assert!(!manager.close_needs_confirmation(999));
+
+        manager.open_configuration();
+        let configuration = manager.tabs[manager.active_tab].id;
+        assert!(!manager.close_needs_confirmation(configuration));
+
+        manager.tabs[0]
+            .content
+            .as_text_mut()
+            .unwrap()
+            .document_dirty = true;
+        assert!(manager.close_needs_confirmation(scratch));
+    }
+
+    #[test]
+    fn pristine_scratch_tabs_are_provisional() {
+        let mut manager = TabManager::with_empty_document();
+        assert!(manager.tabs[0].content.is_provisional());
+
+        manager.tabs[0]
+            .content
+            .as_text_mut()
+            .unwrap()
+            .document_dirty = true;
+        assert!(!manager.tabs[0].content.is_provisional());
+
+        let mut named = TabManager::with_empty_document();
+        named.tabs[0]
+            .content
+            .as_text_mut()
+            .unwrap()
+            .buffer
+            .set_path("/ws/a.rs");
+        assert!(!named.tabs[0].content.is_provisional());
+
+        let mut typed = TabManager::with_empty_document();
+        typed.tabs[0]
+            .content
+            .as_text_mut()
+            .unwrap()
+            .buffer
+            .insert(0, "x");
+        assert!(!typed.tabs[0].content.is_provisional());
+
+        let mut configured = TabManager::with_empty_document();
+        configured.open_configuration();
+        let configuration = configured
+            .tabs
+            .iter()
+            .position(|tab| matches!(tab.content, TabContent::Configuration))
+            .unwrap();
+        assert!(!configured.tabs[configuration].content.is_provisional());
     }
 
     #[test]

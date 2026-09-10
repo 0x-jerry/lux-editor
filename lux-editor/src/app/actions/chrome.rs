@@ -73,6 +73,11 @@ impl Ctx<'_> {
             TitleBarMenu::SaveFile => {
                 self.save_current_buffer();
             }
+            TitleBarMenu::CloseTab => {
+                if self.content_owns_keyboard() {
+                    self.close_active_tab();
+                }
+            }
             TitleBarMenu::Undo => self.edit_action(EditorCommand::Undo),
             TitleBarMenu::Redo => self.edit_action(EditorCommand::Redo),
             TitleBarMenu::Cut => self.edit_action(EditorCommand::Cut),

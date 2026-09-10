@@ -68,6 +68,10 @@ pub enum DocumentEvent {
     },
     /// The external formatter finished.
     FormattingFinished {
+        /// The file the formatter ran on; `None` for an untitled buffer, which
+        /// the handler resolves to the active tab. Guards against applying a
+        /// result to whatever tab happens to be active now.
+        path: Option<PathBuf>,
         generation: u64,
         from_save: bool,
         result: Result<String, String>,
@@ -79,8 +83,14 @@ pub enum DocumentEvent {
     },
     /// Focus the tab with this id (any content type).
     SwitchTab(u64),
-    /// Close the tab with this id.
+    /// Close the tab with this id. A dirty tab opens the save/discard prompt
+    /// instead of closing outright.
     CloseTab(u64),
+    /// The close prompt chose Save: save the tab, then close it once the write
+    /// lands clean.
+    SaveAndCloseTab(u64),
+    /// The close prompt chose Discard: close the tab without saving.
+    DiscardTab(u64),
     SaveFile,
     FormatFile,
 }

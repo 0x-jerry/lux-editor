@@ -1,7 +1,7 @@
 //! Chrome domain: shell navigation, command panel, about window, and the style
 //! (theme + fonts) the app pushes to egui.
 
-use crate::chrome::ui::{AboutWindow, CommandPanel, Shell};
+use crate::chrome::ui::{AboutWindow, ClosePrompt, CommandPanel, Shell};
 use crate::native::NativeChrome;
 use crate::theme::StartupFont;
 use crate::theme::ThemeChoice;
@@ -13,6 +13,7 @@ pub enum TitleBarMenu {
     // File
     OpenFile,
     OpenFolder,
+    CloseTab,
     SaveFile,
     // Edit
     Undo,
@@ -37,6 +38,7 @@ pub(crate) struct Chrome {
     pub(crate) shell: Shell,
     pub(crate) command_panel: CommandPanel,
     pub(crate) about_window: AboutWindow,
+    pub(crate) close_prompt: ClosePrompt,
     pub(crate) native: NativeChrome,
     /// Background font loader started before the window existed; taken once
     /// the startup family resolves (or a different family is configured).

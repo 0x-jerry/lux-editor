@@ -68,6 +68,13 @@ fn file_menu() -> Option<Submenu> {
     .ok()?;
     menu.append(&PredefinedMenuItem::separator()).ok()?;
     menu.append(&command_item(
+        TitleBarMenu::CloseTab,
+        "Close Tab",
+        cmd(Code::KeyW),
+    ))
+    .ok()?;
+    menu.append(&PredefinedMenuItem::separator()).ok()?;
+    menu.append(&command_item(
         TitleBarMenu::SaveFile,
         "Save",
         cmd(Code::KeyS),

@@ -45,22 +45,41 @@ impl Ctx<'_> {
             } => {
                 // The tab the save was started from, not whoever is active now:
                 // the user may have switched while the write was in flight.
-                if let Some(index) = tab_with_path(&self.tabs.tabs, &path)
-                    && let Some(document) = self.tabs.tabs[index].content.as_text_mut()
-                {
-                    if ok {
-                        if document.edit_generation == generation {
-                            document.document_dirty = false;
+                let mut saved = None;
+                if let Some(index) = tab_with_path(&self.tabs.tabs, &path) {
+                    let id = self.tabs.tabs[index].id;
+                    if let Some(document) = self.tabs.tabs[index].content.as_text_mut() {
+                        if ok {
+                            if document.edit_generation == generation {
+                                document.document_dirty = false;
+                            }
+                            // Baseline against the bytes the save just wrote so the
+                            // watcher's own-save event skips the byte compare, and
+                            // re-anchor the dirty reference at the saved content.
+                            document.record_disk_stat();
+                            document.saved_text = document.buffer.text().clone();
+                            document.document_status = Some(format!("Saved {}", path.display()));
+                        } else {
+                            document.document_status = Some("Failed to save file".to_string());
                         }
-                        // Baseline against the bytes the save just wrote so the
-                        // watcher's own-save event skips the byte compare, and
-                        // re-anchor the dirty reference at the saved content.
-                        document.record_disk_stat();
-                        document.saved_text = document.buffer.text().clone();
-                        document.document_status = Some(format!("Saved {}", path.display()));
-                    } else {
-                        document.document_status = Some("Failed to save file".to_string());
+                        saved = Some((id, document.document_dirty));
                     }
+                }
+                if let Some((id, clean)) = saved {
+                    if self.frame.pending_close_after_save == Some(id) {
+                        self.frame.pending_close_after_save = None;
+                        // Close only once the write landed and no newer edit
+                        // slipped in while it was in flight.
+                        if ok && clean {
+                            self.close_tab(id);
+                        }
+                    }
+                } else if self
+                    .frame
+                    .pending_close_after_save
+                    .is_some_and(|id| !self.tabs.tabs.iter().any(|tab| tab.id == id))
+                {
+                    self.frame.pending_close_after_save = None;
                 }
                 self.update_window_title();
                 self.track_file_open(&path);
@@ -75,12 +94,15 @@ impl Ctx<'_> {
                 }
             }
             DocumentEvent::FormattingFinished {
+                path,
                 generation,
                 from_save,
                 result,
-            } => self.on_formatting_finished(generation, from_save, result),
+            } => self.on_formatting_finished(path, generation, from_save, result),
             DocumentEvent::SwitchTab(id) => self.switch_to_tab(id),
-            DocumentEvent::CloseTab(id) => self.close_tab(id),
+            DocumentEvent::CloseTab(id) => self.request_close_tab(id),
+            DocumentEvent::SaveAndCloseTab(id) => self.save_and_close_tab(id),
+            DocumentEvent::DiscardTab(id) => self.discard_tab(id),
             DocumentEvent::SaveFile => {
                 self.save_current_buffer();
             }
@@ -223,7 +245,7 @@ impl Ctx<'_> {
             let ok = std::fs::write(&save_path, to_write).is_ok();
             let _ = event_tx.send(crate::events::CustomEvent::Document(
                 DocumentEvent::FileSaved {
-                    path: save_path,
+                    path: save_path.clone(),
                     generation,
                     ok,
                 },
@@ -231,6 +253,7 @@ impl Ctx<'_> {
             if let Some(result) = formatted_result {
                 let _ = event_tx.send(crate::events::CustomEvent::Document(
                     DocumentEvent::FormattingFinished {
+                        path: Some(save_path),
                         generation,
                         from_save: true,
                         result,
@@ -272,6 +295,49 @@ impl Ctx<'_> {
             return;
         }
 
+        self.remove_tab_at(index);
+    }
+
+    /// Close whichever tab is active (the ⌘W / Close Tab target).
+    pub(crate) fn close_active_tab(&mut self) {
+        let id = self.tabs.active_id();
+        self.request_close_tab(id);
+    }
+
+    /// Close `id`, prompting for save/discard when it has unsaved changes.
+    pub(crate) fn request_close_tab(&mut self, id: u64) {
+        if self.tabs.close_needs_confirmation(id) {
+            self.chrome.close_prompt.request(id);
+            return;
+        }
+        self.close_tab(id);
+    }
+
+    /// Close `id` without saving, discarding any unsaved changes.
+    pub(crate) fn discard_tab(&mut self, id: u64) {
+        self.chrome.close_prompt.cancel();
+        let Some(index) = self.tabs.tabs.iter().position(|tab| tab.id == id) else {
+            return;
+        };
+        self.remove_tab_at(index);
+    }
+
+    /// Save `id` and close it once the write lands clean. A cancelled save-as
+    /// or a failed write leaves the tab open and dirty.
+    pub(crate) fn save_and_close_tab(&mut self, id: u64) {
+        self.chrome.close_prompt.cancel();
+        if !self.tabs.focus_tab(id) {
+            return;
+        }
+        self.tabs.touch_caret_blink();
+        self.update_window_title();
+        self.refresh_language_intelligence();
+        if self.save_current_buffer() {
+            self.frame.pending_close_after_save = Some(id);
+        }
+    }
+
+    fn remove_tab_at(&mut self, index: usize) {
         self.tabs.remove_tab(index);
         self.tabs.touch_caret_blink();
         self.update_window_title();
@@ -328,6 +394,7 @@ impl Ctx<'_> {
         }
 
         let text = active_document.buffer.text().to_string();
+        let path = active_document.buffer.path().cloned();
         let generation = active_document.edit_generation;
         let event_tx = self.runtime.event_tx.clone();
         let wake = self.egui_ctx().clone();
@@ -337,6 +404,7 @@ impl Ctx<'_> {
             let result = run_formatter(&formatter.command, &formatter.args, &text);
             let _ = event_tx.send(crate::events::CustomEvent::Document(
                 DocumentEvent::FormattingFinished {
+                    path,
                     generation,
                     from_save: false,
                     result,
@@ -348,60 +416,75 @@ impl Ctx<'_> {
 
     pub(crate) fn on_formatting_finished(
         &mut self,
+        path: Option<PathBuf>,
         generation: u64,
         from_save: bool,
         result: Result<String, String>,
     ) {
+        // The tab the formatter ran on, not whoever is active now: a
+        // close-after-save can drop it before this lands, and applying the
+        // result to a different document would corrupt it.
+        let index = match path.as_deref() {
+            Some(path) => match tab_with_path(&self.tabs.tabs, path) {
+                Some(index) => index,
+                None => return,
+            },
+            None => self.tabs.active_tab,
+        };
         // The buffer moved on while the formatter was running; the result is
         // stale and must not clobber newer edits.
-        let Some(active_document) = self.tabs.active_text() else {
+        let Some(document) = self.tabs.tabs[index].content.as_text() else {
             return;
         };
-        if active_document.edit_generation != generation {
+        if document.edit_generation != generation {
             return;
         }
 
         match result {
             Ok(formatted) => {
-                if formatted.chars().eq(active_document.buffer.text().chars()) {
-                    self.tabs.active_text_mut().unwrap().document_status =
-                        Some("Already formatted".to_string());
+                if formatted.chars().eq(document.buffer.text().chars()) {
+                    self.tabs.tabs[index]
+                        .content
+                        .as_text_mut()
+                        .unwrap()
+                        .document_status = Some("Already formatted".to_string());
                     return;
                 }
-                let total_chars = active_document.buffer.text().len_chars();
-                let positions = active_document.caret_state.caret_chars_snapshot();
-                if self
-                    .tabs
-                    .active_text_mut()
+                let total_chars = document.buffer.text().len_chars();
+                let positions = document.caret_state.caret_chars_snapshot();
+                if self.tabs.tabs[index]
+                    .content
+                    .as_text_mut()
                     .is_some_and(|doc| doc.apply_edit(0, total_chars, &formatted))
                 {
-                    let Some(active_document) = self.tabs.active_text_mut() else {
+                    let Some(document) = self.tabs.tabs[index].content.as_text_mut() else {
                         return;
                     };
-                    let len = active_document.buffer.text().len_chars();
+                    let len = document.buffer.text().len_chars();
                     let clamped = positions
                         .iter()
                         .map(|pos| (*pos).min(len))
                         .collect::<Vec<usize>>();
-                    active_document
+                    document
                         .caret_state
-                        .set_all_caret_chars(&clamped, &active_document.buffer);
+                        .set_all_caret_chars(&clamped, &document.buffer);
                     if from_save {
                         // The save task already wrote this text to disk, so the
                         // buffer is in the saved state, not dirty.
-                        active_document.document_dirty = false;
-                        active_document.saved_text = active_document.buffer.text().clone();
-                        active_document.document_status = Some("Formatted".to_string());
-                    } else {
-                        active_document.document_status = Some("Formatted".to_string());
+                        document.document_dirty = false;
+                        document.saved_text = document.buffer.text().clone();
                     }
+                    document.document_status = Some("Formatted".to_string());
                     self.update_window_title();
                     self.schedule_language_refresh();
                 }
             }
             Err(err) => {
-                self.tabs.active_text_mut().unwrap().document_status =
-                    Some(format!("Format failed: {}", err));
+                self.tabs.tabs[index]
+                    .content
+                    .as_text_mut()
+                    .unwrap()
+                    .document_status = Some(format!("Format failed: {}", err));
             }
         }
     }

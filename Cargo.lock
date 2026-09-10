@@ -1128,18 +1128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui_commonmark"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19e757b2a0639f5f75793e6936ad4c86e8b58ee379d23578ad6924ba9f75ec38"
-dependencies = [
- "egui 0.36.1",
- "egui_commonmark_backend",
- "egui_extras",
- "pulldown-cmark",
-]
-
-[[package]]
 name = "egui_commonmark_backend"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2592,7 +2580,7 @@ dependencies = [
  "dirs",
  "eframe",
  "egui-phosphor",
- "egui_commonmark",
+ "egui_commonmark_backend",
  "egui_extras",
  "env_logger",
  "font-kit",
@@ -2603,6 +2591,7 @@ dependencies = [
  "notify",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "pulldown-cmark",
  "rfd",
  "ropey",
  "serde",

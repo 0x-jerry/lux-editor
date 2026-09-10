@@ -122,7 +122,9 @@ impl Engines {
         let config = states[index].config.as_ref()?;
         let events = highlighter
             .highlight(config, document.as_bytes(), None, |name| {
-                match NAME_INDEX.get(name).copied() {
+                let normalized =
+                    super::languages::normalize_language_name(name).to_ascii_lowercase();
+                match NAME_INDEX.get(normalized.as_str()).copied() {
                     Some(candidate) if states[candidate].config.is_some() => {
                         states[candidate].config.as_ref()
                     }

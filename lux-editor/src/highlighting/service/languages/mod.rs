@@ -23,7 +23,7 @@ pub(crate) use def::{ConfigInput, LanguageDef};
 
 macro_rules! define_languages {
     ( $( $variant:ident => $def:path ),* $(,)? ) => {
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
         pub enum LanguageKind {
             PlainText,
             $( $variant, )*
@@ -115,6 +115,29 @@ impl LanguageKind {
             .map(|ext| Self::from_extension(&ext.to_ascii_lowercase()))
             .unwrap_or(Self::PlainText)
     }
+
+    /// Resolves a markdown fence info string. See [`normalize_language_name`]
+    /// for how the label is reduced to a grammar name; anything unknown (or an
+    /// injection-only grammar) is plain text.
+    pub fn from_fence_label(label: &str) -> Self {
+        let name = normalize_language_name(label).to_ascii_lowercase();
+        NAME_INDEX
+            .get(name.as_str())
+            .and_then(|&index| KINDS.get(index).copied())
+            .unwrap_or(Self::PlainText)
+    }
+}
+
+/// Fence info strings and injection names are free-form: only the first token
+/// names a grammar, the markdown `language` node itself stops at whitespace or
+/// a comma (`rust,ignore` → `rust`), and lookups are case-insensitive. Shared
+/// by the editor's injection callback and `from_fence_label` so both sides
+/// resolve a fence identically.
+pub(super) fn normalize_language_name(label: &str) -> &str {
+    label
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .next()
+        .unwrap_or("")
 }
 
 #[cfg(test)]
@@ -147,5 +170,39 @@ mod tests {
                 assert!(NAME_INDEX.contains_key(name), "unknown requires `{name}`");
             }
         }
+    }
+
+    #[test]
+    fn fence_labels_resolve_to_grammars() {
+        assert_eq!(LanguageKind::from_fence_label("rust"), LanguageKind::Rust);
+        assert_eq!(LanguageKind::from_fence_label("rs"), LanguageKind::Rust);
+        assert_eq!(LanguageKind::from_fence_label("Rust"), LanguageKind::Rust);
+        assert_eq!(
+            LanguageKind::from_fence_label("rust,ignore"),
+            LanguageKind::Rust
+        );
+        assert_eq!(
+            LanguageKind::from_fence_label("rs,no_run"),
+            LanguageKind::Rust
+        );
+        assert_eq!(
+            LanguageKind::from_fence_label("TS"),
+            LanguageKind::TypeScript
+        );
+        assert_eq!(LanguageKind::from_fence_label("sh"), LanguageKind::Shell);
+        assert_eq!(
+            LanguageKind::from_fence_label("rust title=\"x\""),
+            LanguageKind::Rust
+        );
+        assert_eq!(LanguageKind::from_fence_label(""), LanguageKind::PlainText);
+        assert_eq!(
+            LanguageKind::from_fence_label("nope"),
+            LanguageKind::PlainText
+        );
+        // Injection-only grammars are not selectable from a fence.
+        assert_eq!(
+            LanguageKind::from_fence_label("markdown_inline"),
+            LanguageKind::PlainText
+        );
     }
 }

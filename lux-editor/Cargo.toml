@@ -45,7 +45,10 @@ tree-sitter-bash = "0.25"
 tree-sitter-html = "0.23.2"
 tree-sitter-xml = "0.7.0"
 tree-sitter-python = "0.25"
-egui_commonmark = "0.25"
+# Markdown preview: the shared element/parser helpers only; the code block
+# layouter is ours (tree-sitter colors).
+egui_commonmark_backend = "0.25"
+pulldown-cmark = { version = "0.13", default-features = false }
 # Image-tab viewer: file:// bytes loader plus the `image`-crate decoder.
 egui_extras = { version = "0.36", default-features = false, features = [
     "file",

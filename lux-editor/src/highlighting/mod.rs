@@ -6,6 +6,8 @@ mod paint;
 mod service;
 mod state;
 
-pub(crate) use paint::{build_highlighted_line_job, snapshot_color};
-pub(crate) use service::{HighlightSnapshot, HighlightSpan, HighlightingService, LanguageKind};
+pub(crate) use paint::{build_highlighted_job, build_highlighted_line_job, snapshot_color};
+pub(crate) use service::{
+    CodeHighlightEngine, HighlightSnapshot, HighlightSpan, HighlightingService, LanguageKind,
+};
 pub(crate) use state::Highlighting;

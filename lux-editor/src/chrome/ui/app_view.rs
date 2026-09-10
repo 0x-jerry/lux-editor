@@ -9,7 +9,9 @@ use super::shell::{Shell, ShellInput};
 use crate::component::Component;
 use crate::events::CustomEvent;
 use crate::settings::Config;
+use crate::theme::SyntaxColors;
 use eframe::egui;
+use std::sync::Arc;
 
 /// Everything the root view needs this frame: the components it renders
 /// (mutable, borrowed from the app) plus the document/workspace snapshot.
@@ -24,6 +26,7 @@ pub struct AppViewInput<'a> {
     pub document: DocumentInput<'a>,
     pub caret: CaretInput<'a>,
     pub editor_config: &'a Config,
+    pub syntax: &'a Arc<SyntaxColors>,
 }
 
 /// The app's view root. Owns no state itself; the shell and overlay
@@ -46,6 +49,7 @@ impl Component for AppView {
             document,
             caret,
             editor_config,
+            syntax,
         } = input;
 
         let active_is_markdown = tabs.active_is_markdown;
@@ -59,6 +63,7 @@ impl Component for AppView {
                 document,
                 caret,
                 editor_config,
+                syntax,
             },
         );
 

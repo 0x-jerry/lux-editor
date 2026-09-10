@@ -5,24 +5,27 @@ use crate::chrome::ui::{
     WorkspaceStartView, is_image_path,
 };
 use crate::component::Component;
+use crate::document::ui::markdown::{MarkdownPreviewState, MarkdownView};
 use crate::document::ui::{ScrollPane, ScrollSync, TextEditor, TextEditorState};
 use crate::events::CustomEvent;
 use crate::highlighting::snapshot_color;
 use crate::settings::Config;
 use crate::settings::configuration_view::{ConfigurationView, ConfigurationViewInput};
 use crate::tabs::{TabStripInput, TabStripView};
+use crate::theme::SyntaxColors;
 use eframe::egui;
-use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use std::sync::Arc;
 
 /// The editor-area content dispatcher: shared tab strip plus whatever the
 /// active tab holds (the configuration form or the text editor pages).
 pub struct EditorView;
 
 /// The shell-owned markdown preview session, borrowed for one frame: the
-/// renderer cache plus the scroll mirroring with the text editor.
+/// renderer state plus the scroll mirroring with the text editor.
 pub struct MarkdownPreview<'a> {
-    pub cache: &'a mut CommonMarkCache,
+    pub state: &'a mut MarkdownPreviewState,
     pub scroll: &'a mut ScrollSync,
+    pub syntax: &'a Arc<SyntaxColors>,
 }
 
 pub struct EditorViewState<'a> {
@@ -178,7 +181,7 @@ impl Component for EditorView {
                     }
                     scroll_area.show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        CommonMarkViewer::new().show(ui, preview.cache, &markdown);
+                        MarkdownView::show(ui, preview.state, &markdown, preview.syntax);
                     })
                 });
             let scroll = &panel.inner;

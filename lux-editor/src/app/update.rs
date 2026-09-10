@@ -11,6 +11,7 @@ use crate::component::Component;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::theme::{self, ThemeChoice};
 use eframe::{App as EframeApp, Frame, egui};
+use std::sync::Arc;
 use std::time::Duration;
 
 impl EframeApp for App {
@@ -28,6 +29,7 @@ impl EframeApp for App {
         let ctx = ui.ctx().clone();
 
         let editor_focused = self.ctx().editor_focused();
+        let syntax = Arc::clone(self.highlighting.service.syntax());
         let highlight_snapshot = self.highlighting.service.snapshot();
         let active_document = self
             .tabs
@@ -101,6 +103,7 @@ impl EframeApp for App {
                         visible: caret_visible,
                     },
                     editor_config: &self.settings.editor_config,
+                    syntax: &syntax,
                 },
             )
         };

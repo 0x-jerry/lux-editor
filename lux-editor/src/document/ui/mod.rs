@@ -1,3 +1,4 @@
+pub(crate) mod markdown;
 mod scroll_sync;
 pub(crate) mod text_editor;
 

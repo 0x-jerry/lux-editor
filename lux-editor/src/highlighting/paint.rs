@@ -16,19 +16,42 @@ pub fn build_highlighted_line_job(
     default_color: egui::Color32,
 ) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
-    if tokens.is_empty() {
-        job.append(
-            line,
-            0.0,
-            egui::TextFormat {
-                font_id: egui::FontId::monospace(font_size),
-                color: default_color,
-                ..Default::default()
-            },
-        );
-        return job;
-    }
+    append_line(&mut job, line, tokens, font_size, default_color);
+    job
+}
 
+/// One `LayoutJob` for a multi-line snippet, given the per-line tokens the
+/// highlighter produced. `line_tokens[i]` belongs to the i-th line of
+/// `text.split('\n')`.
+pub fn build_highlighted_job(
+    text: &str,
+    line_tokens: &[Vec<HighlightSpan>],
+    font_size: f32,
+    default_color: egui::Color32,
+) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            append_default(&mut job, "\n", font_size, default_color);
+        }
+        append_line(
+            &mut job,
+            line,
+            line_tokens.get(index).map(Vec::as_slice).unwrap_or(&[]),
+            font_size,
+            default_color,
+        );
+    }
+    job
+}
+
+fn append_line(
+    job: &mut egui::text::LayoutJob,
+    line: &str,
+    tokens: &[HighlightSpan],
+    font_size: f32,
+    default_color: egui::Color32,
+) {
     let mut cursor = 0usize;
     for token in tokens {
         // Token offsets are byte-based; snap to UTF-8 boundaries so slicing can't panic.
@@ -49,12 +72,7 @@ pub fn build_highlighted_line_job(
             continue;
         };
         if paint_start > cursor {
-            append_default(
-                &mut job,
-                &line[cursor..paint_start],
-                font_size,
-                default_color,
-            );
+            append_default(job, &line[cursor..paint_start], font_size, default_color);
         }
         job.append(
             &line[paint_start..paint_end],
@@ -74,9 +92,8 @@ pub fn build_highlighted_line_job(
     }
 
     if cursor < line.len() {
-        append_default(&mut job, &line[cursor..], font_size, default_color);
+        append_default(job, &line[cursor..], font_size, default_color);
     }
-    job
 }
 
 /// Clips a token's `[start, end)` byte range against a monotonic `cursor`,
@@ -214,5 +231,48 @@ mod tests {
             color: [1, 2, 3, 255],
         }];
         assert_eq!(paint(line, &tokens), line);
+    }
+
+    #[test]
+    fn multi_line_job_preserves_text_and_paints_each_line() {
+        let text = "fn main() {\n    x\n}";
+        let tokens = vec![
+            vec![HighlightSpan {
+                start_col: 0,
+                end_col: 2,
+                color: [1, 2, 3, 255],
+            }],
+            vec![HighlightSpan {
+                start_col: 4,
+                end_col: 5,
+                color: [4, 5, 6, 255],
+            }],
+            Vec::new(),
+        ];
+        let job = build_highlighted_job(text, &tokens, 12.0, egui::Color32::GRAY);
+        assert_eq!(job.text, text);
+        let colored: Vec<&str> = job
+            .sections
+            .iter()
+            .filter(|section| section.format.color != egui::Color32::GRAY)
+            .map(|section| &job.text[section.byte_range.start.0..section.byte_range.end.0])
+            .collect();
+        assert!(colored.contains(&"fn"), "keyword run missing: {colored:?}");
+        assert!(
+            colored.contains(&"x"),
+            "second line run missing: {colored:?}"
+        );
+    }
+
+    #[test]
+    fn multi_line_job_tolerates_missing_token_lines() {
+        let job = build_highlighted_job("a\nb", &[], 12.0, egui::Color32::GRAY);
+        assert_eq!(job.text, "a\nb");
+    }
+
+    #[test]
+    fn multi_line_job_keeps_a_trailing_empty_line() {
+        let job = build_highlighted_job("a\n", &[vec![], vec![]], 12.0, egui::Color32::GRAY);
+        assert_eq!(job.text, "a\n");
     }
 }

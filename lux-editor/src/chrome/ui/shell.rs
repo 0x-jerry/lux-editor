@@ -6,16 +6,18 @@ use super::frame_input::{CaretInput, DocumentInput, SidebarInput, TabsInput, Wor
 use super::widgets::{StatusBar, StatusBarData, TitleBar, TitleBarData, window_resize_handle};
 use crate::component::Component;
 use crate::document::ui::ScrollSync;
+use crate::document::ui::markdown::MarkdownPreviewState;
 use crate::events::CustomEvent;
 use crate::highlighting::snapshot_color;
 use crate::settings::configuration_view::ConfigurationView;
 use crate::settings::{Config, EditorSettings};
 use crate::tabs::{EditorView, EditorViewState, MarkdownPreview};
+use crate::theme::SyntaxColors;
 use crate::workspace::file_tree_panel::{FileTreePanel, FileTreePanelInput};
 use eframe::egui;
-use egui_commonmark::CommonMarkCache;
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// The document-model snapshot the shell renders from each frame.
 pub struct ShellInput<'a> {
@@ -25,6 +27,9 @@ pub struct ShellInput<'a> {
     pub document: DocumentInput<'a>,
     pub caret: CaretInput<'a>,
     pub editor_config: &'a Config,
+    /// The palette the editor's highlight snapshot was built with, so preview
+    /// fences match it exactly.
+    pub syntax: &'a Arc<SyntaxColors>,
 }
 
 /// The app shell: chrome (title/status bars), sidebar and the active view.
@@ -41,8 +46,8 @@ pub struct Shell {
 
     // Markdown preview.
     markdown_preview_visible: bool,
-    /// egui_commonmark's inter-frame cache (images, scroll state).
-    markdown_cache: CommonMarkCache,
+    /// Preview renderer state (tree-sitter fence cache, link/scroll cache).
+    markdown: MarkdownPreviewState,
     /// Scroll mirroring between the text editor and the markdown preview.
     markdown_scroll: ScrollSync,
 
@@ -59,7 +64,7 @@ impl Default for Shell {
             sidebar_visible: true,
             file_tree_panel: FileTreePanel::default(),
             markdown_preview_visible: false,
-            markdown_cache: CommonMarkCache::default(),
+            markdown: MarkdownPreviewState::default(),
             markdown_scroll: ScrollSync::default(),
             editor_view: EditorView,
             configuration_view: None,
@@ -109,6 +114,7 @@ impl Component for Shell {
             document,
             caret,
             editor_config,
+            syntax,
         } = state;
 
         let mut events = Vec::new();
@@ -186,8 +192,9 @@ impl Component for Shell {
             && !document.missing
             && !document.binary)
             .then_some(MarkdownPreview {
-                cache: &mut self.markdown_cache,
+                state: &mut self.markdown,
                 scroll: &mut self.markdown_scroll,
+                syntax,
             });
 
         let central_fill = if tabs.active_is_configuration {

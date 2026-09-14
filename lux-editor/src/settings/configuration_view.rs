@@ -273,14 +273,14 @@ fn dot_path_mut<'a>(root: &'a mut Value, path: &str) -> Option<&'a mut Value> {
     Some(node)
 }
 
-/// A flat section title with a weak description and a divider underneath.
+/// A flat section title with a muted description and a divider underneath.
 fn section_header(ui: &mut egui::Ui, section: &SectionSchema) {
     ui.label(egui::RichText::new(section.title).strong());
     if !section.description.is_empty() {
         ui.label(
             egui::RichText::new(section.description)
-                .small()
-                .color(ui.visuals().weak_text_color()),
+                .font(description_font(ui))
+                .color(description_color(ui.visuals())),
         );
     }
     ui.add_space(4.0);
@@ -288,7 +288,7 @@ fn section_header(ui: &mut egui::Ui, section: &SectionSchema) {
     ui.add_space(12.0);
 }
 
-/// One setting: bold title, weak description, control below. Returns whether
+/// One setting: bold title, muted description, control below. Returns whether
 /// the control changed this frame.
 fn setting_row(
     ui: &mut egui::Ui,
@@ -300,12 +300,77 @@ fn setting_row(
     if !description.is_empty() {
         ui.label(
             egui::RichText::new(description)
-                .small()
-                .color(ui.visuals().weak_text_color()),
+                .font(description_font(ui))
+                .color(description_color(ui.visuals())),
         );
     }
-    ui.add_space(4.0);
+    ui.add_space(6.0);
     let changed = control(ui);
-    ui.add_space(16.0);
+    ui.add_space(18.0);
     changed
+}
+
+/// Helper type derived from the body size so descriptions scale with the
+/// configured font; `TextStyle::Small` stays at egui's fixed 9px default.
+fn description_font(ui: &egui::Ui) -> egui::FontId {
+    let body = egui::TextStyle::Body.resolve(ui.style());
+    egui::FontId::new(description_size(body.size), body.family)
+}
+
+fn description_size(body_size: f32) -> f32 {
+    body_size.max(11.0)
+}
+
+/// Muted helper color blended from the body text toward the panel background:
+/// subordinate to the bold title, but above WCAG AA on both themes.
+fn description_color(visuals: &egui::Visuals) -> egui::Color32 {
+    visuals
+        .text_color()
+        .lerp_to_gamma(visuals.panel_fill, DESCRIPTION_BLEND)
+}
+
+/// Fraction of the panel background mixed into description text.
+const DESCRIPTION_BLEND: f32 = 0.12;
+
+#[cfg(test)]
+mod tests {
+    use super::{description_color, description_size};
+    use crate::theme::{AppTheme, ThemeChoice};
+    use eframe::egui;
+
+    #[test]
+    fn description_size_tracks_the_body_with_a_legibility_floor() {
+        assert_eq!(description_size(24.0), 24.0);
+        assert_eq!(description_size(14.0), 14.0);
+        assert_eq!(description_size(9.0), 11.0);
+    }
+
+    fn luminance(color: egui::Color32) -> f32 {
+        let channel = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(color.r()) + 0.7152 * channel(color.g()) + 0.0722 * channel(color.b())
+    }
+
+    fn contrast(a: egui::Color32, b: egui::Color32) -> f32 {
+        let (hi, lo) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    #[test]
+    fn descriptions_keep_readable_contrast_on_both_themes() {
+        for choice in [ThemeChoice::Dark, ThemeChoice::Light] {
+            let visuals = AppTheme::resolve(choice).visuals;
+            let ratio = contrast(description_color(&visuals), visuals.panel_fill);
+            assert!(
+                ratio >= 4.5,
+                "{choice:?} description contrast {ratio:.2} is below WCAG AA"
+            );
+        }
+    }
 }

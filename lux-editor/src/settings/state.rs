@@ -22,10 +22,20 @@ impl SettingsState {
     ) -> Option<RecommendedWatcher> {
         let mut watcher = RecommendedWatcher::new(
             move |result: notify::Result<notify::Event>| {
-                if result.is_ok() {
-                    event_tx.send(CustomEvent::App(AppEvent::ConfigChange)).ok();
-                    wake.request_repaint();
+                let Ok(event) = result else { return };
+                // The log file lives in the watched settings dir; writing it must
+                // not look like a config change (trace logging would otherwise
+                // reload the config and repaint on every line).
+                if !event.paths.is_empty()
+                    && event
+                        .paths
+                        .iter()
+                        .all(|path| crate::logging::is_log_file(path))
+                {
+                    return;
                 }
+                event_tx.send(CustomEvent::App(AppEvent::ConfigChange)).ok();
+                wake.request_repaint();
             },
             notify::Config::default(),
         )

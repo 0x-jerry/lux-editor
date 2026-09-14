@@ -125,6 +125,26 @@ impl Default for ExplorerSettings {
     }
 }
 
+fn default_log_level() -> String {
+    "warn".to_string()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct LogSettings {
+    /// Console verbosity: "error" | "warn" | "info" | "debug" | "trace".
+    /// Applied on the next launch; `RUST_LOG` overrides it.
+    #[serde(default = "default_log_level")]
+    pub level: String,
+}
+
+impl Default for LogSettings {
+    fn default() -> Self {
+        Self {
+            level: default_log_level(),
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct EditorSettings {
     #[serde(default)]
@@ -135,6 +155,8 @@ pub struct EditorSettings {
     pub formatter: FormatterSettings,
     #[serde(default)]
     pub explorer: ExplorerSettings,
+    #[serde(default)]
+    pub log: LogSettings,
 }
 
 #[cfg(test)]
@@ -156,6 +178,7 @@ mod tests {
         assert_eq!(settings.theme.choice, "auto");
         assert_eq!(settings.formatter.args, "--stdin");
         assert_eq!(settings.explorer.exclude, vec![".git".to_string()]);
+        assert_eq!(settings.log.level, "warn");
     }
 
     #[test]

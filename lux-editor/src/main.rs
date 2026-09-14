@@ -5,7 +5,9 @@ mod component;
 mod document;
 mod events;
 mod highlighting;
+mod logging;
 mod native;
+mod paths;
 mod settings;
 mod tabs;
 mod theme;
@@ -16,7 +18,7 @@ use eframe::egui;
 use settings::Config;
 
 pub fn main() {
-    env_logger::init();
+    logging::init(&Config::configured_log_level());
     app::startup::stage("process start");
 
     // Start resolving/reading the configured editor font before the window

@@ -2,7 +2,8 @@
 //! per-workspace sessions: open tabs, active file, expanded tree folders) and
 //! the in-memory [`Config`] that debounces recent-item writes.
 
-use super::types::{EditorSettings, RecentItem, WorkspaceSession};
+use super::types::{EditorSettings, LogSettings, RecentItem, WorkspaceSession};
+use crate::paths::data_dir;
 use std::path::{Path, PathBuf};
 
 const MAX_SESSIONS: usize = 50;
@@ -114,10 +115,18 @@ impl Config {
     }
 
     pub fn user_settings_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("lux")
-            .join("config.json")
+        data_dir().join("config.json")
+    }
+
+    /// Log level for the pre-logger config read; never logs itself, so a
+    /// malformed file is still reported (and backed up) by the later full load.
+    pub fn configured_log_level() -> String {
+        let path = Self::user_settings_path();
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<EditorSettings>(&text).ok())
+            .map(|settings| settings.log.level)
+            .unwrap_or_else(|| LogSettings::default().level)
     }
 
     pub fn save_settings(settings: &EditorSettings) -> std::io::Result<PathBuf> {
@@ -192,10 +201,7 @@ impl Config {
     }
 
     fn recent_items_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("lux")
-            .join("recent.json")
+        data_dir().join("recent.json")
     }
 }
 

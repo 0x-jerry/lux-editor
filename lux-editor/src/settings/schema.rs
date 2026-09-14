@@ -206,6 +206,25 @@ pub(crate) const BUILTIN: SettingSchema = SettingSchema {
                 kind: RowType::TextList { default: &[".git"] },
             }],
         },
+        SectionSchema {
+            title: "Logging",
+            description: "Diagnostics written to the terminal.",
+            rows: &[RowSchema {
+                path: "log.level",
+                title: "Log level",
+                description: "Console verbosity; takes effect on restart. RUST_LOG overrides it.",
+                kind: RowType::TextChoice {
+                    options: &[
+                        ("Error", "error"),
+                        ("Warn", "warn"),
+                        ("Info", "info"),
+                        ("Debug", "debug"),
+                        ("Trace", "trace"),
+                    ],
+                    default: "warn",
+                },
+            }],
+        },
     ],
 };
 
@@ -223,12 +242,13 @@ mod tests {
 
     #[test]
     fn section_search_filters_its_rows() {
-        let [appearance, formatting, explorer] = BUILTIN.sections else {
-            panic!("expected the three declared sections");
+        let [appearance, formatting, explorer, logging] = BUILTIN.sections else {
+            panic!("expected the four declared sections");
         };
         assert_eq!(appearance.rows.len(), 3);
         assert_eq!(formatting.rows.len(), 3);
         assert_eq!(explorer.rows.len(), 1);
+        assert_eq!(logging.rows.len(), 1);
 
         assert_eq!(appearance.visible_rows("").len(), 3);
         let family: Vec<&str> = appearance
@@ -253,12 +273,14 @@ mod tests {
         assert_eq!(rows[0].path, "formatter.format_on_save");
         assert_eq!(explorer.visible_rows("EXCLUDE")[0].path, "explorer.exclude");
         assert!(explorer.visible_rows("font").is_empty());
+        assert_eq!(logging.visible_rows("level")[0].path, "log.level");
+        assert!(logging.visible_rows("font").is_empty());
     }
 
     #[test]
     fn rows_are_unique_and_non_empty() {
         let rows: Vec<&RowSchema> = all_rows().collect();
-        assert_eq!(rows.len(), 7);
+        assert_eq!(rows.len(), 8);
         for row in &rows {
             assert_eq!(
                 rows.iter().filter(|other| other.path == row.path).count(),

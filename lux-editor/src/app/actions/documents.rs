@@ -20,6 +20,12 @@ impl Ctx<'_> {
                 workspace,
             } => {
                 self.tabs.pending_loads = self.tabs.pending_loads.saturating_sub(1);
+                // Stop hiding the welcome page for the startup open once its
+                // last load lands. Cleared before the stale-workspace early
+                // return so a stale or empty batch still clears it.
+                if self.tabs.pending_loads == 0 {
+                    self.frame.startup_open_pending = false;
+                }
                 // A batch from a workspace the user left would append foreign
                 // tabs, steal focus from the new restore and churn the recents.
                 if workspace.as_deref() != self.workspace.path.as_deref() || entries.is_empty() {
@@ -489,5 +495,37 @@ impl Ctx<'_> {
                     .document_status = Some(format!("Format failed: {}", err));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app::App;
+    use crate::events::{CustomEvent, DocumentEvent};
+    use crate::settings::Config;
+    use crate::theme::StartupFont;
+    use eframe::egui;
+
+    /// The startup open suppresses the welcome page while its read is in
+    /// flight; the moment the last batch lands the suppression must lift, even
+    /// for a stale or empty batch, so the welcome page cannot stay hidden.
+    #[test]
+    fn last_load_landing_clears_the_startup_welcome_suppression() {
+        let mut app = App::new(
+            egui::Context::default(),
+            StartupFont::spawn(String::new()),
+            Config::default(),
+        );
+        app.frame.startup_open_pending = true;
+        app.tabs.pending_loads = 1;
+        {
+            let mut cx = app.ctx();
+            cx.handle_event(CustomEvent::Document(DocumentEvent::FilesLoaded {
+                entries: Vec::new(),
+                activate: None,
+                workspace: None,
+            }));
+        }
+        assert!(!app.frame.startup_open_pending);
     }
 }

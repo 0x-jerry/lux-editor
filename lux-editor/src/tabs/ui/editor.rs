@@ -99,7 +99,11 @@ impl Component for EditorView {
             return events;
         }
 
-        if workspace.path.is_none() && document.buffer.path().is_none() {
+        if welcome_visible(
+            workspace.path.is_some(),
+            document.buffer.path().is_some(),
+            workspace.initial_load_pending,
+        ) {
             let mut welcome_view = WelcomeView;
             events.extend(welcome_view.render(ui, editor_config));
             return events;
@@ -226,9 +230,16 @@ fn strip_visible(tab_count: usize, has_workspace: bool, nothing_open: bool) -> b
     tab_count > 1 || (has_workspace && !nothing_open)
 }
 
+/// Whether the welcome page owns the editor area. A startup CLI open whose read
+/// is still in flight keeps it hidden, so the first frames show the (empty)
+/// editor instead of a welcome flash.
+fn welcome_visible(has_workspace: bool, has_document: bool, initial_load_pending: bool) -> bool {
+    !has_workspace && !has_document && !initial_load_pending
+}
+
 #[cfg(test)]
 mod tests {
-    use super::strip_visible;
+    use super::{strip_visible, welcome_visible};
 
     #[test]
     fn strip_follows_tab_count_and_workspace() {
@@ -243,5 +254,20 @@ mod tests {
         // Several tabs stay reachable, workspace or not.
         assert!(strip_visible(2, false, false));
         assert!(strip_visible(2, true, true));
+    }
+
+    #[test]
+    fn welcome_stays_hidden_while_the_startup_open_loads() {
+        // Launch with a file: its read is in flight, so the empty editor paints
+        // instead of a welcome flash.
+        assert!(!welcome_visible(false, false, true));
+        // No CLI target, or its load landed: the welcome page shows.
+        assert!(welcome_visible(false, false, false));
+        // A workspace (even on its start page) never shows welcome.
+        assert!(!welcome_visible(true, false, true));
+        assert!(!welcome_visible(true, false, false));
+        // A loaded document never shows welcome.
+        assert!(!welcome_visible(false, true, false));
+        assert!(!welcome_visible(false, true, true));
     }
 }

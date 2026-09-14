@@ -197,6 +197,10 @@ impl Ctx<'_> {
         } else if path.is_file() {
             self.open_file(path);
         }
+        // A dispatched read means the welcome page must stay hidden until the
+        // document (or the workspace's first tab) lands. An invalid path or a
+        // first-time workspace leaves this false, so nothing is suppressed.
+        self.frame.startup_open_pending = self.tabs.pending_loads > 0;
     }
 
     pub(crate) fn track_file_open(&mut self, path: &Path) {
@@ -282,6 +286,91 @@ fn unused_child(parent: &Path, name: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{is_rename_target, unused_child};
+    use crate::app::App;
+    use crate::settings::{Config, WorkspaceSession};
+    use crate::theme::StartupFont;
+    use eframe::egui;
+    use std::path::PathBuf;
+
+    fn test_app() -> App {
+        App::new(
+            egui::Context::default(),
+            StartupFont::spawn(String::new()),
+            Config::default(),
+        )
+    }
+
+    /// Launching with a file dispatches its read and arms the welcome
+    /// suppression until that read lands.
+    #[test]
+    fn startup_file_open_arms_the_welcome_suppression() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "hi").unwrap();
+        let mut app = test_app();
+        {
+            let mut cx = app.ctx();
+            cx.initialize_from_path(Some(file));
+        }
+        assert_eq!(app.tabs.pending_loads, 1);
+        assert!(app.frame.startup_open_pending);
+    }
+
+    /// A folder restore dispatches its remembered tabs inside `open_folder`, so
+    /// the arming line after it must see the pending load.
+    #[test]
+    fn startup_folder_open_arms_the_welcome_suppression_for_its_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let file = root.join("a.txt");
+        std::fs::write(&file, "hi").unwrap();
+        let mut app = test_app();
+        app.settings
+            .editor_config
+            .set_workspace_session(WorkspaceSession {
+                workspace_path: root.clone(),
+                open_files: vec![file.clone()],
+                active_file: Some(file),
+                configuration_open: false,
+                expanded_dirs: vec![root.clone()],
+            });
+        {
+            let mut cx = app.ctx();
+            cx.initialize_from_path(Some(root));
+        }
+        assert!(app.workspace.path.is_some());
+        assert_eq!(app.tabs.pending_loads, 1);
+        assert!(app.frame.startup_open_pending);
+        // The test workspace must not reach the user's recent.json on drop.
+        app.settings.editor_config.recent_dirty = false;
+    }
+
+    #[test]
+    fn an_invalid_startup_path_leaves_the_welcome_page_showing() {
+        let mut app = test_app();
+        {
+            let mut cx = app.ctx();
+            cx.initialize_from_path(Some(PathBuf::from("/no/such/lux/path")));
+        }
+        assert_eq!(app.tabs.pending_loads, 0);
+        assert!(!app.frame.startup_open_pending);
+    }
+
+    /// Only the startup open suppresses the welcome page; an interactive open
+    /// keeps today's behavior.
+    #[test]
+    fn a_later_open_does_not_arm_the_startup_suppression() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "hi").unwrap();
+        let mut app = test_app();
+        {
+            let mut cx = app.ctx();
+            cx.open_file(file);
+        }
+        assert_eq!(app.tabs.pending_loads, 1);
+        assert!(!app.frame.startup_open_pending);
+    }
 
     #[test]
     fn new_entries_never_take_a_name_that_exists() {

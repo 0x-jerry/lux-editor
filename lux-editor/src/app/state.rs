@@ -14,7 +14,7 @@ use crate::chrome::Chrome;
 use crate::highlighting::Highlighting;
 use crate::settings::{Config, SettingsState};
 use crate::tabs::TabManager;
-use crate::theme::StartupFont;
+use crate::theme::{self, CustomFont, StartupFont, ThemeChoice};
 use crate::workspace::Workspace;
 use eframe::egui;
 use std::path::PathBuf;
@@ -37,10 +37,19 @@ pub struct App {
 /// them. Lives beside the domain bundle rather than inside a domain struct.
 #[derive(Default)]
 pub(crate) struct FrameState {
-    /// CLI path (folder or file) opened after the first frame paints, so
-    /// window bring-up never waits on disk work.
+    /// CLI path (folder or file) opened on the first logic pass, before the
+    /// first frame paints, so the welcome page never flashes over it. A file's
+    /// bytes are read on the background runtime; opening a folder also does its
+    /// tree/watcher setup there.
     pub(crate) pending_init: Option<PathBuf>,
-    pub(crate) deferred_init_done: bool,
+    /// The first link's settings watcher has been started. It waits for a
+    /// painted window because `notify` setup and settings-dir creation are
+    /// disk work that must not delay the first frame.
+    pub(crate) settings_watcher_started: bool,
+    /// The startup CLI target's initial read is still in flight. The welcome
+    /// page stays hidden until it lands; set only by `initialize_from_path`, so
+    /// opens made later keep today's behavior.
+    pub(crate) startup_open_pending: bool,
     /// Debounce deadline for the recent-files flush.
     pub(crate) recent_flush_deadline: Option<Instant>,
     /// A restored session asked for the configuration tab; keyed to the
@@ -91,6 +100,23 @@ impl App {
                 ..Default::default()
             },
         };
+        // `Context::set_fonts` only takes effect at the start of the *next*
+        // pass, and `frame_logic` applies the style at the end of the first
+        // pass. The shell can render the file tree — whose icons live in the
+        // named `devicons` family — on that first frame when a CLI workspace
+        // opens eagerly, so install the base fonts here, before the loop, to
+        // bind the family in time. `apply_style` re-applies once the configured
+        // editor font lands.
+        let resolved = theme::resolve(
+            ThemeChoice::from_value(&app.settings.editor_config.settings.theme.choice),
+            app.runtime.ctx.system_theme(),
+        );
+        theme::apply_editor_settings(
+            &app.runtime.ctx,
+            resolved,
+            &app.settings.editor_config.settings,
+            CustomFont::Pending,
+        );
         app.chrome
             .shell
             .sync_config_draft(&app.settings.editor_config.settings);
@@ -102,5 +128,48 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         self.settings.editor_config.flush_recent();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use crate::settings::Config;
+    use crate::theme::StartupFont;
+    use eframe::egui;
+
+    /// `set_fonts` only takes effect at the start of the *next* pass, and the
+    /// file tree — whose icons live in the named `devicons` family — can render
+    /// on the first frame of an eagerly opened CLI workspace. `App::new` must
+    /// therefore bind the family before the loop, or that first frame panics; a
+    /// regression here is a hard crash, not a visual glitch.
+    #[test]
+    fn app_new_binds_devicons_before_the_first_frame() {
+        let ctx = egui::Context::default();
+        let _app = App::new(
+            ctx.clone(),
+            StartupFont::spawn(String::new()),
+            Config::default(),
+        );
+        let mut bound = false;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 600.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                bound = ui.ctx().fonts(|fonts| {
+                    fonts
+                        .families()
+                        .contains(&egui::FontFamily::Name("devicons".into()))
+                });
+            },
+        );
+        // The frame's font-atlas upload is not consumed in a headless test.
+        output.textures_delta.clear();
+        assert!(bound, "the devicons family must be bound on the first pass");
     }
 }

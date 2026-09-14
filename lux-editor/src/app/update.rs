@@ -80,6 +80,8 @@ impl EframeApp for App {
                     workspace: WorkspaceInput {
                         path: self.workspace.path.as_ref(),
                         restoring_session: self.tabs.pending_loads > 0,
+                        initial_load_pending: self.frame.startup_open_pending
+                            && self.tabs.pending_loads > 0,
                     },
                     tabs: TabsInput {
                         tabs: &tabs,
@@ -182,20 +184,26 @@ impl Ctx<'_> {
     /// The whole pre-UI logic pass, in the order it has to run. Order is
     /// load-bearing in places; see the comments on the individual steps.
     fn frame_logic(&mut self) {
-        // Workspace/document setup waits for a painted window: everything
-        // below touches the disk and must not delay first-frame presentation.
-        // `runtime_theme` is set by the first `apply_style`, so this fires on
-        // the second logic pass — after the first frame has been presented.
-        // Runs before event processing so a first-frame open (synthetic or
-        // otherwise) is not clobbered by the CLI path.
-        if !self.frame.deferred_init_done {
+        // Open the CLI target on the very first logic pass — it runs before the
+        // first `ui` pass — so the first painted frame shows the target document
+        // (or an empty editor while it loads) instead of the welcome page. A
+        // folder's tree/watcher setup runs here too; only file bytes are read on
+        // the background runtime. Runs before event processing so a first-frame
+        // open is not clobbered.
+        if self.workspace.path.is_none()
+            && let Some(initial_path) = self.frame.pending_init.take()
+        {
+            self.initialize_from_path(Some(initial_path));
+        }
+
+        // The settings watcher still waits for a painted window: `notify` setup
+        // and creating the settings dir are disk work that must not delay the
+        // first frame. `runtime_theme` is set by the first `apply_style` at the
+        // end of this pass, so this fires on the second logic pass.
+        if !self.frame.settings_watcher_started {
             if self.chrome.runtime_theme.is_some() {
-                self.frame.deferred_init_done = true;
+                self.frame.settings_watcher_started = true;
                 self.restart_settings_watcher();
-                if self.workspace.path.is_none() {
-                    let initial_path = self.frame.pending_init.take();
-                    self.initialize_from_path(initial_path);
-                }
             } else {
                 // Occluded/minimized windows never run `ui`, so drive the
                 // second logic pass from here.

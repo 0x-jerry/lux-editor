@@ -16,8 +16,11 @@ pub struct SidebarInput<'a> {
 /// Workspace domain: the open folder and session-restore progress.
 pub struct WorkspaceInput<'a> {
     pub path: Option<&'a PathBuf>,
-    /// Still reading the files a restored workspace remembered; the welcome page waits.
+    /// Still reading the files a restored workspace remembered; the start page waits.
     pub restoring_session: bool,
+    /// The startup CLI target's first read is still in flight; the welcome page
+    /// must not render in its place (it would flash over the loading editor).
+    pub initial_load_pending: bool,
 }
 
 /// Tab domain: the tab strip and what the active tab is.

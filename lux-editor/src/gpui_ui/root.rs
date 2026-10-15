@@ -1,6 +1,11 @@
 //! Root view: owns the application state, drains the background event channel
-//! and renders the shell (sidebar file tree, tab strip, editor).
+//! and renders the shell (title bar with the application menu, sidebar file
+//! tree, tab strip, editor and status bar).
 
+use super::actions::{
+    CloseTab, NewFile, OpenCommandPalette, OpenFile, OpenFolder, Quit, Save, SaveAs,
+    ToggleMarkdownPreview, ToggleSidebar,
+};
 use super::document::{OpenDocument, read_text};
 use super::language::language_for;
 use super::runtime::Runtime;
@@ -11,9 +16,12 @@ use crate::events::{CustomEvent, WorkspaceEvent};
 use crate::settings::Config;
 use crate::theme::ThemeChoice;
 use crate::workspace::{Entry, FileTree, Workspace};
+use gpui_kit::component::TitleBar;
+use gpui_kit::component::h_flex;
 use gpui_kit::component::input::{EditorState, InputEvent};
+use gpui_kit::component::menu::AppMenuBar;
 use gpui_kit::*;
-use gpui_kit::{InteractiveElement as _, StatefulInteractiveElement as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use std::path::{Path, PathBuf};
 
 /// Housekeeping tick: recent-items flush debounce, session snapshot. The editor
@@ -22,6 +30,11 @@ const TICK: std::time::Duration = std::time::Duration::from_millis(500);
 
 pub struct Root {
     state: LuxState,
+    menu_bar: Entity<AppMenuBar>,
+    sidebar_visible: bool,
+    focus_handle: FocusHandle,
+    /// Last title pushed to the OS, so render does not churn the window.
+    last_title: Option<String>,
 }
 
 impl Root {
@@ -35,6 +48,7 @@ impl Root {
         );
 
         let (runtime, mut wake_rx) = Runtime::new();
+        let menu_bar = AppMenuBar::new(cx);
         let mut root = Self {
             state: LuxState {
                 runtime,
@@ -43,6 +57,10 @@ impl Root {
                 tabs: Tabs::default(),
                 tree: TreeView::default(),
             },
+            menu_bar,
+            sidebar_visible: true,
+            focus_handle: cx.focus_handle(),
+            last_title: None,
         };
 
         cx.spawn(async move |this, cx| {
@@ -72,6 +90,7 @@ impl Root {
             root.open_path(PathBuf::from(path), window, cx);
         }
 
+        root.sync_window_title(window);
         root
     }
 
@@ -104,6 +123,7 @@ impl Root {
     fn open_file(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(index) = self.state.tabs.index_of(&path) {
             self.state.tabs.active = index;
+            self.sync_window_title(window);
             cx.notify();
             return;
         }
@@ -121,6 +141,27 @@ impl Root {
             editor.default_value(text)
         });
 
+        self.push_editor(editor, Some(path.clone()), cx);
+        self.state.config.add_recent(path, false);
+        self.sync_window_title(window);
+        cx.notify();
+    }
+
+    /// Create the window's first tab: an empty untitled document.
+    fn new_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let editor = cx.new(|cx| EditorState::new(window, cx).line_number(true));
+        self.push_editor(editor, None, cx);
+        self.sync_window_title(window);
+        cx.notify();
+    }
+
+    /// Register an editor as a tab and subscribe to its change events.
+    fn push_editor(
+        &mut self,
+        editor: Entity<EditorState>,
+        path: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
         let id = self.state.tabs.next_id();
         let changes = cx.subscribe(&editor, move |root, _editor, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
@@ -128,17 +169,137 @@ impl Root {
                 cx.notify();
             }
         });
-
         self.state.tabs.push(Tab {
             id,
             doc: OpenDocument {
                 editor,
-                path: Some(path.clone()),
+                path,
                 dirty: false,
                 _changes: changes,
             },
         });
-        self.state.config.add_recent(path, false);
+    }
+
+    /// Save the active document, prompting for a path when it has none.
+    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.state.tabs.active_index() else {
+            return;
+        };
+        self.save_index(index, window, cx);
+    }
+
+    /// Save tab `index`; returns whether the write landed. A tab without a path
+    /// goes through the Save As dialog.
+    fn save_index(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(path) = self.state.tabs.get(index).and_then(|doc| doc.path.clone()) else {
+            return self.save_index_as(index, window, cx);
+        };
+        let Some(text) = self.state.tabs.get(index).map(|doc| doc.text(cx)) else {
+            return false;
+        };
+        match crate::atomic::write(&path, text.as_bytes()) {
+            Ok(()) => {
+                if let Some(doc) = self.state.tabs.get_mut(index) {
+                    doc.dirty = false;
+                }
+                self.state.config.add_recent(path, false);
+                self.sync_window_title(window);
+                cx.notify();
+                true
+            }
+            Err(err) => {
+                log::error!("failed to save {}: {err}", path.display());
+                false
+            }
+        }
+    }
+
+    /// Save As: ask for a destination, then write there and adopt the path.
+    fn save_index_as(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(doc) = self.state.tabs.get(index) else {
+            return false;
+        };
+        let text = doc.text(cx);
+        let current = doc.path.clone();
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(dir) = current.as_ref().and_then(|path| path.parent()) {
+            dialog = dialog.set_directory(dir);
+        }
+        let Some(path) = dialog.save_file() else {
+            return false;
+        };
+        match crate::atomic::write(&path, text.as_bytes()) {
+            Ok(()) => {
+                if let Some(doc) = self.state.tabs.get_mut(index) {
+                    doc.set_path(path.clone());
+                }
+                self.state.config.add_recent(path, false);
+                self.sync_window_title(window);
+                cx.notify();
+                true
+            }
+            Err(err) => {
+                log::error!("failed to save {}: {err}", path.display());
+                false
+            }
+        }
+    }
+
+    fn save_as(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.state.tabs.active_index() {
+            self.save_index_as(index, window, cx);
+        }
+    }
+
+    fn open_file_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(path) = rfd::FileDialog::new().pick_file() {
+            self.open_file(path, window, cx);
+        }
+    }
+
+    fn open_folder_dialog(&mut self, cx: &mut Context<Self>) {
+        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+            self.open_folder(path, cx);
+        }
+    }
+
+    /// Close the active tab, prompting first when it has unsaved changes.
+    fn close_active_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(index) = self.state.tabs.active_index() {
+            self.close_tab(index, window, cx);
+        }
+    }
+
+    fn close_tab(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.tabs.is_dirty(index) {
+            let name = self
+                .state
+                .tabs
+                .get(index)
+                .map(|doc| doc.title())
+                .unwrap_or_default();
+            let answer = rfd::MessageDialog::new()
+                .set_title("Unsaved changes")
+                .set_description(format!("Save changes to {name} before closing?"))
+                .set_buttons(rfd::MessageButtons::YesNoCancel)
+                .show();
+            match answer {
+                rfd::MessageDialogResult::Yes => {
+                    if !self.save_index(index, window, cx) {
+                        return;
+                    }
+                }
+                rfd::MessageDialogResult::No => {}
+                _ => return,
+            }
+        }
+        self.state.tabs.close(index);
+        self.sync_window_title(window);
+        cx.notify();
+    }
+
+    fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_visible = !self.sidebar_visible;
         cx.notify();
     }
 
@@ -179,6 +340,21 @@ impl Root {
 
     fn tick(&mut self) {
         self.state.config.flush_recent();
+    }
+
+    /// Reflect the active document (name + dirty marker) in the OS window title.
+    fn sync_window_title(&mut self, window: &mut Window) {
+        let title = match self.state.tabs.active_doc() {
+            Some(doc) => {
+                let marker = if doc.dirty { " •" } else { "" };
+                format!("{}{marker} — Lux", doc.title())
+            }
+            None => "Lux".to_string(),
+        };
+        if self.last_title.as_deref() != Some(title.as_str()) {
+            window.set_window_title(&title);
+            self.last_title = Some(title);
+        }
     }
 
     fn sidebar_rows(&mut self) -> Vec<Row> {
@@ -233,9 +409,94 @@ fn collect_dir(
 }
 
 impl Render for Root {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = Palette::get(cx);
+        self.sync_window_title(window);
 
+        let title_bar = TitleBar::new().child(
+            h_flex()
+                .flex_1()
+                .items_center()
+                .gap_2()
+                .overflow_hidden()
+                .child(self.menu_bar.clone())
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(palette.weak)
+                        .truncate()
+                        .child(self.window_caption()),
+                ),
+        );
+
+        let mut body = div().flex().flex_row().flex_1().min_h_0();
+        if self.sidebar_visible {
+            body = body.child(self.render_sidebar(&palette, cx));
+        }
+        body = body.child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .h_full()
+                .child(self.render_tabs(&palette, cx))
+                .child(self.render_editor_area(&palette)),
+        );
+
+        div()
+            .id("lux-root")
+            .track_focus(&self.focus_handle)
+            .key_context("Lux")
+            .size_full()
+            .flex()
+            .flex_col()
+            .bg(palette.window_bg)
+            .text_color(palette.text)
+            .on_action(cx.listener(|root, _: &NewFile, window, cx| root.new_file(window, cx)))
+            .on_action(cx.listener(|root, _: &OpenFile, window, cx| {
+                root.open_file_dialog(window, cx)
+            }))
+            .on_action(cx.listener(|root, _: &OpenFolder, _window, cx| {
+                root.open_folder_dialog(cx)
+            }))
+            .on_action(cx.listener(|root, _: &Save, window, cx| root.save(window, cx)))
+            .on_action(cx.listener(|root, _: &SaveAs, window, cx| root.save_as(window, cx)))
+            .on_action(cx.listener(|root, _: &CloseTab, window, cx| {
+                root.close_active_tab(window, cx)
+            }))
+            .on_action(cx.listener(|root, _: &ToggleSidebar, _window, cx| {
+                root.toggle_sidebar(cx)
+            }))
+            .on_action(cx.listener(|_root, _: &OpenCommandPalette, _window, _cx| {
+                // Implemented with the command palette view.
+            }))
+            .on_action(cx.listener(|_root, _: &ToggleMarkdownPreview, _window, _cx| {
+                // Implemented with the markdown preview view.
+            }))
+            .on_action(cx.listener(|_root, _: &Quit, _window, cx| cx.quit()))
+            .child(title_bar)
+            .child(body)
+            .child(self.render_status_bar(&palette, cx))
+    }
+}
+
+impl Root {
+    /// The active document name shown next to the menu in the title bar.
+    fn window_caption(&self) -> String {
+        match self.state.tabs.active_doc() {
+            Some(doc) => doc
+                .path
+                .as_ref()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| doc.title()),
+            None => "Lux".to_string(),
+        }
+    }
+
+    fn render_sidebar(&mut self, palette: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let mut sidebar = div()
             .flex()
             .flex_col()
@@ -257,7 +518,14 @@ impl Render for Root {
             } = row;
             let color = if ignored { palette.weak } else { palette.text };
             let label = if is_dir {
-                format!("{} {name}", if self.state.tree.expanded.contains(&path) { "▾" } else { "▸" })
+                format!(
+                    "{} {name}",
+                    if self.state.tree.expanded.contains(&path) {
+                        "▾"
+                    } else {
+                        "▸"
+                    }
+                )
             } else {
                 name
             };
@@ -284,7 +552,10 @@ impl Render for Root {
                     .child(label),
             );
         }
+        sidebar
+    }
 
+    fn render_tabs(&mut self, palette: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let mut strip = div()
             .flex()
             .flex_row()
@@ -298,69 +569,104 @@ impl Render for Root {
             if tab.doc.dirty {
                 label.push_str(" •");
             }
-            let mut item = div()
-                .id(("tab", index))
-                .flex()
-                .items_center()
-                .h_full()
-                .px_3()
-                .text_sm()
-                .cursor_pointer()
-                .border_r_1()
-                .border_color(palette.border)
-                .on_click(cx.listener(move |root, _event, _window, cx| {
-                    root.state.tabs.active = index;
-                    cx.notify();
-                }))
-                .child(label);
-            if index == self.state.tabs.active {
-                item = item.bg(palette.window_bg).text_color(palette.text);
-            } else {
-                item = item.text_color(palette.weak);
-            }
-            strip = strip.child(item);
+            let active = index == self.state.tabs.active;
+            strip = strip.child(
+                div()
+                    .id(("tab", index))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .h_full()
+                    .px_3()
+                    .text_sm()
+                    .cursor_pointer()
+                    .border_r_1()
+                    .border_color(palette.border)
+                    .when(active, |item| item.bg(palette.window_bg).text_color(palette.text))
+                    .when(!active, |item| item.text_color(palette.weak))
+                    .on_click(cx.listener(move |root, _event, window, cx| {
+                        root.state.tabs.active = index;
+                        root.sync_window_title(window);
+                        cx.notify();
+                    }))
+                    .child(label)
+                    .child(
+                        div()
+                            .id(("tab-close", index))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .w(px(16.0))
+                            .h(px(16.0))
+                            .rounded_sm()
+                            .text_xs()
+                            .hover(|style| style.bg(palette.active))
+                            .on_click(cx.listener(move |root, _event, window, cx| {
+                                cx.stop_propagation();
+                                root.close_tab(index, window, cx);
+                            }))
+                            .child("×"),
+                    ),
+            );
         }
+        strip
+    }
 
-        let editor_area = if let Some(doc) = self.state.tabs.active_doc() {
+    fn render_editor_area(&mut self, palette: &Palette) -> AnyElement {
+        if let Some(doc) = self.state.tabs.active_doc() {
             div()
                 .flex_1()
-                .h_full()
+                .min_h_0()
                 .child(doc.view().size_full())
                 .into_any_element()
         } else {
             div()
                 .flex_1()
-                .h_full()
                 .flex()
                 .items_center()
                 .justify_center()
                 .text_color(palette.weak)
                 .child("No open files")
                 .into_any_element()
-        };
+        }
+    }
 
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .bg(palette.window_bg)
-            .text_color(palette.text)
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(sidebar)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .h_full()
-                            .child(strip)
-                            .child(editor_area),
-                    ),
-            )
+    fn render_status_bar(&mut self, palette: &Palette, cx: &mut Context<Self>) -> impl IntoElement {
+        let (caret, language, dirty) = match self.state.tabs.active_doc() {
+            Some(doc) => {
+                let (line, column) = doc.caret_line_column(cx);
+                let language = doc
+                    .path
+                    .as_deref()
+                    .and_then(language_for)
+                    .unwrap_or("Plain Text")
+                    .to_string();
+                (format!("Ln {line}, Col {column}"), language, doc.dirty)
+            }
+            None => ("Ln 1, Col 1".to_string(), "Plain Text".to_string(), false),
+        };
+        let workspace = self
+            .state
+            .workspace
+            .path
+            .as_deref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+
+        h_flex()
+            .flex_shrink_0()
+            .h(px(24.0))
+            .px_3()
+            .gap_3()
+            .text_xs()
+            .bg(palette.panel_bg)
+            .text_color(palette.weak)
+            .border_t_1()
+            .border_color(palette.border)
+            .child(caret)
+            .child(language)
+            .when(dirty, |bar| bar.child("Modified"))
+            .child(div().flex_1())
+            .child(workspace)
     }
 }

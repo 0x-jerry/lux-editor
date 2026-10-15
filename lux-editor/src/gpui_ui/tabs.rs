@@ -51,6 +51,26 @@ impl Tabs {
         self.tabs.get_mut(self.active).map(|tab| &mut tab.doc)
     }
 
+    pub fn active_index(&self) -> Option<usize> {
+        (!self.tabs.is_empty()).then_some(self.active)
+    }
+
+    pub fn get(&self, index: usize) -> Option<&OpenDocument> {
+        self.tabs.get(index).map(|tab| &tab.doc)
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut OpenDocument> {
+        self.tabs.get_mut(index).map(|tab| &mut tab.doc)
+    }
+
+    pub fn id_at(&self, index: usize) -> Option<u64> {
+        self.tabs.get(index).map(|tab| tab.id)
+    }
+
+    pub fn is_dirty(&self, index: usize) -> bool {
+        self.tabs.get(index).is_some_and(|tab| tab.doc.dirty)
+    }
+
     pub fn mark_dirty(&mut self, id: u64) {
         if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == id) {
             tab.doc.dirty = true;

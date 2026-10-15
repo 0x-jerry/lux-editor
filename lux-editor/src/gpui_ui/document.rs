@@ -25,6 +25,18 @@ impl OpenDocument {
         Editor::new(&self.editor)
     }
 
+    /// Move the document to `path` (used by Save As) and clear the dirty flag.
+    pub fn set_path(&mut self, path: PathBuf) {
+        self.path = Some(path);
+        self.dirty = false;
+    }
+
+    /// The caret's 1-based (line, column), or `(1, 1)` for an empty editor.
+    pub fn caret_line_column(&self, cx: &gpui_kit::App) -> (usize, usize) {
+        let position = self.editor.read(cx).cursor_position();
+        (position.line as usize + 1, position.character as usize + 1)
+    }
+
     pub fn title(&self) -> String {
         self.path
             .as_ref()

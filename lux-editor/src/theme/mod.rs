@@ -15,5 +15,6 @@ mod apply;
 pub use apply::{CustomFont, StartupFont, apply_editor_settings};
 pub use builtin::syntax_colors;
 pub use choice::{ThemeChoice, resolve};
-pub use file::SyntaxColors;
+pub(crate) use builtin::builtin;
+pub(crate) use file::{ChromeColors, SyntaxColors};
 pub use visuals::AppTheme;

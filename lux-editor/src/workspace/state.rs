@@ -2,9 +2,9 @@
 //! refreshes them.
 
 use crate::events::{CustomEvent, WorkspaceEvent};
+use crate::wake::Wake;
 use crate::workspace::FileTree;
 use crate::workspace::watch;
-use eframe::egui;
 use notify::RecommendedWatcher;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
@@ -22,7 +22,7 @@ impl Workspace {
         workspace_path: &Path,
         exclude: &[String],
         event_tx: Sender<CustomEvent>,
-        wake: egui::Context,
+        wake: Wake,
     ) -> Option<RecommendedWatcher> {
         if let Ok((watcher, rx)) = watch(workspace_path, exclude) {
             std::thread::spawn(move || {

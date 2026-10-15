@@ -2,7 +2,7 @@ use ropey::Rope;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 
-use eframe::egui;
+use crate::wake::Wake;
 
 use super::LanguageKind;
 use super::snapshot::HighlightSnapshot;
@@ -41,7 +41,7 @@ impl HighlightingService {
     /// the UI thread, so without it a finished snapshot waits for unrelated
     /// input: a theme change would leave the editor and tab-strip background on
     /// the previous palette until the user moved the mouse.
-    pub fn new(wake: egui::Context) -> Self {
+    pub fn new(wake: Wake) -> Self {
         let (request_tx, request_rx) = mpsc::channel();
         let (response_tx, response_rx) = mpsc::channel();
         let worker = thread::spawn(move || worker_loop(request_rx, response_tx, wake));

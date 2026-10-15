@@ -12,6 +12,7 @@ mod paths;
 mod settings;
 mod tabs;
 mod theme;
+mod wake;
 mod workspace;
 
 pub fn main() {

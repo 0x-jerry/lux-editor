@@ -1,4 +1,4 @@
-use eframe::egui;
+use crate::wake::Wake;
 use std::sync::mpsc::{Receiver, Sender};
 
 use super::client::{WorkerRequest, WorkerResponse};
@@ -8,7 +8,7 @@ use super::parse::parse_snapshot;
 pub(super) fn worker_loop(
     request_rx: Receiver<WorkerRequest>,
     response_tx: Sender<WorkerResponse>,
-    wake: egui::Context,
+    wake: Wake,
 ) {
     let mut engines = Engines::new();
 

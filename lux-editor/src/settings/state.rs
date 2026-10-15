@@ -3,7 +3,7 @@
 
 use crate::events::{AppEvent, CustomEvent};
 use crate::settings::Config;
-use eframe::egui;
+use crate::wake::Wake;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -18,7 +18,7 @@ impl SettingsState {
     pub(crate) fn start_watcher(
         watch_roots: &[PathBuf],
         event_tx: Sender<CustomEvent>,
-        wake: egui::Context,
+        wake: Wake,
     ) -> Option<RecommendedWatcher> {
         let mut watcher = RecommendedWatcher::new(
             move |result: notify::Result<notify::Event>| {

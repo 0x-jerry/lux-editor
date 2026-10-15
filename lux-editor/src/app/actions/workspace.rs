@@ -63,7 +63,7 @@ impl Ctx<'_> {
             &path,
             &exclude,
             self.runtime.event_tx.clone(),
-            self.egui_ctx().clone(),
+            self.egui_ctx().clone().into(),
         );
         self.tabs.reset_editor_state();
         self.restore_workspace_session(&path, &root);
@@ -127,7 +127,7 @@ impl Ctx<'_> {
             &root,
             exclude,
             self.runtime.event_tx.clone(),
-            self.egui_ctx().clone(),
+            self.egui_ctx().clone().into(),
         );
     }
 

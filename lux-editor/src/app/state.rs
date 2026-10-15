@@ -77,7 +77,7 @@ impl App {
         let mut app = Self {
             // Built before `ctx` moves into the runtime: the highlight worker
             // wakes the UI loop with it when a parse lands.
-            highlighting: Highlighting::new(ctx.clone()),
+            highlighting: Highlighting::new(ctx.clone().into()),
             runtime: Runtime {
                 rt,
                 event_tx,

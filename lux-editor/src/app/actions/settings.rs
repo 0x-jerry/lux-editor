@@ -32,7 +32,7 @@ impl Ctx<'_> {
         self.settings.watcher = SettingsState::start_watcher(
             &watch_roots,
             self.runtime.event_tx.clone(),
-            self.egui_ctx().clone(),
+            self.egui_ctx().clone().into(),
         );
     }
 

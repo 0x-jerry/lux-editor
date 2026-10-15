@@ -183,7 +183,7 @@ impl App {
 impl Ctx<'_> {
     /// The whole pre-UI logic pass, in the order it has to run. Order is
     /// load-bearing in places; see the comments on the individual steps.
-    fn frame_logic(&mut self) {
+    pub(crate) fn frame_logic(&mut self) {
         // Open the CLI target on the very first logic pass — it runs before the
         // first `ui` pass — so the first painted frame shows the target document
         // (or an empty editor while it loads) instead of the welcome page. A

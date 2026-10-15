@@ -2,7 +2,12 @@
 //! the legacy `app`/`chrome`/`tabs`/`document::ui` modules stay compiled during
 //! the migration and are removed once every view has been ported.
 
+mod document;
+mod language;
 mod root;
+mod runtime;
+mod state;
+mod tabs;
 mod theme;
 
 use crate::settings::Config;
@@ -14,8 +19,8 @@ pub fn run() {
 
     application().with_assets(Assets).run(|cx| {
         init(cx);
-        open_window(WindowOptions::default(), cx, |_, cx| {
-            cx.new(|cx| root::Root::new(cx))
+        open_window(WindowOptions::default(), cx, |window, cx| {
+            cx.new(|cx| root::Root::new(window, cx))
         })
         .expect("failed to open Lux window");
     });

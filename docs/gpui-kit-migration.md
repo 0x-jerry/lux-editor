@@ -1,6 +1,6 @@
 # Lux Editor → gpui-kit migration plan
 
-Status: approved direction
+Status: in progress — M0–M3 done, M4/M5 nearly done, M6 not started (see §11)
 Target crate: `gpui-kit` 0.7.3 (pins GPUI; bundles `gpui-base` + styled `gpui-component` + Lucide assets)
 
 Decisions locked in:
@@ -188,3 +188,56 @@ performance and packaging (`panic="abort"`, LTO, stripped release).
 3. Tray icon: **not required**; port the menubar only.
 4. **No feature branch** — commit the rewrite directly on the current branch.
 5. Doc path: **`docs/gpui-kit-migration.md`**.
+
+## 11. Progress
+
+The rewrite is committed directly on `main`, one milestone per commit:
+
+| Commit | Milestone |
+| --- | --- |
+| `c70d3ee` | this plan |
+| `2ced621` | M0/M1 — gpui-kit skeleton, window, theme bridge |
+| `1547bcf` | M1 — `Wake` handle replaces `egui::Context` as the repaint handle (see §7.3) |
+| `ccc7d3d` | M1 — the app logic pass runs from the gpui root view |
+| `34ae5fd` | M2/M3 — document model, file tree, editor shell on `EditorState` |
+| `b8ff053` | M1/M5 — title bar, app menu bar, status bar, save/close/dirty |
+| `1c76864` | M4/M5 — command palette, markdown preview, image/notice tabs, settings tab, close gate |
+
+**Landed.** The live UI is `lux-editor/src/gpui_ui/` (`root.rs` shell, `tabs.rs` tab model,
+`document.rs` editor adapter, `views.rs` classification + image/notice bodies, `markdown.rs`
+preview, `palette.rs` command palette, `settings_view.rs` settings tab, `theme.rs` palette,
+`actions.rs` actions + keybindings, `runtime.rs`/`wake.rs` background wakeups). The editor is
+`gpui_component`'s `EditorState` (editor-authoritative, §10.1) and the sidebar/status bar/tab
+strip are rebuilt from scratch. The legacy egui tree is still in the crate but unreachable.
+
+**Open, in flight.** The settings tab body is still a read-only placeholder (real form in
+progress); the M6 deletion pass (legacy modules + `eframe` and friends out of `Cargo.toml`) is
+in progress.
+
+**Still to do after that.**
+1. Port/retire the remaining tests (§8). Currently the binary carries 168 inherited tests
+   (3 of them fail on Windows: they spawn `cat`) plus 6 new `views::classify` tests; the 3
+   failures disappear with `document/formatter.rs` in M6, and the tests that asserted the
+   deleted rope model (`document/*`, `highlighting/*`, `tabs/*`) are retired with it — the
+   surviving coverage is `settings`, `workspace/tree`, `paths` and the new classification tests.
+2. Large-file performance validation on a 100k+ line real file (§9), and packaging
+   (`panic="abort"`, LTO, stripped release).
+3. Custom syntax themes (§7.5) are **not** wired: chrome colours still come from
+   `assets/themes/*.json` through the legacy loader, while editor syntax colours come from
+   gpui-component's built-in `HighlightTheme`. Converting `assets/themes/*.json` into a
+   `HighlightTheme` (plus the round-trip test) is still open.
+
+**Deviations found while implementing.**
+1. `gpui_component` items are **not** re-exported from `gpui_kit`'s root; they must be imported
+   as `gpui_kit::component::…` (only `gpui-base` + `gpui` are globbed).
+2. There is no reusable host command palette: Lux owns its `CommandState` and renders the
+   palette **inline** as an absolutely positioned overlay, so a chosen command bubbles back
+   through `Root`'s action handlers.
+3. `TextView::markdown` renders GFM and math but does not forward `image_source` or
+   `code_block_highlighter`, so markdown images and custom code-block themes are unthemed.
+4. The save gate needs three registrations, not one: `window.on_window_should_close` covers the
+   OS close (and `Quit` must gate itself, because `App::quit` never consults that callback),
+   while the title bar's own close button calls `window.remove_window()` and is gated by
+   `TitleBar::on_close_window`.
+5. The native menubar (§7.4) is replaced by an in-window `AppMenuBar`; `muda`/`tray-icon`/
+   `objc2` go away with the M6 pass. A macOS-native menubar is not implemented.

@@ -1,5 +1,6 @@
 mod atomic;
 mod events;
+mod formatter;
 mod gpui_ui;
 mod logging;
 mod paths;

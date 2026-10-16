@@ -6,8 +6,8 @@
 //! instead of the editor.
 
 use super::actions::{
-    ClearRecentItems, CloseTab, NewFile, OpenFile, OpenFolder, OpenSettings, Quit, Save, SaveAs,
-    ToggleMarkdownPreview, ToggleSidebar,
+    ClearRecentItems, CloseTab, FormatFile, NewFile, OpenFile, OpenFolder, OpenSettings, Quit, Save,
+    SaveAs, ToggleMarkdownPreview, ToggleSidebar,
 };
 use super::theme::Palette;
 use crate::settings::types::RecentItem;
@@ -114,6 +114,10 @@ impl CommandPalette {
                 .label("Save As…")
                 .keywords(["write", "rename"])
                 .action(Box::new(SaveAs)),
+            CommandItem::new()
+                .label("Format File")
+                .keywords(["prettier", "rustfmt", "tidy"])
+                .action(Box::new(FormatFile)),
             CommandItem::new()
                 .label("Close Tab")
                 .keywords(["close"])

@@ -1,5 +1,3 @@
-use eframe::egui;
-
 /// User-facing theme choice, persisted in config as a string.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThemeChoice {
@@ -27,13 +25,15 @@ impl ThemeChoice {
     }
 }
 
-/// Collapse `Auto` against the system theme; never returns [`ThemeChoice::Auto`].
-pub fn resolve(choice: ThemeChoice, system: Option<egui::Theme>) -> ThemeChoice {
+/// Collapse `Auto` against the system appearance; never returns
+/// [`ThemeChoice::Auto`]. `system_is_light` is the OS's light/dark preference,
+/// `None` when it could not be read (dark wins).
+pub fn resolve(choice: ThemeChoice, system_is_light: Option<bool>) -> ThemeChoice {
     match choice {
         ThemeChoice::Dark => ThemeChoice::Dark,
         ThemeChoice::Light => ThemeChoice::Light,
-        ThemeChoice::Auto => match system {
-            Some(egui::Theme::Light) => ThemeChoice::Light,
+        ThemeChoice::Auto => match system_is_light {
+            Some(true) => ThemeChoice::Light,
             _ => ThemeChoice::Dark,
         },
     }
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn resolve_never_returns_auto() {
         for choice in [ThemeChoice::Auto, ThemeChoice::Dark, ThemeChoice::Light] {
-            for system in [None, Some(egui::Theme::Dark), Some(egui::Theme::Light)] {
+            for system in [None, Some(false), Some(true)] {
                 assert_ne!(resolve(choice, system), ThemeChoice::Auto);
             }
         }
@@ -62,14 +62,8 @@ mod tests {
 
     #[test]
     fn auto_resolves_against_system_theme() {
-        assert_eq!(
-            resolve(ThemeChoice::Auto, Some(egui::Theme::Light)),
-            ThemeChoice::Light
-        );
-        assert_eq!(
-            resolve(ThemeChoice::Auto, Some(egui::Theme::Dark)),
-            ThemeChoice::Dark
-        );
+        assert_eq!(resolve(ThemeChoice::Auto, Some(true)), ThemeChoice::Light);
+        assert_eq!(resolve(ThemeChoice::Auto, Some(false)), ThemeChoice::Dark);
         assert_eq!(resolve(ThemeChoice::Auto, None), ThemeChoice::Dark);
     }
 }

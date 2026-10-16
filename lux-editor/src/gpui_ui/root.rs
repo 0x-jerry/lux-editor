@@ -39,6 +39,14 @@ enum Decision {
     Cancel,
 }
 
+/// Whether an OS appearance is one of the light ones.
+fn is_light(appearance: WindowAppearance) -> bool {
+    matches!(
+        appearance,
+        WindowAppearance::Light | WindowAppearance::VibrantLight
+    )
+}
+
 pub struct Root {
     state: LuxState,
     menu_bar: Entity<AppMenuBar>,
@@ -50,6 +58,8 @@ pub struct Root {
     _settings_events: Subscription,
     palette_open: bool,
     sidebar_visible: bool,
+    /// The OS appearance, which the `auto` theme choice follows.
+    system_is_light: bool,
     focus_handle: FocusHandle,
     /// Last title pushed to the OS, so render does not churn the window.
     last_title: Option<String>,
@@ -58,11 +68,13 @@ pub struct Root {
 impl Root {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = Config::load();
+        let system_is_light = is_light(window.appearance());
         apply(
             cx,
             ThemeChoice::from_value(&config.settings.theme.choice),
             &config.settings.font.family,
             config.settings.font.size,
+            system_is_light,
         );
 
         let (runtime, mut wake_rx) = Runtime::new();
@@ -92,6 +104,7 @@ impl Root {
             _settings_events,
             palette_open: false,
             sidebar_visible: true,
+            system_is_light,
             focus_handle: cx.focus_handle(),
             last_title: None,
         };
@@ -478,18 +491,12 @@ impl Root {
                 CustomEvent::App(crate::events::AppEvent::ConfigChange) => {
                     if self.state.config.reload_settings() {
                         let settings = self.state.config.settings.clone();
-                        apply(
-                            cx,
-                            ThemeChoice::from_value(&settings.theme.choice),
-                            &settings.font.family,
-                            settings.font.size,
-                        );
+                        self.refresh_theme(cx);
                         self.settings_view
                             .update(cx, |view, cx| view.sync(&settings, cx));
                         cx.notify();
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -532,17 +539,36 @@ impl Root {
             log::error!("failed to save settings: {err}");
         }
         if appearance_changed {
-            apply(
-                cx,
-                ThemeChoice::from_value(&settings.theme.choice),
-                &settings.font.family,
-                settings.font.size,
-            );
+            self.refresh_theme(cx);
         }
         if excludes_changed {
             self.rescan_workspace();
         }
         cx.notify();
+    }
+
+    /// Re-publish the palette and editor font from the current settings.
+    fn refresh_theme(&self, cx: &mut Context<Self>) {
+        let settings = &self.state.config.settings;
+        apply(
+            cx,
+            ThemeChoice::from_value(&settings.theme.choice),
+            &settings.font.family,
+            settings.font.size,
+            self.system_is_light,
+        );
+    }
+
+    /// Follow a change of the OS appearance while the theme choice is `auto`.
+    fn sync_system_appearance(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let system_is_light = is_light(window.appearance());
+        if system_is_light == self.system_is_light {
+            return;
+        }
+        self.system_is_light = system_is_light;
+        if ThemeChoice::from_value(&self.state.config.settings.theme.choice) == ThemeChoice::Auto {
+            self.refresh_theme(cx);
+        }
     }
 
     fn sidebar_rows(&mut self) -> Vec<Row> {
@@ -600,6 +626,7 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = Palette::get(cx);
         self.sync_window_title(window);
+        self.sync_system_appearance(window, cx);
 
         let title_bar = TitleBar::new()
             .on_close_window(cx.listener(|root, _: &ClickEvent, window, cx| {

@@ -1,20 +1,13 @@
 //! Theme file format and the embedded built-in themes.
 //!
-//! A theme JSON file (see `assets/themes/`) answers two questions at once:
-//! how the chrome looks and which colors highlight code, so token/background
-//! contrast is guaranteed by construction. Built-in themes are embedded at
-//! compile time with `include_str!`, like the highlight queries.
+//! A theme JSON file (see `assets/themes/`) carries the chrome colors; the
+//! built-in themes are embedded at compile time with `include_str!`.
 
 mod builtin;
 mod choice;
 pub(crate) mod color;
 mod file;
-mod visuals;
 
-mod apply;
-pub use apply::{CustomFont, StartupFont, apply_editor_settings};
-pub use builtin::syntax_colors;
 pub use choice::{ThemeChoice, resolve};
 pub(crate) use builtin::builtin;
-pub(crate) use file::{ChromeColors, SyntaxColors};
-pub use visuals::AppTheme;
+pub(crate) use file::ChromeColors;

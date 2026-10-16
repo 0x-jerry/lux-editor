@@ -1,40 +1,21 @@
-use eframe::egui::Color32;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use super::color::parse_rgba;
 
-use super::color::{parse_color, parse_rgba};
-
-/// A parsed theme: chrome colors plus the syntax palette handed to the
-/// highlight worker behind an [`Arc`] so palettes compare by identity.
-pub struct ThemeFile {
-    pub colors: ChromeColors,
-    pub syntax: Arc<SyntaxColors>,
-}
-
+/// The chrome colors of a theme file, as raw (non-premultiplied) RGBA bytes.
 pub struct ChromeColors {
-    pub accent: Color32,
-    pub text: Color32,
-    pub weak: Color32,
-    pub border: Color32,
-    pub raised: Color32,
-    pub hover: Color32,
-    pub active: Color32,
-    pub panel_bg: Color32,
-    pub window_bg: Color32,
-    pub extreme_bg: Color32,
-    pub faint_bg: Color32,
-    pub code_bg: Color32,
-    pub selection_bg: Color32,
-    pub selection_stroke: Color32,
-}
-
-/// Raw syntax palette: token capture name (tree-sitter highlight names) to
-/// color. Names absent from `tokens` render in `foreground`.
-#[derive(Clone)]
-pub struct SyntaxColors {
-    pub foreground: [u8; 4],
-    pub background: [u8; 4],
-    pub tokens: BTreeMap<String, [u8; 4]>,
+    pub accent: [u8; 4],
+    pub text: [u8; 4],
+    pub weak: [u8; 4],
+    pub border: [u8; 4],
+    pub raised: [u8; 4],
+    pub hover: [u8; 4],
+    pub active: [u8; 4],
+    pub panel_bg: [u8; 4],
+    pub window_bg: [u8; 4],
+    pub extreme_bg: [u8; 4],
+    pub faint_bg: [u8; 4],
+    pub code_bg: [u8; 4],
+    pub selection_bg: [u8; 4],
+    pub selection_stroke: [u8; 4],
 }
 
 #[derive(serde::Deserialize)]
@@ -42,13 +23,11 @@ struct RawTheme {
     #[allow(dead_code)] // "name" is part of the file format for humans/tools
     name: String,
     colors: RawChrome,
-    syntax: RawSyntax,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawChrome {
-    accent: String,
+struct RawChrome {    accent: String,
     text: String,
     weak: String,
     border: String,
@@ -64,45 +43,24 @@ struct RawChrome {
     selection_stroke: String,
 }
 
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawSyntax {
-    foreground: String,
-    background: String,
-    tokens: BTreeMap<String, String>,
-}
-
-impl ThemeFile {
+impl ChromeColors {
     pub(super) fn parse(json: &str) -> Result<Self, String> {
         let raw: RawTheme = serde_json::from_str(json).map_err(|e| e.to_string())?;
-        let colors = ChromeColors {
-            accent: parse_color(&raw.colors.accent)?,
-            text: parse_color(&raw.colors.text)?,
-            weak: parse_color(&raw.colors.weak)?,
-            border: parse_color(&raw.colors.border)?,
-            raised: parse_color(&raw.colors.raised)?,
-            hover: parse_color(&raw.colors.hover)?,
-            active: parse_color(&raw.colors.active)?,
-            panel_bg: parse_color(&raw.colors.panel_bg)?,
-            window_bg: parse_color(&raw.colors.window_bg)?,
-            extreme_bg: parse_color(&raw.colors.extreme_bg)?,
-            faint_bg: parse_color(&raw.colors.faint_bg)?,
-            code_bg: parse_color(&raw.colors.code_bg)?,
-            selection_bg: parse_color(&raw.colors.selection_bg)?,
-            selection_stroke: parse_color(&raw.colors.selection_stroke)?,
-        };
-        let mut tokens = BTreeMap::new();
-        for (name, value) in &raw.syntax.tokens {
-            tokens.insert(name.clone(), parse_rgba(value)?);
-        }
-        let syntax = SyntaxColors {
-            foreground: parse_rgba(&raw.syntax.foreground)?,
-            background: parse_rgba(&raw.syntax.background)?,
-            tokens,
-        };
         Ok(Self {
-            colors,
-            syntax: Arc::new(syntax),
+            accent: parse_rgba(&raw.colors.accent)?,
+            text: parse_rgba(&raw.colors.text)?,
+            weak: parse_rgba(&raw.colors.weak)?,
+            border: parse_rgba(&raw.colors.border)?,
+            raised: parse_rgba(&raw.colors.raised)?,
+            hover: parse_rgba(&raw.colors.hover)?,
+            active: parse_rgba(&raw.colors.active)?,
+            panel_bg: parse_rgba(&raw.colors.panel_bg)?,
+            window_bg: parse_rgba(&raw.colors.window_bg)?,
+            extreme_bg: parse_rgba(&raw.colors.extreme_bg)?,
+            faint_bg: parse_rgba(&raw.colors.faint_bg)?,
+            code_bg: parse_rgba(&raw.colors.code_bg)?,
+            selection_bg: parse_rgba(&raw.colors.selection_bg)?,
+            selection_stroke: parse_rgba(&raw.colors.selection_stroke)?,
         })
     }
 }

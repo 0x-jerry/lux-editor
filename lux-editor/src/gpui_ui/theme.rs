@@ -54,15 +54,15 @@ impl Palette {
     }
 }
 
-fn color(value: egui_color::Color32) -> Hsla {
-    let [r, g, b, a] = value.to_srgba_unmultiplied();
-    rgba(u32::from_be_bytes([r, g, b, a])).into()
+fn color(value: [u8; 4]) -> Hsla {
+    rgba(u32::from_be_bytes(value)).into()
 }
 
-/// Publish the chrome palette and the configured editor font for `config`.
-pub fn apply(cx: &mut App, choice: ThemeChoice, family: &str, size: f32) {
-    let resolved = resolve(choice, None);
-    cx.set_global(Palette::from_chrome(&builtin(resolved).colors));
+/// Publish the chrome palette and the configured editor font. `system_is_light`
+/// is the OS appearance, which `ThemeChoice::Auto` follows.
+pub fn apply(cx: &mut App, choice: ThemeChoice, family: &str, size: f32, system_is_light: bool) {
+    let resolved = resolve(choice, Some(system_is_light));
+    cx.set_global(Palette::from_chrome(builtin(resolved)));
 
     let family = family.to_string();
     Theme::update(cx, |theme| {
@@ -72,7 +72,3 @@ pub fn apply(cx: &mut App, choice: ThemeChoice, family: &str, size: f32) {
         theme.font_size = px(size);
     });
 }
-
-// Lux's theme file stores egui `Color32`; alias the path so this module does
-// not re-import the egui crate by its top-level name.
-use eframe::egui as egui_color;

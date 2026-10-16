@@ -1,11 +1,3 @@
-use eframe::egui::Color32;
-
-/// `#rgb`, `#rrggbb` or `#rrggbbaa`.
-pub(crate) fn parse_color(value: &str) -> Result<Color32, String> {
-    let [r, g, b, a] = parse_rgba(value)?;
-    Ok(Color32::from_rgba_unmultiplied(r, g, b, a))
-}
-
 /// `#rgb`, `#rrggbb` or `#rrggbbaa`; raw (non-premultiplied) RGBA bytes.
 pub(super) fn parse_rgba(value: &str) -> Result<[u8; 4], String> {
     let hex = value
@@ -47,14 +39,9 @@ mod tests {
 
     #[test]
     fn parse_color_accepts_documented_shapes() {
-        // Color32 stores premultiplied gamma-space values; parse_rgba keeps raw bytes.
         assert_eq!(parse_rgba("#fff").unwrap(), [255, 255, 255, 255]);
         assert_eq!(parse_rgba("#6aa1ff").unwrap(), [0x6a, 0xa1, 0xff, 255]);
         assert_eq!(parse_rgba("#6aa1ff40").unwrap(), [0x6a, 0xa1, 0xff, 0x40]);
-        assert_eq!(
-            parse_color("#6aa1ff40").unwrap(),
-            Color32::from_rgba_unmultiplied(0x6a, 0xa1, 0xff, 0x40)
-        );
     }
 
     #[test]

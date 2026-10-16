@@ -5,11 +5,15 @@
 mod actions;
 mod document;
 mod language;
+mod markdown;
+mod palette;
 mod root;
 mod runtime;
+mod settings_view;
 mod state;
 mod tabs;
 mod theme;
+mod views;
 
 use crate::settings::Config;
 use gpui_kit::assets::Assets;

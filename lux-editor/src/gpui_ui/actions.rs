@@ -20,6 +20,7 @@ actions!(
         ToggleSidebar,
         ToggleMarkdownPreview,
         OpenCommandPalette,
+        OpenSettings,
         Quit,
     ]
 );
@@ -57,6 +58,7 @@ pub fn install(cx: &mut App) {
         KeyBinding::new(&primary("b"), ToggleSidebar, None),
         KeyBinding::new(&shift_primary("p"), ToggleMarkdownPreview, None),
         KeyBinding::new(&primary("p"), OpenCommandPalette, None),
+        KeyBinding::new(&primary(","), OpenSettings, None),
         KeyBinding::new(&primary("q"), Quit, None),
     ]);
 
@@ -107,5 +109,7 @@ fn view_menu() -> Menu {
         MenuItem::separator(),
         MenuItem::action("Toggle Sidebar", ToggleSidebar),
         MenuItem::action("Toggle Markdown Preview", ToggleMarkdownPreview),
+        MenuItem::separator(),
+        MenuItem::action("Settings", OpenSettings),
     ])
 }

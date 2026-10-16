@@ -3,7 +3,7 @@
 
 use gpui_kit::component::input::{Editor, EditorState};
 use gpui_kit::{Entity, Subscription};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Bytes scanned for a NUL when deciding whether a file is text.
 const SNIFF_LEN: usize = 8192;
@@ -12,6 +12,8 @@ pub struct OpenDocument {
     pub editor: Entity<EditorState>,
     pub path: Option<PathBuf>,
     pub dirty: bool,
+    /// Whether the tab shows the rendered markdown instead of the editor.
+    pub preview: bool,
     /// Keeps the change subscription alive for as long as the document is open.
     pub _changes: Subscription,
 }
@@ -49,13 +51,4 @@ impl OpenDocument {
 /// Whether `bytes` look binary; used to refuse opening a file as text.
 pub fn is_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(SNIFF_LEN).any(|&byte| byte == 0)
-}
-
-/// Read a file as text, or `None` when it is binary or not valid UTF-8.
-pub fn read_text(path: &Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    if is_binary(&bytes) {
-        return None;
-    }
-    String::from_utf8(bytes).ok()
 }

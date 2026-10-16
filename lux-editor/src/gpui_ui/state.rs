@@ -6,6 +6,7 @@ use super::runtime::Runtime;
 use super::tabs::Tabs;
 use crate::settings::Config;
 use crate::workspace::Workspace;
+use notify::RecommendedWatcher;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -15,6 +16,8 @@ pub struct LuxState {
     pub workspace: Workspace,
     pub tabs: Tabs,
     pub tree: TreeView,
+    /// Kept only to keep the watch alive.
+    pub _settings_watcher: Option<RecommendedWatcher>,
 }
 
 /// Which folders the sidebar has expanded.

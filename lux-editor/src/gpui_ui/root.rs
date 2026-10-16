@@ -17,6 +17,7 @@ use super::tabs::{Tab, TabContent, Tabs};
 use super::theme::{Palette, apply};
 use super::views::{self, Content, Notice};
 use crate::events::{CustomEvent, WorkspaceEvent};
+use crate::settings::types::WorkspaceSession;
 use crate::settings::Config;
 use crate::theme::ThemeChoice;
 use crate::workspace::{Entry, FileTree, Workspace};
@@ -80,6 +81,7 @@ impl Root {
         );
 
         let (runtime, mut wake_rx) = Runtime::new();
+        let settings_watcher = crate::settings::watch(runtime.event_tx.clone(), runtime.wake.clone());
         let menu_bar = AppMenuBar::new(cx);
         let palette = cx.new(|cx| CommandPalette::new(window, cx));
         let settings_view = cx.new(|cx| SettingsView::new(&config.settings, window, cx));
@@ -98,6 +100,7 @@ impl Root {
                 workspace: Workspace::default(),
                 tabs: Tabs::default(),
                 tree: TreeView::default(),
+                _settings_watcher: settings_watcher,
             },
             menu_bar,
             palette,
@@ -161,7 +164,7 @@ impl Root {
     fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let path = path.canonicalize().unwrap_or(path);
         if path.is_dir() {
-            self.open_folder(path, cx);
+            self.open_folder(path, window, cx);
         } else if path.is_file() {
             self.open_file(path, window, cx);
         } else {
@@ -169,14 +172,105 @@ impl Root {
         }
     }
 
-    fn open_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    fn open_folder(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let path = path.canonicalize().unwrap_or(path);
         self.state.workspace.path = Some(path.clone());
         self.rescan_workspace();
-        self.state.tree.expanded.clear();
-        self.state.tree.expanded.insert(path.clone());
-        self.state.config.add_recent(path, true);
+        self.state.config.add_recent(path.clone(), true);
+        self.restore_workspace_session(&path, window, cx);
         cx.notify();
+    }
+
+    /// Reopen a workspace's remembered tabs and tree expansion. A workspace seen
+    /// for the first time opens with just its root expanded.
+    fn restore_workspace_session(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.tree.expanded.clear();
+        let Some(session) = self.state.config.workspace_session(path).cloned() else {
+            self.state.tree.expanded.insert(path.to_path_buf());
+            return;
+        };
+
+        self.state.tree.expanded.extend(
+            session
+                .expanded_dirs
+                .iter()
+                .filter(|dir| dir.is_dir())
+                .cloned(),
+        );
+        for file in &session.open_files {
+            self.open_file(file.clone(), window, cx);
+        }
+        if let Some(active) = session
+            .active_file
+            .as_deref()
+            .and_then(|active| self.state.tabs.index_of(active))
+        {
+            self.state.tabs.active = active;
+        }
+        if session.configuration_open {
+            self.open_settings(window, cx);
+        }
+    }
+
+    /// Snapshot the live tabs and tree expansion into the workspace's session.
+    /// The store drops an unchanged snapshot, so this can run on every tick.
+    fn sync_workspace_session(&mut self) {
+        let Some(workspace_path) = self.state.workspace.path.clone() else {
+            return;
+        };
+        let inside = |path: &Path| path.starts_with(&workspace_path);
+        let open_files: Vec<PathBuf> = self
+            .state
+            .tabs
+            .tabs
+            .iter()
+            .filter_map(Tab::text)
+            .filter_map(|doc| doc.path.clone())
+            .filter(|path| inside(path))
+            .collect();
+        let active_file = self
+            .state
+            .tabs
+            .active_doc()
+            .and_then(|doc| doc.path.clone())
+            .filter(|path| inside(path))
+            .or_else(|| {
+                // A tab from another workspace has focus: keep the remembered
+                // file while it is still open instead of erasing it.
+                let remembered = self
+                    .state
+                    .config
+                    .workspace_session(&workspace_path)?
+                    .active_file
+                    .clone()?;
+                open_files.contains(&remembered).then_some(remembered)
+            });
+        let expanded_dirs = self
+            .state
+            .tree
+            .expanded
+            .iter()
+            .filter(|path| inside(path))
+            .cloned()
+            .collect();
+
+        self.state
+            .config
+            .set_workspace_session(WorkspaceSession {
+                workspace_path,
+                open_files,
+                active_file,
+                configuration_open: matches!(
+                    self.state.tabs.active_tab().map(|tab| &tab.content),
+                    Some(TabContent::Settings)
+                ),
+                expanded_dirs,
+            });
     }
 
     /// Rescan the workspace root and restart its watcher, which is how a change
@@ -224,7 +318,15 @@ impl Root {
         };
 
         self.push_content(content);
-        if list_as_recent {
+        // In-workspace files belong to the workspace session; recents are for
+        // the files opened from outside it.
+        let outside_workspace = self
+            .state
+            .workspace
+            .path
+            .as_deref()
+            .is_none_or(|root| !path.starts_with(root));
+        if list_as_recent && outside_workspace {
             self.state.config.add_recent(path, false);
         }
         self.sync_window_title(window);
@@ -408,9 +510,9 @@ impl Root {
         }
     }
 
-    fn open_folder_dialog(&mut self, cx: &mut Context<Self>) {
+    fn open_folder_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = rfd::FileDialog::new().pick_folder() {
-            self.open_folder(path, cx);
+            self.open_folder(path, window, cx);
         }
     }
 
@@ -511,6 +613,7 @@ impl Root {
     }
 
     fn tick(&mut self) {
+        self.sync_workspace_session();
         self.state.config.flush_recent();
         self.save_settings();
     }
@@ -710,9 +813,9 @@ impl Render for Root {
                 root.dismiss_palette(cx);
                 root.open_file_dialog(window, cx)
             }))
-            .on_action(cx.listener(|root, _: &OpenFolder, _window, cx| {
+            .on_action(cx.listener(|root, _: &OpenFolder, window, cx| {
                 root.dismiss_palette(cx);
-                root.open_folder_dialog(cx)
+                root.open_folder_dialog(window, cx)
             }))
             .on_action(cx.listener(|root, _: &Save, window, cx| {
                 root.dismiss_palette(cx);

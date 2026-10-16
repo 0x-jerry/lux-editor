@@ -21,6 +21,7 @@ actions!(
         ToggleMarkdownPreview,
         OpenCommandPalette,
         OpenSettings,
+        ClearRecentItems,
         Quit,
     ]
 );

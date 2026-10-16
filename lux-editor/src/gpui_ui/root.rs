@@ -3,8 +3,8 @@
 //! tree, tab strip, editor and status bar).
 
 use super::actions::{
-    CloseTab, NewFile, OpenCommandPalette, OpenFile, OpenFolder, OpenSettings, Quit, Save, SaveAs,
-    ToggleMarkdownPreview, ToggleSidebar,
+    ClearRecentItems, CloseTab, NewFile, OpenCommandPalette, OpenFile, OpenFolder, OpenSettings,
+    Quit, Save, SaveAs, ToggleMarkdownPreview, ToggleSidebar,
 };
 use super::document::OpenDocument;
 use super::language::language_for;
@@ -59,6 +59,9 @@ pub struct Root {
     _settings_events: Subscription,
     palette_open: bool,
     sidebar_visible: bool,
+    /// A recent item the palette confirmed: opening it needs a window, so the
+    /// next render performs it.
+    pending_open: Option<PathBuf>,
     /// The settings tab changed the configuration; the write is pending.
     settings_dirty: bool,
     /// The OS appearance, which the `auto` theme choice follows.
@@ -86,10 +89,13 @@ impl Root {
         let palette = cx.new(|cx| CommandPalette::new(window, cx));
         let settings_view = cx.new(|cx| SettingsView::new(&config.settings, window, cx));
         let _palette_events = cx.subscribe(&palette, |root, _palette, event: &PaletteEvent, cx| {
-            if matches!(event, PaletteEvent::Dismissed) {
-                root.palette_open = false;
-                cx.notify();
+            root.palette_open = false;
+            if let PaletteEvent::Open(path) = event {
+                // Opening needs a window, which the event handler has none of;
+                // the next render picks this up.
+                root.pending_open = Some(path.clone());
             }
+            cx.notify();
         });
         let _settings_events = cx.subscribe(&settings_view, Self::on_settings_event);
 
@@ -109,6 +115,7 @@ impl Root {
             _settings_events,
             palette_open: false,
             sidebar_visible: true,
+            pending_open: None,
             settings_dirty: false,
             system_is_light,
             focus_handle: cx.focus_handle(),
@@ -441,8 +448,12 @@ impl Root {
 
     /// Show the command palette with the query box focused.
     fn open_palette(&mut self, cx: &mut Context<Self>) {
+        let recents = self.state.config.recent_items.clone();
+        self.palette.update(cx, |palette, cx| {
+            palette.set_recents(recents, cx);
+            palette.request_focus(cx);
+        });
         self.palette_open = true;
-        self.palette.update(cx, |palette, cx| palette.request_focus(cx));
         cx.notify();
     }
 
@@ -772,6 +783,9 @@ impl Render for Root {
         let palette = Palette::get(cx);
         self.sync_window_title(window);
         self.sync_system_appearance(window, cx);
+        if let Some(path) = self.pending_open.take() {
+            self.open_file(path, window, cx);
+        }
 
         let title_bar = TitleBar::new()
             .on_close_window(cx.listener(|root, _: &ClickEvent, window, cx| {
@@ -865,6 +879,11 @@ impl Render for Root {
             .on_action(cx.listener(|root, _: &OpenSettings, window, cx| {
                 root.dismiss_palette(cx);
                 root.open_settings(window, cx)
+            }))
+            .on_action(cx.listener(|root, _: &ClearRecentItems, _window, cx| {
+                root.dismiss_palette(cx);
+                root.state.config.clear_recent_items();
+                cx.notify();
             }))
             .on_action(cx.listener(|root, _: &Quit, window, cx| {
                 root.dismiss_palette(cx);

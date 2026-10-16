@@ -1,5 +1,5 @@
 /// `#rgb`, `#rrggbb` or `#rrggbbaa`; raw (non-premultiplied) RGBA bytes.
-pub(super) fn parse_rgba(value: &str) -> Result<[u8; 4], String> {
+pub(crate) fn parse_rgba(value: &str) -> Result<[u8; 4], String> {
     let hex = value
         .strip_prefix('#')
         .ok_or_else(|| format!("'{value}' is missing a leading '#'"))?;

@@ -15,11 +15,12 @@ use super::settings_view::{SettingsEvent, SettingsView};
 use super::state::{LuxState, TreeView};
 use super::tabs::{Tab, TabContent, Tabs};
 use super::theme::{Palette, apply};
+use super::tree_icon::{ICON_FONT_FAMILY, file_type_icon, folder_glyph};
 use super::views::{self, Content, Notice};
 use crate::events::{CustomEvent, WorkspaceEvent};
 use crate::settings::types::WorkspaceSession;
 use crate::settings::Config;
-use crate::theme::ThemeChoice;
+use crate::theme::{ThemeChoice, resolve};
 use crate::workspace::{Entry, FileTree, Workspace};
 use gpui_kit::component::TitleBar;
 use gpui_kit::component::h_flex;
@@ -849,11 +850,12 @@ fn collect_dir(
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        if is_dir && expanded.contains(&path) {
+        let open = is_dir && expanded.contains(&path);
+        if open {
             collect_dir(tree, expanded, &path, depth + 1, out);
         }
         out.push(Row {
-            path,
+            path: path.clone(),
             name,
             depth,
             is_dir,
@@ -1011,6 +1013,10 @@ impl Root {
             .border_color(palette.border)
             .overflow_hidden()
             .py_1();
+        let dark = resolve(
+            ThemeChoice::from_value(&self.state.config.settings.theme.choice),
+            Some(self.system_is_light),
+        ) == ThemeChoice::Dark;
         for (row_index, row) in self.sidebar_rows().into_iter().enumerate() {
             let Row {
                 path,
@@ -1020,39 +1026,59 @@ impl Root {
                 ignored,
             } = row;
             let color = if ignored { palette.weak } else { palette.text };
-            let label = if is_dir {
-                format!(
-                    "{} {name}",
-                    if self.state.tree.expanded.contains(&path) {
-                        "▾"
-                    } else {
-                        "▸"
-                    }
+            let (marker, glyph, glyph_color) = if is_dir {
+                let open = self.state.tree.expanded.contains(&path);
+                (
+                    if open { "▾" } else { "▸" },
+                    folder_glyph(open),
+                    color,
                 )
             } else {
-                name
+                let (glyph, icon_color) = file_type_icon(&path, dark);
+                // A gitignored row dims its glyph along with the label.
+                ("", glyph, if ignored { palette.weak } else { icon_color })
             };
+            let entry = div()
+                .id(("sidebar-row", row_index))
+                .flex()
+                .items_center()
+                .gap_1()
+                .h(px(22.0))
+                .flex_shrink_0()
+                .pl(px(8.0 + depth as f32 * 12.0))
+                .pr_2()
+                .text_sm()
+                .text_color(color)
+                .cursor_pointer()
+                .hover(|style| style.bg(palette.hover))
+                .on_click(cx.listener(move |root, _event, window, cx| {
+                    if is_dir {
+                        root.toggle_dir(path.clone(), cx);
+                    } else {
+                        root.open_file(path.clone(), window, cx);
+                    }
+                }));
+            // A file keeps an empty marker slot, so every name stays in one
+            // column whether or not its row can expand.
             sidebar = sidebar.child(
-                div()
-                    .id(("sidebar-row", row_index))
-                    .flex()
-                    .items_center()
-                    .h(px(22.0))
-                    .flex_shrink_0()
-                    .pl(px(8.0 + depth as f32 * 12.0))
-                    .pr_2()
-                    .text_sm()
-                    .text_color(color)
-                    .cursor_pointer()
-                    .hover(|style| style.bg(palette.hover))
-                    .on_click(cx.listener(move |root, _event, window, cx| {
-                        if is_dir {
-                            root.toggle_dir(path.clone(), cx);
-                        } else {
-                            root.open_file(path.clone(), window, cx);
-                        }
-                    }))
-                    .child(label),
+                entry
+                    .child(
+                        div()
+                            .w(px(12.0))
+                            .flex_shrink_0()
+                            .text_center()
+                            .child(marker),
+                    )
+                    .child(
+                        div()
+                            .w(px(14.0))
+                            .flex_shrink_0()
+                            .text_center()
+                            .font_family(ICON_FONT_FAMILY)
+                            .text_color(glyph_color)
+                            .child(glyph.to_string()),
+                    )
+                    .child(name),
             );
         }
         sidebar

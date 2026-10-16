@@ -11,6 +11,7 @@ mod settings_view;
 mod state;
 mod tabs;
 mod theme;
+mod tree_icon;
 mod views;
 
 use crate::settings::Config;
@@ -23,12 +24,23 @@ pub fn run() {
 
     application().with_assets(Assets).run(|cx| {
         init(cx);
+        register_icon_font(cx);
         actions::install(cx);
         open_window(window_options(cx), cx, |window, cx| {
             cx.new(|cx| root::Root::new(window, cx))
         })
         .expect("failed to open Lux window");
     });
+}
+
+/// Register the symbols font that carries the sidebar's file-type glyphs. They
+/// live in the Nerd Font private-use range, which no system UI font covers, so
+/// without this every icon would draw as a missing-glyph box.
+fn register_icon_font(cx: &mut App) {
+    let font = include_bytes!("../../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
+    if let Err(err) = cx.text_system().add_fonts(vec![font.as_slice().into()]) {
+        log::warn!("could not register the symbols font: {err}");
+    }
 }
 
 /// Window options for the app's custom title bar (undecorated client area with

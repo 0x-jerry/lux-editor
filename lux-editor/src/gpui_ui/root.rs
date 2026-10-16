@@ -58,6 +58,8 @@ pub struct Root {
     _settings_events: Subscription,
     palette_open: bool,
     sidebar_visible: bool,
+    /// The settings tab changed the configuration; the write is pending.
+    settings_dirty: bool,
     /// The OS appearance, which the `auto` theme choice follows.
     system_is_light: bool,
     focus_handle: FocusHandle,
@@ -104,6 +106,7 @@ impl Root {
             _settings_events,
             palette_open: false,
             sidebar_visible: true,
+            settings_dirty: false,
             system_is_light,
             focus_handle: cx.focus_handle(),
             last_title: None,
@@ -509,6 +512,19 @@ impl Root {
 
     fn tick(&mut self) {
         self.state.config.flush_recent();
+        self.save_settings();
+    }
+
+    /// Write settings edited in the settings tab, at most once per tick so a
+    /// burst of keystrokes is one file write.
+    fn save_settings(&mut self) {
+        if !self.settings_dirty {
+            return;
+        }
+        match Config::save_settings(&self.state.config.settings) {
+            Ok(_) => self.settings_dirty = false,
+            Err(err) => log::error!("failed to save settings: {err}"),
+        }
     }
 
     /// Reflect the active tab (name + dirty marker) in the OS window title.
@@ -526,8 +542,8 @@ impl Root {
         }
     }
 
-    /// Apply an edit from the settings tab: persist it, then re-render whatever
-    /// it affects.
+    /// Apply an edit from the settings tab: re-render whatever it affects and
+    /// leave the write to the next tick, so typing is not one write per key.
     fn on_settings_event(
         &mut self,
         _view: Entity<SettingsView>,
@@ -540,10 +556,8 @@ impl Root {
         let appearance_changed = settings.theme != current.theme || settings.font != current.font;
         let excludes_changed = settings.explorer.exclude != current.explorer.exclude;
 
-        self.state.config.settings = settings.clone();
-        if let Err(err) = Config::save_settings(&settings) {
-            log::error!("failed to save settings: {err}");
-        }
+        self.state.config.settings = settings;
+        self.settings_dirty = true;
         if appearance_changed {
             self.refresh_theme(cx);
         }

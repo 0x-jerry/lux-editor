@@ -202,42 +202,59 @@ The rewrite is committed directly on `main`, one milestone per commit:
 | `34ae5fd` | M2/M3 — document model, file tree, editor shell on `EditorState` |
 | `b8ff053` | M1/M5 — title bar, app menu bar, status bar, save/close/dirty |
 | `1c76864` | M4/M5 — command palette, markdown preview, image/notice tabs, settings tab, close gate |
+| `ff0f761` | M6 — the legacy egui tree and its dependencies are deleted |
+| `705c8e9` | M4 — the real settings page |
+| `46adf44` | M2/M4 — workspace session restore, settings-file watcher |
+| `7ad82d7` | M4 — exclusion changes apply to the open tree |
+| `6e54a40` | M4 — recent items in the command palette |
+| `81e2d82` | M4 — the external formatter, on save and on demand |
 
-**Landed.** The live UI is `lux-editor/src/gpui_ui/` (`root.rs` shell, `tabs.rs` tab model,
-`document.rs` editor adapter, `views.rs` classification + image/notice bodies, `markdown.rs`
-preview, `palette.rs` command palette, `settings_view.rs` settings tab, `theme.rs` palette,
-`actions.rs` actions + keybindings, `runtime.rs`/`wake.rs` background wakeups). The editor is
-`gpui_component`'s `EditorState` (editor-authoritative, §10.1) and the sidebar/status bar/tab
-strip are rebuilt from scratch. The legacy egui tree is still in the crate but unreachable.
+**Landed.** `lux-editor/src/gpui_ui/` is the only presentation layer: `root.rs` (shell, actions,
+save gate, background pumping), `tabs.rs`/`document.rs` (tab model over the kit's
+`EditorState`), `views.rs` (file classification, image and notice bodies), `markdown.rs`
+(preview), `palette.rs` (command palette with the recent items), `settings_view.rs` (settings
+pages), `theme.rs` (chrome palette), `actions.rs` (actions, key bindings, menus),
+`runtime.rs`/`wake.rs` (watcher channel). The egui tree, `Cargo.toml`'s eframe stack and the
+tokio runtime handle are gone; `cargo check --workspace --all-targets` is warning-free and
+`cargo test -p lux-editor --bins` runs 30 tests.
 
-**Open, in flight.** The settings tab body is still a read-only placeholder (real form in
-progress); the M6 deletion pass (legacy modules + `eframe` and friends out of `Cargo.toml`) is
-in progress.
-
-**Still to do after that.**
-1. Port/retire the remaining tests (§8). Currently the binary carries 168 inherited tests
-   (3 of them fail on Windows: they spawn `cat`) plus 6 new `views::classify` tests; the 3
-   failures disappear with `document/formatter.rs` in M6, and the tests that asserted the
-   deleted rope model (`document/*`, `highlighting/*`, `tabs/*`) are retired with it — the
-   surviving coverage is `settings`, `workspace/tree`, `paths` and the new classification tests.
-2. Large-file performance validation on a 100k+ line real file (§9), and packaging
-   (`panic="abort"`, LTO, stripped release).
-3. Custom syntax themes (§7.5) are **not** wired: chrome colours still come from
-   `assets/themes/*.json` through the legacy loader, while editor syntax colours come from
-   gpui-component's built-in `HighlightTheme`. Converting `assets/themes/*.json` into a
-   `HighlightTheme` (plus the round-trip test) is still open.
+**Still to do.**
+1. **Tests (§8).** 30 tests remain, covering what is left of the domain plus the new
+   classification tests: `gpui_ui::views::classify` (text/binary/image/missing), `theme`
+   parsing and choice resolution, `settings` types/store, `workspace` tree/watcher, `paths`,
+   `atomic`, `formatter` (its Unix-only cases gated). The 218 egui-era tests and the harness
+   they needed are gone with the code they asserted; headless `#[gpui_kit::test]` coverage for
+   the views, the palette and the save gate is **not written** (it needs gpui-kit's
+   `test-support` feature, which is not enabled).
+2. **Large-file performance (§9).** Files are read, classified and loaded on the UI thread;
+   nothing has been measured on a 100k+ line file since the rewrite, and packaging
+   (`panic="abort"`, LTO, stripped release) is unvalidated.
+3. **Theme mapping (§7.5).** Chrome colours come from `assets/themes/*.json`; editor syntax
+   colours and the kit's own widget surfaces come from gpui-component's built-in `Theme`
+   (left at its defaults). Mapping Lux's theme file onto that `Theme` — and converting it into
+   a `HighlightTheme` for custom syntax colours, with a round-trip test — is still open, which
+   is also why five palette tokens are currently held but unread.
+4. **Formatting is synchronous.** The formatter runs on the save path, so the UI waits for the
+   external process; moving it to a background task needs a completion event and a staleness
+   check against the buffer text.
+5. **A macOS-native menubar (§7.4)** is not implemented: the app menu is the in-window
+   `AppMenuBar`.
 
 **Deviations found while implementing.**
 1. `gpui_component` items are **not** re-exported from `gpui_kit`'s root; they must be imported
    as `gpui_kit::component::…` (only `gpui-base` + `gpui` are globbed).
 2. There is no reusable host command palette: Lux owns its `CommandState` and renders the
    palette **inline** as an absolutely positioned overlay, so a chosen command bubbles back
-   through `Root`'s action handlers.
+   through `Root`'s action handlers. Recent-item rows carry no action, so confirming one
+   resolves the index path back to a path, and the root opens it on the next render (the
+   palette's event handler has no window).
 3. `TextView::markdown` renders GFM and math but does not forward `image_source` or
    `code_block_highlighter`, so markdown images and custom code-block themes are unthemed.
 4. The save gate needs three registrations, not one: `window.on_window_should_close` covers the
    OS close (and `Quit` must gate itself, because `App::quit` never consults that callback),
    while the title bar's own close button calls `window.remove_window()` and is gated by
    `TitleBar::on_close_window`.
-5. The native menubar (§7.4) is replaced by an in-window `AppMenuBar`; `muda`/`tray-icon`/
-   `objc2` go away with the M6 pass. A macOS-native menubar is not implemented.
+5. `EditorState::set_value` clears the undo history and emits no change event, so the
+   formatter path restores the dirty flag by hand.
+6. The theme JSON's `syntax` section is no longer parsed; the chrome tokens are, and the
+   built-in `Theme` covers code colours until §7.5 above is done.

@@ -850,10 +850,9 @@ fn collect_dir(
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
+        // The row has to land before its children, so an expanded directory is
+        // followed by its subtree instead of preceded by it.
         let open = is_dir && expanded.contains(&path);
-        if open {
-            collect_dir(tree, expanded, &path, depth + 1, out);
-        }
         out.push(Row {
             path: path.clone(),
             name,
@@ -861,6 +860,9 @@ fn collect_dir(
             is_dir,
             ignored,
         });
+        if open {
+            collect_dir(tree, expanded, &path, depth + 1, out);
+        }
     }
 }
 
@@ -1236,5 +1238,46 @@ impl Root {
             .when(dirty, |bar| bar.child("Modified"))
             .child(div().flex_1())
             .child(workspace)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Deliberately not `use super::*`: gpui exports its own `test` attribute,
+    // which would shadow the built-in one below.
+    use super::{Row, collect_rows};
+    use crate::workspace::FileTree;
+    use std::collections::HashSet;
+
+    /// `(name, depth)` per visible row, in the order they are drawn.
+    fn layout(rows: &[Row]) -> Vec<(String, usize)> {
+        rows.iter()
+            .map(|row| (row.name.clone(), row.depth))
+            .collect()
+    }
+
+    #[test]
+    fn an_expanded_directory_is_followed_by_its_children() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path();
+        std::fs::create_dir(dir.join("src")).unwrap();
+        std::fs::write(dir.join("src/main.rs"), "").unwrap();
+        std::fs::write(dir.join("top.rs"), "").unwrap();
+
+        let mut tree = FileTree::new(dir, &[]);
+        let mut expanded = HashSet::new();
+        expanded.insert(dir.join("src"));
+        let mut rows = Vec::new();
+        collect_rows(&mut tree, &expanded, &mut rows);
+
+        // `src` first, then the child indented under it, then the sibling.
+        assert_eq!(
+            layout(&rows),
+            vec![
+                ("src".to_string(), 0),
+                ("main.rs".to_string(), 1),
+                ("top.rs".to_string(), 0),
+            ]
+        );
     }
 }

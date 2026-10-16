@@ -82,10 +82,6 @@ impl Tabs {
         self.tabs.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.tabs.is_empty()
-    }
-
     /// The index of the tab showing `path`, whatever kind of content it holds.
     pub fn index_of(&self, path: &Path) -> Option<usize> {
         self.tabs.iter().position(|tab| tab.path() == Some(path))
@@ -140,10 +136,6 @@ impl Tabs {
         self.tabs.get_mut(index).and_then(Tab::text_mut)
     }
 
-    pub fn id_at(&self, index: usize) -> Option<u64> {
-        self.tabs.get(index).map(|tab| tab.id)
-    }
-
     pub fn is_dirty(&self, index: usize) -> bool {
         self.tabs.get(index).is_some_and(Tab::dirty)
     }
@@ -154,12 +146,5 @@ impl Tabs {
                 doc.dirty = true;
             }
         }
-    }
-
-    pub fn paths(&self) -> Vec<PathBuf> {
-        self.tabs
-            .iter()
-            .filter_map(|tab| tab.path().map(Path::to_path_buf))
-            .collect()
     }
 }

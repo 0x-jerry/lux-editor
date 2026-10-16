@@ -175,6 +175,7 @@ impl Root {
     fn open_folder(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         let path = path.canonicalize().unwrap_or(path);
         self.state.workspace.path = Some(path.clone());
+        self.state.workspace.file_tree = None;
         self.rescan_workspace();
         self.state.config.add_recent(path.clone(), true);
         self.restore_workspace_session(&path, window, cx);
@@ -273,14 +274,35 @@ impl Root {
             });
     }
 
-    /// Rescan the workspace root and restart its watcher, which is how a change
-    /// to the exclusion rules takes effect.
+    /// Build the workspace's tree and watcher from scratch.
     fn rescan_workspace(&mut self) {
         let Some(path) = self.state.workspace.path.clone() else {
             return;
         };
         let exclude = self.state.config.settings.explorer.exclude.clone();
         self.state.workspace.file_tree = Some(FileTree::new(&path, &exclude));
+        self.state.workspace.watcher = Workspace::start_watcher(
+            &path,
+            &exclude,
+            self.state.runtime.event_tx.clone(),
+            self.state.runtime.wake.clone(),
+        );
+    }
+
+    /// Point the open tree at the configured exclusions. A no-op while they are
+    /// unchanged, so a settings edit that does not touch them costs nothing; the
+    /// watcher is restarted because it captured the old patterns.
+    fn apply_exclude(&mut self) {
+        let Some(path) = self.state.workspace.path.clone() else {
+            return;
+        };
+        let exclude = self.state.config.settings.explorer.exclude.clone();
+        let Some(tree) = self.state.workspace.file_tree.as_mut() else {
+            return;
+        };
+        if !tree.set_excluded(&exclude) {
+            return;
+        }
         self.state.workspace.watcher = Workspace::start_watcher(
             &path,
             &exclude,
@@ -665,7 +687,7 @@ impl Root {
             self.refresh_theme(cx);
         }
         if excludes_changed {
-            self.rescan_workspace();
+            self.apply_exclude();
         }
         cx.notify();
     }
@@ -956,7 +978,12 @@ impl Root {
                     .cursor_pointer()
                     .border_r_1()
                     .border_color(palette.border)
-                    .when(active, |item| item.bg(palette.window_bg).text_color(palette.text))
+                    .when(active, |item| {
+                        item.bg(palette.window_bg)
+                            .text_color(palette.text)
+                            .border_b_2()
+                            .border_color(palette.accent)
+                    })
                     .when(!active, |item| item.text_color(palette.weak))
                     .on_click(cx.listener(move |root, _event, window, cx| {
                         root.activate(index, window, cx)

@@ -9,7 +9,14 @@ use gpui_kit::component::theme::Theme;
 use gpui_kit::*;
 
 /// Resolved chrome palette, one field per token in `assets/themes/*.json`.
+///
+/// The mirror is deliberately complete rather than trimmed to what today's
+/// views read: the tokens no view consumes yet (`extreme_bg`, `faint_bg`,
+/// `code_bg`, `selection_bg`, `selection_stroke`) belong to surfaces the kit
+/// owns — the editor background, markdown code blocks and text selection — and
+/// will be read once Lux's theme file is mapped onto the kit's own `Theme`.
 #[derive(Clone, Copy)]
+#[allow(dead_code)] // a complete theme mirror, not only what the views read
 pub struct Palette {
     pub accent: Hsla,
     pub text: Hsla,

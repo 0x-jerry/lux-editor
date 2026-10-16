@@ -1,6 +1,4 @@
-//! gpui-kit application tree. Replaces the eframe/egui presentation layer;
-//! the legacy `app`/`chrome`/`tabs`/`document::ui` modules stay compiled during
-//! the migration and are removed once every view has been ported.
+//! gpui-kit application tree: the whole presentation layer.
 
 mod actions;
 mod document;

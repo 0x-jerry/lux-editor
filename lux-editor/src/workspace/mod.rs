@@ -1,8 +1,7 @@
 //! Workspace domain: the open folder, the lazily-loaded file tree that
-//! represents it, the watcher that refreshes it and the tree panel UI.
-//! Rendering lives in `file_tree_panel`; the tree model in `tree` is pure data.
+//! represents it and the watcher that refreshes it. The tree model in `tree`
+//! is pure data; the gpui tree view renders it.
 
-pub(crate) mod file_tree_panel;
 mod state;
 mod tree;
 mod watcher;

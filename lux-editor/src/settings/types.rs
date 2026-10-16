@@ -54,7 +54,7 @@ fn default_font_size() -> f32 {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct FontSettings {
-    /// Empty means "no custom font": the system fallbacks egui ships.
+    /// Empty means "no custom font": the system monospace fallbacks.
     #[serde(default)]
     pub family: String,
     #[serde(default = "default_font_size")]

@@ -140,15 +140,21 @@ impl Root {
 
     /// Open a path from the CLI, the welcome page or the file tree: a directory
     /// becomes the workspace, a file is loaded into a tab.
+    /// Open whatever the command line named: a folder becomes the workspace, a
+    /// file is loaded as a tab. Anything else is ignored.
     fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        let path = path.canonicalize().unwrap_or(path);
         if path.is_dir() {
             self.open_folder(path, cx);
-        } else {
+        } else if path.is_file() {
             self.open_file(path, window, cx);
+        } else {
+            log::warn!("ignoring command-line path {}", path.display());
         }
     }
 
     fn open_folder(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let path = path.canonicalize().unwrap_or(path);
         self.state.workspace.path = Some(path.clone());
         self.rescan_workspace();
         self.state.tree.expanded.clear();
